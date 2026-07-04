@@ -1,0 +1,106 @@
+/* ============================================================
+   Brown Pearl — shell delle pagine gioco (condiviso tra tutti i titoli)
+   ============================================================ */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #120e0b;
+  color: #f2e6d8;
+  font-family: "Karla", system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0);
+}
+
+.game-shell {
+  width: 100%;
+  max-width: 480px;
+  padding: 16px 16px 28px;
+}
+
+.game-shell .back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #cbbfae;
+  text-decoration: none;
+  margin-bottom: 14px;
+}
+
+.game-stage {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: #1d1611;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  color: #cbbfae;
+  font-size: 14px;
+}
+
+/* ---------- install button (used on game pages for standalone PWA install) ---------- */
+.install-btn {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: #6fa287;
+  color: #0e1a14;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-weight: 700;
+  cursor: pointer;
+  display: block;
+  margin: 14px auto 0;
+}
+
+/* ---------- ad banner slot ---------- */
+.bp-ad-wrap {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.bp-ad-label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #6a6156;
+}
+
+#bp-ad-banner {
+  width: 100%;
+  max-width: 320px;
+  min-height: 50px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+#bp-ad-banner:empty::before {
+  content: "Slot annuncio (attivo quando imposti un provider in ads-config.js)";
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: #4a423a;
+  padding: 0 12px;
+  text-align: center;
+}

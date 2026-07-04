@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<!-- ===================== SEO ===================== -->
+<title>Brown Pearl — Shroomatch & COLORUSH, puzzle da giocare nel browser</title>
+<meta name="description" content="Brown Pearl: due puzzle game gratuiti da giocare subito nel browser, senza download. Shroomatch, match-3 nel bosco d'autunno con i funghi, e COLORUSH, il puzzle di abbinamento colori a tempo.">
+<meta name="keywords" content="puzzle game browser, match 3 gratis, gioco funghi, colorush, shroomatch, giochi html5, giochi mobile gratis">
+<meta name="author" content="Brown Pearl">
+<link rel="canonical" href="https://brownpearl.games/">
+<meta name="robots" content="index, follow">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Brown Pearl">
+<meta property="og:title" content="Brown Pearl — Shroomatch & COLORUSH">
+<meta property="og:description" content="Due puzzle game gratuiti da giocare subito nel browser: Shroomatch nel bosco d'autunno e COLORUSH, l'abbinamento colori a tempo.">
+<meta property="og:image" content="https://brownpearl.games/assets/icons/icon-512.png">
+<meta property="og:url" content="https://brownpearl.games/">
+<meta property="og:locale" content="it_IT">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Brown Pearl — Shroomatch & COLORUSH">
+<meta name="twitter:description" content="Due puzzle game gratuiti da giocare subito nel browser, senza download.">
+<meta name="twitter:image" content="https://brownpearl.games/assets/icons/icon-512.png">
+
+<!-- ===================== PWA ===================== -->
+<meta name="theme-color" content="#120e0b">
+<meta name="color-scheme" content="dark">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/icons/icon-16.png">
+<link rel="shortcut icon" href="assets/icons/favicon.ico">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Brown Pearl">
+<meta name="mobile-web-app-capable" content="yes">
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Karla:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="assets/css/style.css">
+
+<!-- Structured data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Brown Pearl",
+  "url": "https://brownpearl.games/",
+  "description": "Puzzle game gratuiti da giocare nel browser: Shroomatch e COLORUSH.",
+  "publisher": { "@type": "Organization", "name": "Brown Pearl" }
+}
+</script>
+</head>
+<body>
+
+<div class="spores" id="spores" aria-hidden="true"></div>
+
+<main class="wrap">
+
+  <header class="brand">
+    <img src="assets/icons/icon-96.png" alt="" width="40" height="40" onerror="this.src='assets/icons/icon-192.png'">
+    <span>Brown Pearl</span>
+  </header>
+
+  <h1 class="section-title">Our games</h1>
+
+  <section class="games" aria-label="Giochi disponibili">
+
+    <a class="game-btn" style="--accent:#E8792C" href="games/shroomatch/">
+      <span>Shroomatch</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg>
+    </a>
+
+    <a class="game-btn" style="--accent:#4C6EF5" href="games/colorush/">
+      <span>COLORUSH</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg>
+    </a>
+
+  </section>
+
+  <section class="install" aria-label="Installa l'app">
+    <div class="copy">
+      <h3>Aggiungi alla home</h3>
+      <p>Scansiona il codice per aprire il sito sul telefono, poi installalo per giocare offline.</p>
+      <button class="install-btn" id="installBtn" type="button">Installa app</button>
+    </div>
+    <div class="qr-box" id="qrBox" aria-hidden="true"></div>
+  </section>
+
+  <footer>
+    <p>&copy; <span id="year"></span> Brown Pearl · <a href="https://github.com/" target="_blank" rel="noopener">codice sorgente</a></p>
+  </footer>
+
+</main>
+
+<script src="assets/js/qrcode.min.js"></script>
+<script src="assets/js/main.js"></script>
+</body>
+</html>
