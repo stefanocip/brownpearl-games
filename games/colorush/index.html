@@ -2,20 +2,8 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>COLORUSH</title>
-
-<!-- PWA: manifest e icone dedicati, indipendenti dal resto di Brown Pearl -->
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1a1a2e">
-<meta name="color-scheme" content="dark">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
-<link rel="shortcut icon" href="icons/favicon.ico">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="COLORUSH">
-<meta name="mobile-web-app-capable" content="yes">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Color Grid</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -355,79 +343,65 @@
   }
   #share-close:active { color: #fff; }
 
-  /* ---------- Brown Pearl chrome: brand bar + install ---------- */
-  #brand-bar {
-    width: 100%;
+  #mode-overlay {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 16px 0;
-  }
-  #brand-bar .back {
-    font-size: 0.78em;
-    color: #8d8da8;
-    text-decoration: none;
-    letter-spacing: 0.04em;
-  }
-  #install-btn {
-    display: none;
-    background: rgba(255,255,255,0.12);
-    border: none;
-    border-radius: 8px;
-    color: #fff;
-    font-size: 0.78em;
-    font-weight: bold;
-    padding: 6px 10px;
-    cursor: pointer;
-  }
-  #install-btn.show { display: inline-flex; align-items: center; gap: 4px; }
-  #install-btn:active { background: rgba(255,255,255,0.25); }
-
-  /* ---------- Brown Pearl chrome: ad banner ---------- */
-  #bp-ad-wrap {
-    width: 100%;
-    padding: 4px 16px 2px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-  }
-  #bp-ad-label {
-    font-size: 0.62em;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: #55556e;
-  }
-  #bp-ad-banner {
-    width: 100%;
-    max-width: 320px;
-    min-height: 50px;
-    background: rgba(255,255,255,0.03);
-    border: 1px dashed rgba(255,255,255,0.1);
-    border-radius: 8px;
-    display: flex;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 200;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
   }
-  #bp-ad-banner:empty::before {
-    content: "Slot annuncio";
-    font-size: 0.6em;
-    letter-spacing: 0.08em;
-    color: #3d3d52;
+  #mode-box {
+    background: #16213e;
+    border-radius: 20px;
+    padding: 32px 24px 28px;
+    width: 82%;
+    max-width: 320px;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  }
+  #mode-box h2 {
+    color: #fff;
+    font-size: 1.3em;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+  }
+  #mode-box p {
+    color: #aaa;
+    font-size: 0.82em;
+    margin-bottom: 22px;
+    line-height: 1.5;
+  }
+  .mode-btn {
+    display: block;
+    width: 100%;
+    padding: 15px;
+    margin-bottom: 12px;
+    font-size: 1.05em;
+    font-family: 'Arial Black', Arial, sans-serif;
+    font-weight: bold;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    letter-spacing: 1px;
+  }
+  #mode-easy { background: #43aa8b; color: #fff; }
+  #mode-easy:active { background: #52c9a7; }
+  #mode-extreme { background: #e63946; color: #fff; }
+  #mode-extreme:active { background: #ff6b74; }
+  .mode-desc {
+    font-size: 0.75em;
+    font-weight: normal;
+    opacity: 0.85;
+    display: block;
+    margin-top: 3px;
+    letter-spacing: 0;
   }
 </style>
 </head>
 <body>
-
-<!-- ================= BROWN PEARL: barra superiore ================= -->
-<div id="brand-bar">
-  <a class="back" href="../../index.html">&larr; Brown Pearl</a>
-  <button id="install-btn" type="button">📲 Installa</button>
-</div>
-<!-- ================= FINE BARRA SUPERIORE ================= -->
-
 <div id="top-bar">
   <div id="top-row">
     <div><span class="label">SCORE</span><span class="value" id="score">0</span></div>
@@ -445,22 +419,28 @@
   <div id="msg">Swipe compatible color blocks to clear them!</div>
 </div>
 
-<!-- ================= BROWN PEARL: banner ads =================
-     Provider scelto in assets/js/ads-config.js ("none" finché non attivi una rete). -->
-<div id="bp-ad-wrap">
-  <span id="bp-ad-label">Annuncio</span>
-  <div id="bp-ad-banner"></div>
+<!-- Mode Select Overlay -->
+<div id="mode-overlay">
+  <div id="mode-box">
+    <h2>🎨 COLORUSH</h2>
+    <p>Choose your difficulty.<br>Black blocks speed up the timer!</p>
+    <button class="mode-btn" id="mode-easy" onclick="startGame('easy')">
+      🟢 EASY
+      <span class="mode-desc">30s start · max 60s · speed cap 2x</span>
+    </button>
+    <button class="mode-btn" id="mode-extreme" onclick="startGame('extreme')">
+      🔴 EXTREME
+      <span class="mode-desc">15s start · no time cap · speed unbounded</span>
+    </button>
+  </div>
 </div>
-<script src="../../assets/js/ads-config.js"></script>
-<script src="../../assets/js/ads-loader.js"></script>
-<!-- ================= FINE BANNER ADS ================= -->
 
 <!-- Game Over Overlay -->
 <div id="gameover-overlay">
   <div id="gameover-box">
     <h2>⏰ TIME'S UP!</h2>
     <div id="gameover-score">0</div>
-    <button class="go-btn" id="go-restart" onclick="restartGame()">🔄 Play Again</button>
+    <button class="go-btn" id="go-restart" onclick="showModeSelect()">🔄 Play Again</button>
     <button class="go-btn" id="go-share" onclick="openShare()">📤 Share Score</button>
   </div>
 </div>
@@ -592,7 +572,9 @@ let W, H;
 function resizeCanvas() {
   const wrapper = document.getElementById('grid-wrapper');
   const maxW = wrapper.clientWidth - 8;
-  const maxH = wrapper.clientHeight - 8;
+  const topH = document.getElementById('top-bar').offsetHeight;
+  const botH = document.getElementById('bottom-bar').offsetHeight;
+  const maxH = window.innerHeight - topH - botH - 16;
   CELL = Math.floor(Math.min(maxW / COLS, maxH / ROWS));
   if (CELL < 20) CELL = 60; // fallback se il layout non è ancora pronto
   W = COLS * CELL;
@@ -675,7 +657,21 @@ let animating = false;
 let particles = [];
 let lastPointerX = 0, lastPointerY = 0;
 
-// ---- Audio ----
+// ---- Mode ----
+let gameMode = 'easy'; // 'easy' | 'extreme'
+
+function showModeSelect() {
+  document.getElementById('gameover-overlay').classList.remove('open');
+  document.getElementById('mode-overlay').style.display = 'flex';
+}
+
+function startGame(mode) {
+  gameMode = mode;
+  document.getElementById('mode-overlay').style.display = 'none';
+  restartGame();
+}
+
+
 let audioCtx = null;
 let audioEnabled = false;
 
@@ -871,15 +867,18 @@ function playUrgent() {
 }
 
 
-const TIME_START = 15;
+const TIME_START = 30; // default, overridden by mode
 let timeLeft = TIME_START;
 let gameOver = false;
 let timerInterval = null;
 let lastTimestamp = null;
 
+function getTimeStart() { return gameMode === 'extreme' ? 15 : 30; }
+function getTimeCap()   { return gameMode === 'extreme' ? 15 : 60; }
+
 function addTime(secs) {
   const realSecs = secs * getTimerSpeed();
-  timeLeft = Math.min(25, timeLeft + realSecs);
+  timeLeft = Math.min(getTimeCap(), timeLeft + realSecs);
   updateTimerDisplay();
 }
 
@@ -892,9 +891,9 @@ function countBlacksOnGrid() {
 }
 
 function getTimerSpeed() {
-  // 1x normal, up to 3x with many blacks on grid
   const blacks = countBlacksOnGrid();
-  return 1 + blacks * 0.08; // each black adds 8% speed
+  const speed = 1 + blacks * 0.08;
+  return gameMode === 'extreme' ? speed : Math.min(speed, 2);
 }
 
 function timerTick(timestamp) {
@@ -928,9 +927,9 @@ function startTimer() {
 
 function updateTimerDisplay() {
   const bar = document.getElementById('timer-bar');
-  const pct = Math.max(0, Math.min(1, timeLeft / TIME_START));
-  bar.style.width = (Math.min(timeLeft, TIME_START) / TIME_START * 100) + '%';
-  if (timeLeft > TIME_START) {
+  const pct = Math.max(0, Math.min(1, timeLeft / getTimeStart()));
+  bar.style.width = (Math.min(timeLeft, getTimeStart()) / getTimeStart() * 100) + '%';
+  if (timeLeft > getTimeStart()) {
     bar.style.background = 'linear-gradient(90deg, #43aa8b, #f9c74f, #ffd700)';
     bar.style.boxShadow = '0 0 10px rgba(255, 215, 0, 0.7)';
     bar.className = '';
@@ -1005,7 +1004,7 @@ function restartGame() {
   gameOver = false;
   animating = false;
   score = 0;
-  timeLeft = TIME_START;
+  timeLeft = getTimeStart();
   selected = [];
   particles = [];
   document.getElementById('score').textContent = '0';
@@ -1481,36 +1480,5 @@ window.addEventListener('resize', () => {
   render();
 });
 </script>
-
-<!-- ================= BROWN PEARL: PWA install + service worker =================
-     Blocco indipendente dalla logica di gioco sopra: registra il SW scoped
-     a questa cartella (rende COLORUSH installabile come app a sé) e gestisce
-     il prompt nativo d'installazione. -->
-<script>
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("sw.js").catch(() => {});
-    });
-  }
-
-  let bpDeferredPrompt = null;
-  const bpInstallBtn = document.getElementById("install-btn");
-  window.addEventListener("beforeinstallprompt", (e) => {
-    e.preventDefault();
-    bpDeferredPrompt = e;
-    bpInstallBtn.classList.add("show");
-  });
-  bpInstallBtn.addEventListener("click", async () => {
-    if (!bpDeferredPrompt) return;
-    bpDeferredPrompt.prompt();
-    await bpDeferredPrompt.userChoice;
-    bpDeferredPrompt = null;
-    bpInstallBtn.classList.remove("show");
-  });
-  window.addEventListener("appinstalled", () => {
-    bpInstallBtn.classList.remove("show");
-  });
-</script>
-<!-- ================= FINE PWA ================= -->
 </body>
 </html>
