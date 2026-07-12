@@ -890,10 +890,13 @@ function countBlacksOnGrid() {
   return n;
 }
 
+let permanentSpeed = 1;
+
 function getTimerSpeed() {
   const blacks = countBlacksOnGrid();
-  const speed = 1 + blacks * 0.08;
-  return gameMode === 'extreme' ? speed : Math.min(speed, 2);
+  const current = 1 + blacks * 0.08;
+  if (current > permanentSpeed) permanentSpeed = current;
+  return gameMode === 'extreme' ? permanentSpeed : Math.min(permanentSpeed, 2);
 }
 
 function timerTick(timestamp) {
@@ -921,7 +924,7 @@ function timerTick(timestamp) {
 
 function startTimer() {
   if (timerInterval) cancelAnimationFrame(timerInterval);
-  lastTimestamp = null;
+  permanentSpeed = 1;
   timerInterval = requestAnimationFrame(timerTick);
 }
 
@@ -1210,7 +1213,7 @@ function removeBlackAtBottom() {
     playBlackExplosion();
     spawnParticles(toExplode);
     for (const s of toExplode) grid[s.row][s.col] = null;
-    addTime(removed * 1);
+    if (gameMode !== 'extreme') addTime(removed * 1);
   }
   return removed > 0;
 }
