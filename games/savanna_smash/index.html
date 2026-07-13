@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -137,19 +137,19 @@
 
   <div class="screen" id="startScreen">
     <h1>SAVANNAH<br>SMASH</h1>
-    <div class="sub">un rinoceronte molto nervoso</div>
+    <div class="sub">one very nervous rhino</div>
     <p class="rules">
-      Inclina il telefono a <b>sinistra/destra</b> per muovere il rinoceronte.<br><br>
-      I <b>sassi chiari</b> si rompono se colpiti mentre premi <b>SMASH</b> (che ti dà anche una scarica di velocità).<br><br>
-      I <b>macigni scuri</b> vanno sempre evitati: non si rompono mai.
+      Tilt your phone <b>left/right</b> to move the rhino.<br><br>
+      <b>Light rocks</b> break if you hit them while pressing <b>SMASH</b> (which also gives you a burst of speed).<br><br>
+      <b>Dark boulders</b> must always be avoided: they never break.
     </p>
-    <button class="primary" id="startBtn">Gioca</button>
+    <button class="primary" id="startBtn">Play</button>
   </div>
 
   <div class="screen hidden" id="overScreen">
-    <h1 style="font-size:clamp(30px,9vw,46px)">SCHIANTATO</h1>
+    <h1 style="font-size:clamp(30px,9vw,46px)">SMASHED</h1>
     <p class="rules" id="finalScore" style="font-size:18px;"></p>
-    <button class="primary" id="retryBtn">Riprova</button>
+    <button class="primary" id="retryBtn">Try again</button>
   </div>
 </div>
 
@@ -185,7 +185,7 @@
   // ---------- state ----------
   let state = 'idle'; // idle | playing | over
   let best = Math.floor(Number(localStorage.getItem('savannaBest')||0));
-  bestEl.textContent = 'Record: '+best;
+  bestEl.textContent = 'Best: '+best;
 
   const ENERGY_GAIN = 10, ENERGY_DRAIN = 0.55;
 
@@ -493,7 +493,7 @@
     resize();
     score = Math.floor(score);
     if(score>best){ best=score; localStorage.setItem('savannaBest', String(best)); }
-    finalScoreEl.innerHTML = 'Punteggio: <b>'+score+'</b><br>Record: '+best;
+    finalScoreEl.innerHTML = 'Score: <b>'+score+'</b><br>Best: '+best;
     overScreen.classList.remove('hidden');
   }
 
@@ -571,17 +571,17 @@
     const BOOST_MAX = 55, RECHARGE_RATE = 100/70;
     if(superMode){
       energy -= ENERGY_DRAIN * diff;
-      if(t%2===0) dust.push({x:player.x-30, y:player.y+12, size:6+Math.random()*4, life:26, color:'#ff9a3d'});
+      if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:6+Math.random()*4, life:26, color:'#ff9a3d'});
       if(energy<=0){ energy=0; superMode=false; boostActive=false; }
     } else if(boostActive){
       boostTimer--;
-      if(t%2===0) dust.push({x:player.x-30, y:player.y+12, size:6+Math.random()*4, life:26, color:'#fff4da'});
+      if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:6+Math.random()*4, life:26, color:'#fff4da'});
       if(boostTimer<=0){ boostActive=false; }
     } else if(charge<100){
       charge = Math.min(charge + RECHARGE_RATE*diff, 100);
     }
 
-    for(let i=dust.length-1;i>=0;i--){ const d=dust[i]; d.x -= curSpeed*0.5; d.y += 0.3; d.life--; if(d.life<=0) dust.splice(i,1); }
+    for(let i=dust.length-1;i>=0;i--){ const d=dust[i]; d.y += curSpeed*0.4; d.life--; if(d.life<=0) dust.splice(i,1); }
     for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.25; p.life--; if(p.life<=0) particles.splice(i,1); }
 
     if(shake>0) shake *= 0.85;
@@ -604,7 +604,7 @@
     smashBtn.classList.toggle('notready', !ready && !boostActive);
     smashBtn.classList.toggle('boosting', boostActive && !superMode);
     smashBtn.classList.toggle('super', superMode);
-    smashBtn.textContent = superMode ? 'SMASH!' : (boostActive ? 'SMASH!' : (ready ? 'SMASH' : 'RICARICA...'));
+    smashBtn.textContent = superMode ? 'SMASH!' : (boostActive ? 'SMASH!' : (ready ? 'SMASH' : 'CHARGING...'));
   }
 
   function loop(){
@@ -636,7 +636,7 @@
   let usingTouchFallback = false;
   function enableTouchFallback(){
     usingTouchFallback = true;
-    tiltBadge.textContent = 'CONTROLLI: TOCCA E SCORRI';
+    tiltBadge.textContent = 'CONTROLS: TAP AND DRAG';
     let dragging=false;
     canvas.addEventListener('touchstart', ()=>dragging=true);
     canvas.addEventListener('touchend', ()=>dragging=false);
@@ -660,14 +660,14 @@
       DeviceOrientationEvent.requestPermission().then(resp=>{
         if(resp === 'granted'){
           window.addEventListener('deviceorientation', handleOrientation);
-          tiltBadge.textContent = 'CONTROLLI: INCLINA IL TELEFONO';
+          tiltBadge.textContent = 'CONTROLS: TILT YOUR PHONE';
         } else {
           enableTouchFallback();
         }
       }).catch(()=>enableTouchFallback());
     } else if(typeof DeviceOrientationEvent !== 'undefined'){
       window.addEventListener('deviceorientation', handleOrientation);
-      tiltBadge.textContent = 'CONTROLLI: INCLINA IL TELEFONO';
+      tiltBadge.textContent = 'CONTROLS: TILT YOUR PHONE';
       // some Android browsers never fire the event if no sensor -> fallback after check
       setTimeout(()=>{ if(t<5) enableTouchFallback(); }, 1200);
     } else {
