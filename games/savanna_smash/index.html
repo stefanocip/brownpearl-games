@@ -45,6 +45,9 @@
   }
   #chargeBar.full{ background:linear-gradient(90deg,#8fd35c,#4a9d2f); }
   #chargeBar.active{ background:linear-gradient(90deg,#ffce7a,#ff9a3d); }
+  #chargeBar.full.over{ background:linear-gradient(90deg,#ffe27a,#ffb020); animation:overpulse 0.5s infinite; }
+  #chargeBar.active.super{ background:linear-gradient(90deg,#fff2b0,#ff5a1a); }
+  @keyframes overpulse{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.4); } }
 
   #tiltBadge{
     text-align:center; margin-top:4px;
@@ -63,6 +66,7 @@
   #smashBtn:active{ filter:brightness(0.85); }
   #smashBtn.notready{ background:linear-gradient(to bottom, #7a5a44, #4a3626); color:rgba(244,232,200,0.55); }
   #smashBtn.boosting{ background:linear-gradient(to bottom, #ff9a3d, #e2762f); }
+  #smashBtn.super{ background:linear-gradient(to bottom, #ffcf5a, #ff3a10); animation:overpulse 0.3s infinite; }
 
   .screen{
     position:absolute; inset:0; display:flex; flex-direction:column;
@@ -152,22 +156,27 @@
   let best = Number(localStorage.getItem('savannaBest')||0);
   bestEl.textContent = 'Record: '+best;
 
-  let player, rocks, particles, dust, t, score, scrollSpeed, spawnTimer, boostActive, boostTimer, cooldown, shake, roadOffset;
+  const GRASS_GAIN = 18, OVERCHARGE_MAX = 130;
+
+  let player, rocks, grasses, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, boostActive, superMode, boostTimer, charge, shake, roadOffset;
   let tiltX = 0;       // -1..1 target from gyroscope/touch
   let smoothX = 0;      // smoothed player position factor
 
   function resetGame(){
     player = { x: W/2, y: H-120, w: 74, h: 58, vx:0 };
     rocks = [];
+    grasses = [];
     particles = [];
     dust = [];
     t = 0;
     score = 0;
     scrollSpeed = 3.4;
     spawnTimer = 0;
+    grassTimer = 90;
     boostActive = false;
+    superMode = false;
     boostTimer = 0;
-    cooldown = 0;
+    charge = 0;
     shake = 0;
     roadOffset = 0;
     tiltX = 0; smoothX = 0;
@@ -182,7 +191,7 @@
   // ---------- rock helpers ----------
   function spawnRock(){
     const isWeak = Math.random() < 0.62;
-    const size = isWeak ? (24+Math.random()*12) : (40+Math.random()*18);
+    const size = 24+Math.random()*12;
     const b = roadBounds();
     rocks.push({
       x: b.left + Math.random()*(b.right-b.left),
@@ -191,6 +200,17 @@
       weak: isWeak,
       rot: Math.random()*6,
       spin: (Math.random()-0.5)*0.006,
+    });
+  }
+
+  function spawnGrass(){
+    const size = 15+Math.random()*5;
+    const b = roadBounds();
+    grasses.push({
+      x: b.left + Math.random()*(b.right-b.left),
+      y: -size,
+      r: size,
+      sway: Math.random()*6.28,
     });
   }
 
@@ -257,12 +277,6 @@
       const py = ((i*97 + offset) % (H+60)) - 30;
       ctx.beginPath(); ctx.arc(px,py, 2.4, 0, Math.PI*2); ctx.fill();
     }
-
-    // sun glow, top-down ambient light
-    ctx.beginPath();
-    ctx.fillStyle = 'rgba(255,246,214,0.18)';
-    ctx.arc(W*0.5, H*0.1, W*0.5, 0, Math.PI*2);
-    ctx.fill();
   }
 
   function roundRectPath(x,y,w,h,r){
@@ -278,7 +292,7 @@
   function drawDust(){
     for(const d of dust){
       ctx.globalAlpha = d.life/26 * 0.5;
-      ctx.fillStyle = '#fff4da';
+      ctx.fillStyle = d.color || '#fff4da';
       ctx.beginPath();
       ctx.arc(d.x, d.y, d.size, 0, Math.PI*2);
       ctx.fill();
@@ -298,7 +312,7 @@
     const bank = Math.max(-10, Math.min(10, -player.vx*3));
     ctx.rotate(bank*Math.PI/180);
 
-    const body = boostActive ? '#7a5a3a' : '#8a6a48';
+    const body = superMode ? '#5c3018' : (boostActive ? '#7a5a3a' : '#8a6a48');
 
     // legs (top-down, peeking out either side, alternating for a running feel)
     ctx.fillStyle = '#5c4128';
@@ -338,7 +352,21 @@
     ctx.beginPath(); ctx.arc(-7,-30,1.8,0,Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.arc(7,-30,1.8,0,Math.PI*2); ctx.fill();
 
-    if(boostActive){
+    if(superMode){
+      for(let i=0;i<6;i++){
+        const fx = (Math.sin(t*0.9+i*1.7))*16;
+        const fy = 6 + Math.sin(t*0.6+i)*4 + i*7;
+        const flick = 0.7 + Math.sin(t*0.7+i*2)*0.3;
+        const grad = ctx.createRadialGradient(fx,fy,0, fx,fy, 14*flick);
+        grad.addColorStop(0,'rgba(255,230,140,0.95)');
+        grad.addColorStop(0.5,'rgba(255,140,40,0.8)');
+        grad.addColorStop(1,'rgba(200,40,10,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(fx, fy+20, 10*flick, 16*flick, 0, 0, Math.PI*2);
+        ctx.fill();
+      }
+    } else if(boostActive){
       ctx.globalAlpha = 0.5;
       ctx.strokeStyle = '#ffb15c';
       ctx.lineWidth = 4;
@@ -388,6 +416,25 @@
     ctx.restore();
   }
 
+  function drawGrass(g){
+    ctx.save();
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(40,26,12,0.18)';
+    ctx.ellipse(g.x, g.y+g.r*0.3, g.r*0.9, g.r*0.4, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.translate(g.x, g.y);
+    const sw = Math.sin(t*0.08 + g.sway)*0.15;
+    ctx.strokeStyle = '#3f5a1e'; ctx.lineWidth = 2.6; ctx.lineCap='round';
+    for(let i=-2;i<=2;i++){
+      ctx.beginPath();
+      ctx.moveTo(i*4, g.r*0.4);
+      ctx.quadraticCurveTo(i*4 + sw*10, -g.r*0.2, i*4 + sw*18, -g.r*0.95);
+      ctx.strokeStyle = i%2===0 ? '#6b8f34' : '#4a6c24';
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawParticles(){
     for(const p of particles){
       ctx.globalAlpha = Math.max(0,p.life/38);
@@ -429,13 +476,18 @@
 
     // difficulty ramps with score
     const diff = 1 + score/600;
-    const curSpeed = scrollSpeed * diff * (boostActive?2.0:1);
+    const curSpeed = scrollSpeed * diff * (superMode ? 2.6 : (boostActive?2.0:1));
     roadOffset += curSpeed;
 
     spawnTimer -= diff;
     if(spawnTimer<=0){
       spawnRock();
       spawnTimer = Math.max(18, 46 - diff*4) - (boostActive?8:0);
+    }
+    grassTimer -= diff;
+    if(grassTimer<=0){
+      spawnGrass();
+      grassTimer = 130 + Math.random()*90;
     }
 
     for(let i=rocks.length-1;i>=0;i--){
@@ -446,7 +498,12 @@
 
       const hit = circleRectHit(rk.x, rk.y, rk.r*0.75, player.x, player.y, player.w, player.h);
       if(hit){
-        if(rk.weak && boostActive){
+        if(superMode){
+          burst(rk.x, rk.y, rk.weak ? '#cdb27f' : '#8a8378', 16);
+          rocks.splice(i,1);
+          score += rk.weak ? 8 : 16;
+          shake = 9;
+        } else if(rk.weak && boostActive){
           burst(rk.x, rk.y, '#cdb27f', 14);
           rocks.splice(i,1);
           score += 8;
@@ -460,12 +517,32 @@
       }
     }
 
-    const BOOST_MAX = 55, COOLDOWN_MAX = 70;
+    for(let i=grasses.length-1;i>=0;i--){
+      const g = grasses[i];
+      g.y += curSpeed;
+      if(g.y - g.r > H+20){ grasses.splice(i,1); continue; }
+      const hit = circleRectHit(g.x, g.y, g.r*0.8, player.x, player.y, player.w, player.h);
+      if(hit){
+        burst(g.x, g.y, '#6b8f34', 10);
+        grasses.splice(i,1);
+        charge = Math.min(charge + GRASS_GAIN, OVERCHARGE_MAX);
+        if(charge>=OVERCHARGE_MAX && !boostActive){
+          boostActive = true; superMode = true; boostTimer = SUPER_BOOST_MAX;
+          charge = 0; shake = 14;
+          burst(player.x, player.y, '#ff9a3d', 26);
+        }
+      }
+    }
+
+    const BOOST_MAX = 55, SUPER_BOOST_MAX = 150, RECHARGE_RATE = 100/70;
     if(boostActive){
       boostTimer--;
-      if(t%2===0) dust.push({x:player.x-30, y:player.y+12, size:6+Math.random()*4, life:26});
-      if(boostTimer<=0){ boostActive=false; cooldown=COOLDOWN_MAX; }
-    } else if(cooldown>0){ cooldown--; }
+      const trailColor = superMode ? '#ff9a3d' : '#fff4da';
+      if(t%2===0) dust.push({x:player.x-30, y:player.y+12, size:6+Math.random()*4, life:26, color:trailColor});
+      if(boostTimer<=0){ boostActive=false; superMode=false; }
+    } else if(charge<100){
+      charge = Math.min(charge + RECHARGE_RATE*diff, 100);
+    }
 
     for(let i=dust.length-1;i>=0;i--){ const d=dust[i]; d.x -= curSpeed*0.5; d.y += 0.3; d.life--; if(d.life<=0) dust.splice(i,1); }
     for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.25; p.life--; if(p.life<=0) particles.splice(i,1); }
@@ -476,13 +553,15 @@
     scoreEl.firstChild.textContent = Math.floor(score);
 
     let pct, ready = false;
-    if(boostActive){ pct = boostTimer/BOOST_MAX; chargeBar.className='active'; }
-    else if(cooldown>0){ pct = 1 - cooldown/COOLDOWN_MAX; chargeBar.className=''; }
-    else { pct = 1; ready = true; chargeBar.className='full'; }
+    const curBoostMax = superMode ? SUPER_BOOST_MAX : BOOST_MAX;
+    if(boostActive){ pct = boostTimer/curBoostMax; chargeBar.className = superMode ? 'active super' : 'active'; }
+    else if(charge<100){ pct = charge/100; chargeBar.className=''; }
+    else { pct = 1; ready = true; chargeBar.className = charge>100 ? 'full over' : 'full'; }
     chargeBar.style.width = Math.max(0,Math.min(1,pct))*100 + '%';
-    smashBtn.classList.toggle('notready', !ready);
-    smashBtn.classList.toggle('boosting', boostActive);
-    smashBtn.textContent = boostActive ? 'SMASH!' : (ready ? 'SMASH' : 'RICARICA...');
+    smashBtn.classList.toggle('notready', !ready && !boostActive);
+    smashBtn.classList.toggle('boosting', boostActive && !superMode);
+    smashBtn.classList.toggle('super', superMode);
+    smashBtn.textContent = superMode ? 'FIRE!!!' : (boostActive ? 'SMASH!' : (ready ? 'SMASH' : 'RICARICA...'));
   }
 
   function loop(){
@@ -495,6 +574,7 @@
     }
     drawBackground(roadOffset||0);
     drawDust();
+    for(const g of (grasses||[])) drawGrass(g);
     for(const rk of rocks) drawRock(rk);
     if(state!=='idle') drawRhino();
     drawParticles();
@@ -567,9 +647,11 @@
 
   function pressSmash(){
     if(state!=='playing') return;
-    if(cooldown>0 || boostActive) return;
+    if(boostActive || charge<100) return;
     boostActive = true;
+    superMode = false;
     boostTimer = 55;
+    charge = 0;
     shake = 6;
   }
 
