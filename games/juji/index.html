@@ -168,6 +168,24 @@
     display:flex;
     align-items:center;
     justify-content:center;
+    cursor: grab;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    transition: opacity 0.15s ease;
+  }
+
+  .piece-preview-frame.hidden-while-dragging{ opacity: 0.25; }
+
+  .floating-piece{
+    position: fixed;
+    top: 0; left: 0;
+    display: grid;
+    gap: 2px;
+    pointer-events: none;
+    z-index: 100;
+    filter: drop-shadow(0 8px 14px rgba(0,0,0,0.45));
   }
 
   .piece-preview{
@@ -260,7 +278,7 @@
       </div>
 
       <div class="piece-panel">
-        <div class="piece-preview-frame">
+        <div class="piece-preview-frame" id="piecePreviewFrame">
           <div class="piece-preview" id="piecePreview"></div>
         </div>
         <button class="btn-primary" id="rotateBtn">⟳ Rotate</button>
@@ -524,17 +542,21 @@
     });
   }
 
-  function renderPiecePreview(){
+  function normalizedShape(){
     const shape = SHAPES[pieceType][rotation];
     const rows = shape.map(([dr]) => dr);
     const cols = shape.map(([,dc]) => dc);
     const minR = Math.min(...rows), maxR = Math.max(...rows);
     const minC = Math.min(...cols), maxC = Math.max(...cols);
     const h = maxR - minR + 1, w = maxC - minC + 1;
-
     const grid = Array.from({length: h}, () => new Array(w).fill(null));
     shape.forEach(([dr,dc], i) => { grid[dr-minR][dc-minC] = pieceColors[i]; });
+    // where the pivot cell (shape offset [0,0]) sits inside the normalized grid
+    return { grid, w, h, pivotRow: -minR, pivotCol: -minC };
+  }
 
+  function renderPiecePreview(){
+    const { grid, w, h } = normalizedShape();
     const previewEl = document.getElementById('piecePreview');
     previewEl.style.gridTemplateColumns = 'repeat(' + w + ', 20px)';
     previewEl.style.gridTemplateRows = 'repeat(' + h + ', 20px)';
@@ -555,7 +577,12 @@
     });
   }
 
-  // ---------- pointer interaction (mouse hover + click, or touch drag, unified) ----------
+  // ---------- pointer interaction: grab the piece from its tray and drag it onto the grid ----------
+
+  const LIFT_Y = 46; // px the piece is lifted above the actual touch/cursor point, so it isn't hidden under the finger
+
+  let dragging = false;
+  let floatingEl = null;
 
   function cellFromPoint(clientX, clientY){
     const el = document.elementFromPoint(clientX, clientY);
@@ -565,30 +592,92 @@
     return { r: +cellEl.dataset.r, c: +cellEl.dataset.c };
   }
 
+  function aimPoint(clientX, clientY){
+    return { x: clientX, y: clientY - LIFT_Y };
+  }
+
+  function buildFloatingPiece(){
+    const { grid, w, h } = normalizedShape();
+    const el = document.createElement('div');
+    el.className = 'floating-piece';
+    el.style.gridTemplateColumns = 'repeat(' + w + ', 20px)';
+    el.style.gridTemplateRows = 'repeat(' + h + ', 20px)';
+    for(let r=0;r<h;r++){
+      for(let c=0;c<w;c++){
+        const cell = document.createElement('div');
+        cell.className = 'preview-cell' + (grid[r][c] ? ' fill-' + grid[r][c] : ' preview-empty');
+        el.appendChild(cell);
+      }
+    }
+    return el;
+  }
+
+  function positionFloating(clientX, clientY){
+    if(!floatingEl) return;
+    // center the floating piece horizontally on the pointer, lifted above it vertically
+    floatingEl.style.transform = 'translate(-50%, -100%) translate(' + clientX + 'px, ' + (clientY - LIFT_Y) + 'px)';
+  }
+
+  function startDrag(clientX, clientY){
+    dragging = true;
+    floatingEl = buildFloatingPiece();
+    document.body.appendChild(floatingEl);
+    positionFloating(clientX, clientY);
+    document.getElementById('piecePreviewFrame').classList.add('hidden-while-dragging');
+    updateAim(clientX, clientY);
+  }
+
+  function updateAim(clientX, clientY){
+    const { x, y } = aimPoint(clientX, clientY);
+    const cell = cellFromPoint(x, y);
+    if(cell) updateGhost(cell.r, cell.c);
+    else { clearGhost(); hoverPivot = null; }
+  }
+
+  function endDrag(clientX, clientY){
+    const { x, y } = aimPoint(clientX, clientY);
+    const cell = cellFromPoint(x, y);
+    const placed = cell ? commitPlacement(cell.r, cell.c) : false;
+    clearGhost();
+    hoverPivot = null;
+
+    const frame = document.getElementById('piecePreviewFrame');
+    frame.classList.remove('hidden-while-dragging');
+
+    const el = floatingEl;
+    floatingEl = null;
+    dragging = false;
+
+    if(!el) return;
+    if(placed){
+      el.remove();
+    } else {
+      // snap back to the tray, then remove
+      const rect = frame.getBoundingClientRect();
+      el.style.transition = 'transform 0.16s ease, opacity 0.16s ease';
+      el.style.transform = 'translate(-50%, -50%) translate(' + (rect.left + rect.width/2) + 'px, ' + (rect.top + rect.height/2) + 'px)';
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 180);
+    }
+  }
+
   function initPointerHandling(){
-    const boardArea = document.getElementById('boardArea');
+    const previewFrame = document.getElementById('piecePreviewFrame');
 
-    boardArea.addEventListener('pointerdown', (e) => { e.preventDefault(); });
-
-    boardArea.addEventListener('pointermove', (e) => {
-      const cell = cellFromPoint(e.clientX, e.clientY);
-      if(cell) updateGhost(cell.r, cell.c);
-      else { clearGhost(); hoverPivot = null; }
+    previewFrame.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      startDrag(e.clientX, e.clientY);
     });
 
-    boardArea.addEventListener('pointerleave', () => {
-      clearGhost();
-      hoverPivot = null;
+    window.addEventListener('pointermove', (e) => {
+      if(!dragging) return;
+      positionFloating(e.clientX, e.clientY);
+      updateAim(e.clientX, e.clientY);
     });
 
-    // Listening on window (not just boardArea) means a release is only ever a
-    // commit when it lands on an actual cell — clicking the rotate button or
-    // releasing off the board simply cancels, it never fires a stale placement.
     window.addEventListener('pointerup', (e) => {
-      const cell = cellFromPoint(e.clientX, e.clientY);
-      if(cell) commitPlacement(cell.r, cell.c);
-      clearGhost();
-      hoverPivot = null;
+      if(!dragging) return;
+      endDrag(e.clientX, e.clientY);
     });
   }
 
