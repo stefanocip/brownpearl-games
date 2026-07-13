@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Savanna Smash</title>
+<title>Savannah Smash</title>
 <style>
   :root{
     --sand:#e8c77e;
@@ -68,17 +68,33 @@
   }
 
   #smashBtn{
-    flex:0 0 auto; width:100%; height:92px; z-index:4;
-    background:linear-gradient(to bottom, var(--clay), #7a2a10);
-    border:none; border-top:3px solid rgba(244,232,200,0.35);
-    color:var(--bone); font-size:26px; letter-spacing:4px;
-    box-shadow:0 -6px 18px rgba(0,0,0,0.35) inset, 0 -2px 0 rgba(0,0,0,0.2);
+    flex:0 0 auto; width:100%; height:96px; z-index:4;
+    background:linear-gradient(to bottom, #ff8a4a 0%, var(--clay) 45%, #7a2a10 100%);
+    border:none; border-top:3px solid rgba(255,220,180,0.55);
+    color:var(--bone); font-size:34px; font-weight:900; letter-spacing:5px;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.5), 0 4px 6px rgba(0,0,0,0.35);
+    -webkit-text-stroke: 1px rgba(0,0,0,0.15);
+    box-shadow:
+      inset 0 4px 0 rgba(255,255,255,0.4),
+      inset 0 -14px 20px rgba(0,0,0,0.4),
+      0 7px 0 #4a1808,
+      0 12px 20px rgba(0,0,0,0.5);
+    transform: translateY(0);
+    transition: transform 0.08s, box-shadow 0.08s, filter 0.1s;
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
-  #smashBtn:active{ filter:brightness(0.85); }
-  #smashBtn.notready{ background:linear-gradient(to bottom, #7a5a44, #4a3626); color:rgba(244,232,200,0.55); }
-  #smashBtn.boosting{ background:linear-gradient(to bottom, #ff9a3d, #e2762f); }
-  #smashBtn.super{ background:linear-gradient(to bottom, #ffcf5a, #ff3a10); animation:overpulse 0.3s infinite; }
+  #smashBtn:active{
+    filter:brightness(0.9);
+    transform: translateY(6px);
+    box-shadow:
+      inset 0 4px 0 rgba(255,255,255,0.25),
+      inset 0 -10px 16px rgba(0,0,0,0.4),
+      0 1px 0 #4a1808,
+      0 3px 8px rgba(0,0,0,0.4);
+  }
+  #smashBtn.notready{ background:linear-gradient(to bottom, #9a7a5f 0%, #7a5a44 45%, #4a3626 100%); color:rgba(244,232,200,0.55); text-shadow:0 2px 0 rgba(0,0,0,0.3); }
+  #smashBtn.boosting{ background:linear-gradient(to bottom, #ffb35c 0%, #ff9a3d 45%, #e2762f 100%); }
+  #smashBtn.super{ background:linear-gradient(to bottom, #ffe08a 0%, #ffcf5a 45%, #ff3a10 100%); animation:overpulse 0.3s infinite; }
 
   .screen{
     position:absolute; inset:0; display:flex; flex-direction:column;
@@ -120,7 +136,7 @@
   <button id="smashBtn" class="hidden notready">SMASH</button>
 
   <div class="screen" id="startScreen">
-    <h1>SAVANNA<br>SMASH</h1>
+    <h1>SAVANNAH<br>SMASH</h1>
     <div class="sub">un rinoceronte molto nervoso</div>
     <p class="rules">
       Inclina il telefono a <b>sinistra/destra</b> per muovere il rinoceronte.<br><br>
@@ -168,7 +184,7 @@
 
   // ---------- state ----------
   let state = 'idle'; // idle | playing | over
-  let best = Number(localStorage.getItem('savannaBest')||0);
+  let best = Math.floor(Number(localStorage.getItem('savannaBest')||0));
   bestEl.textContent = 'Record: '+best;
 
   const ENERGY_GAIN = 10, ENERGY_DRAIN = 0.55;
@@ -475,6 +491,7 @@
     chargeWrap.classList.add('hidden');
     energyWrap.classList.add('hidden');
     resize();
+    score = Math.floor(score);
     if(score>best){ best=score; localStorage.setItem('savannaBest', String(best)); }
     finalScoreEl.innerHTML = 'Punteggio: <b>'+score+'</b><br>Record: '+best;
     overScreen.classList.remove('hidden');
