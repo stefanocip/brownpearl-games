@@ -1,1 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mosaico — a color &amp; logic puzzle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #221d19;
+    --panel: #2f2822;
+    --panel-2: #38302a;
+    --ink: #f3ece0;
+    --muted: #ad9f8c;
+    --accent: #cd9a3e;
+    --accent-soft: rgba(205,154,62,0.18);
+    --red: #c1443b;
+    --blue: #3e7089;
+    --yellow: #d9a441;
+    --green: #57815e;
+    --ok: #6fae6f;
+    --err: #d1615a;
+    --radius: 10px;
+    --shadow: 0 6px 18px rgba(0,0,0,0.35);
+  }
 
+  *{ box-sizing: border-box; }
+
+  html, body{ height: 100%; }
+
+  body{
+    margin:0;
+    background:
+      radial-gradient(circle at 15% 10%, rgba(205,154,62,0.08), transparent 40%),
+      radial-gradient(circle at 85% 90%, rgba(87,129,94,0.08), transparent 45%),
+      var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    display:flex;
+    justify-content:center;
+    padding: 16px;
+    overflow: auto; /* safety net only — layout is sized to avoid needing this */
+  }
+
+  .wrap{
+    width: 100%;
+    max-width: 620px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  header{ text-align:center; margin-bottom: 14px; flex: 0 0 auto; }
+
+  .eyebrow{
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  h1{
+    font-family: 'Fraunces', serif;
+    font-weight: 700;
+    font-size: 30px;
+    margin: 0 0 5px;
+    letter-spacing: -0.01em;
+  }
+
+  .sub{
+    color: var(--muted);
+    font-size: 13px;
+    max-width: 420px;
+    margin: 0 auto;
+    line-height: 1.4;
+  }
+
+  .panel{
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 18px;
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+
+  /* ---------- setup screen ---------- */
+
+  .setup-group{ margin-bottom: 22px; }
+  .setup-group:last-of-type{ margin-bottom: 0; }
+
+  .setup-label{
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+  }
+
+  .option-group{
+    display:flex;
+    gap: 6px;
+    background: var(--panel-2);
+    padding: 4px;
+    border-radius: 999px;
+  }
+
+  .option-group button{
+    flex: 1;
+    border:none;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 14px;
+    border-radius: 999px;
+    cursor:pointer;
+    transition: all 0.15s ease;
+  }
+
+  .option-group button.active{
+    background: var(--accent);
+    color: #251d10;
+  }
+
+  .option-group button:not(.active):hover{ color: var(--ink); }
+
+  .level-hint{
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 10px;
+    min-height: 16px;
+  }
+
+  .btn-primary{
+    border:none;
+    width:100%;
+    background: var(--accent);
+    color: #251d10;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 14.5px;
+    padding: 13px 26px;
+    border-radius: 10px;
+    cursor:pointer;
+    transition: filter 0.15s ease;
+    margin-top: 24px;
+  }
+
+  .btn-primary:hover{ filter: brightness(1.08); }
+  .btn-primary:disabled{ opacity: 0.6; cursor: wait; }
+
+  /* ---------- game screen ---------- */
+
+  #gameScreen{
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .controls{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    flex: 0 0 auto;
+  }
+
+  .btn-ghost, .btn-new{
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-ghost:hover, .btn-new:hover{ background: var(--accent-soft); }
+
+  .btn-group{ display:flex; gap: 8px; flex-wrap: wrap; }
+
+  .board-area{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 4px;
+  }
+
+  .board{ display:grid; gap: 4px; flex: 0 0 auto; }
+
+  .clue-col, .clue-row{
+    display:grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 2px;
+    padding: 3px;
+  }
+
+  .badge{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size: 12px;
+    font-weight: 700;
+    border-radius: 5px;
+    color: #fff;
+    opacity: 0.55;
+  }
+
+  .badge.zero{ opacity: 0.18; }
+
+  .badge.red{ background: var(--red); }
+  .badge.blue{ background: var(--blue); }
+  .badge.yellow{ background: var(--yellow); color:#3a2a05;}
+  .badge.green{ background: var(--green); }
+
+  .cell{
+    border-radius: var(--radius);
+    background: var(--panel-2);
+    border: 1px solid rgba(255,255,255,0.05);
+    cursor: pointer;
+    transition: transform 0.08s ease, box-shadow 0.15s ease;
+    position: relative;
+  }
+
+  .cell:hover{ transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+
+  .cell.tile-red{ background: var(--red); }
+  .cell.tile-blue{ background: var(--blue); }
+  .cell.tile-yellow{ background: var(--yellow); }
+  .cell.tile-green{ background: var(--green); }
+
+  .cell.locked{
+    cursor: default;
+    box-shadow: inset 0 0 0 2px rgba(0,0,0,0.35), inset 0 0 12px rgba(0,0,0,0.25);
+  }
+
+  .cell.locked:hover{
+    transform: none;
+    box-shadow: inset 0 0 0 2px rgba(0,0,0,0.35), inset 0 0 12px rgba(0,0,0,0.25);
+  }
+
+  .cell.locked::after{
+    content: "";
+    position:absolute;
+    top:6px; left:6px;
+    width:6px; height:6px;
+    border-radius:50%;
+    background: rgba(255,255,255,0.55);
+  }
+
+  .cell.mismatch{
+    animation: shake 0.35s ease;
+    box-shadow: 0 0 0 2px var(--err);
+  }
+
+  @keyframes shake{
+    0%,100%{ transform: translateX(0); }
+    25%{ transform: translateX(-3px); }
+    75%{ transform: translateX(3px); }
+  }
+
+  .legend{
+    display:flex;
+    justify-content:center;
+    gap: 18px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+    flex: 0 0 auto;
+  }
+
+  .legend-item{ display:flex; align-items:center; gap: 7px; font-size: 12.5px; color: var(--muted); }
+
+  .swatch{ width: 14px; height:14px; border-radius: 4px; }
+
+  .swatch.red{ background: var(--red); }
+  .swatch.blue{ background: var(--blue); }
+  .swatch.yellow{ background: var(--yellow); }
+  .swatch.green{ background: var(--green); }
+
+  .footer-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-top: 12px;
+    gap: 12px;
+    flex-wrap: wrap;
+    flex: 0 0 auto;
+  }
+
+  .btn-verifica{
+    border:none;
+    background: var(--accent);
+    color: #251d10;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 12px 26px;
+    border-radius: 10px;
+    cursor:pointer;
+    transition: filter 0.15s ease;
+  }
+
+  .btn-verifica:hover{ filter: brightness(1.08); }
+
+  #risultato{ font-weight: 600; font-size: 14px; min-height: 20px; }
+  #risultato.ok{ color: var(--ok); }
+  #risultato.err{ color: var(--err); }
+
+  .hint-note{ text-align:center; font-size: 11.5px; color: var(--muted); margin-top: 10px; flex: 0 0 auto; }
+
+  .hidden{ display:none !important; }
+
+  @media (max-width: 480px){
+    h1{ font-size: 26px; }
+  }
+
+  /* Progressively trim the surrounding chrome on short viewports so the
+     board keeps as much vertical room as possible before shrinking. */
+  @media (max-height: 700px){
+    header{ margin-bottom: 10px; }
+    .sub{ display:none; }
+    .panel{ padding: 14px; }
+  }
+
+  @media (max-height: 560px){
+    .eyebrow{ display:none; }
+    h1{ font-size: 22px; margin-bottom: 0; }
+    .legend, .hint-note{ display:none; }
+    .footer-row{ margin-top: 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Logic puzzle</div>
+    <h1>Mosaico</h1>
+    <p class="sub">Color every cell so the number of tiles of each color, in every row and every column, matches the clues. Every generated puzzle has exactly one solution.</p>
+  </header>
+
+  <!-- SETUP SCREEN -->
+  <div class="panel" id="setupScreen">
+    <div class="setup-group">
+      <div class="setup-label">Grid size</div>
+      <div class="option-group" id="sizeGroup">
+        <button data-size="5" class="active">5 × 5</button>
+        <button data-size="6">6 × 6</button>
+        <button data-size="7">7 × 7</button>
+      </div>
+    </div>
+
+    <div class="setup-group">
+      <div class="setup-label">Difficulty</div>
+      <div class="option-group" id="levelGroup">
+        <button data-level="easy">Easy</button>
+        <button data-level="medium" class="active">Medium</button>
+        <button data-level="hard">Hard</button>
+      </div>
+      <div class="level-hint" id="levelHint"></div>
+    </div>
+
+    <button class="btn-primary" id="iniziaBtn">Start</button>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div class="panel hidden" id="gameScreen">
+    <div class="controls">
+      <button class="btn-ghost" id="cambiaImpostazioni">← Change settings</button>
+      <div class="btn-group">
+        <button class="btn-new" id="pulisci">Clear</button>
+        <button class="btn-new" id="nuovoSchema">New puzzle</button>
+      </div>
+    </div>
+
+    <div class="board-area" id="boardArea">
+      <div class="board" id="board"></div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><span class="swatch red"></span>Red</div>
+      <div class="legend-item"><span class="swatch blue"></span>Blue</div>
+      <div class="legend-item"><span class="swatch yellow"></span>Yellow</div>
+      <div class="legend-item"><span class="swatch green"></span>Green</div>
+    </div>
+
+    <div class="footer-row">
+      <button class="btn-verifica" id="verifica">Check</button>
+      <div id="risultato"></div>
+    </div>
+
+    <p class="hint-note">Cells with a dot are already revealed. Click the others to cycle through colors.</p>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const COLORS = ['red','blue','yellow','green'];
+  const K = COLORS.length;
+
+  let N = 5;
+  let selectedSize = 5;
+  let selectedLevel = 'medium';
+
+  let sol = [];            // sol[r][c] = 0..3
+  let rowCounts = [];       // rowCounts[r][k]
+  let colCounts = [];       // colCounts[c][k]
+  let minimalHinted = [];   // boolean grid, locally-minimal unique-determining hint set
+  let hinted = [];          // boolean grid actually used (minimal + extra for difficulty)
+  let userGrid = [];        // 0 = empty, 1..4 = color index+1
+
+  const CELL_SIZE = { 5: 54, 6: 48, 7: 42 }; // preferred ("nice") size, never exceeded even if space allows
+  const GAP = { 5: 4, 6: 4, 7: 3 };
+  const MIN_CELL = 26; // legibility/tap-target floor; below this the board-area scrolls internally
+  const MAX_NODES = { 5: 2000000, 6: 4000000, 7: 8000000 };
+
+  function emptyGrid(size, fill){
+    const g = [];
+    for(let r=0;r<size;r++){ g.push(new Array(size).fill(fill)); }
+    return g;
+  }
+
+  function randomGrid(size){
+    const g = emptyGrid(size, 0);
+    for(let r=0;r<size;r++){
+      for(let c=0;c<size;c++){
+        g[r][c] = Math.floor(Math.random()*K);
+      }
+    }
+    return g;
+  }
+
+  function computeCounts(grid, size){
+    const rc = [], cc = [];
+    for(let r=0;r<size;r++) rc.push(new Array(K).fill(0));
+    for(let c=0;c<size;c++) cc.push(new Array(K).fill(0));
+    for(let r=0;r<size;r++){
+      for(let c=0;c<size;c++){
+        rc[r][grid[r][c]]++;
+        cc[c][grid[r][c]]++;
+      }
+    }
+    return {rowCounts: rc, colCounts: cc};
+  }
+
+  // Counts solutions consistent with rowCounts/colCounts and the given hint grid,
+  // stopping early once `cap` solutions have been found.
+  function countSolutions(size, rc, cc, hintGrid, solution, cap, maxNodes){
+    const remRow = rc.map(a => a.slice());
+    const remCol = cc.map(a => a.slice());
+    let found = 0;
+    let nodes = 0;
+
+    function backtrack(index){
+      if(found >= cap) return;
+      nodes++;
+      if(nodes > maxNodes) { found = cap; return; } // safety valve
+      if(index === size*size){
+        found++;
+        return;
+      }
+      const r = Math.floor(index / size);
+      const c = index % size;
+
+      if(hintGrid[r][c]){
+        const k = solution[r][c];
+        if(remRow[r][k] > 0 && remCol[c][k] > 0){
+          remRow[r][k]--; remCol[c][k]--;
+          backtrack(index+1);
+          remRow[r][k]++; remCol[c][k]++;
+        }
+        return;
+      }
+
+      for(let k=0;k<K;k++){
+        if(remRow[r][k] > 0 && remCol[c][k] > 0){
+          remRow[r][k]--; remCol[c][k]--;
+          backtrack(index+1);
+          remRow[r][k]++; remCol[c][k]++;
+          if(found >= cap) return;
+        }
+      }
+    }
+
+    backtrack(0);
+    return found;
+  }
+
+  function shuffledCellOrder(size){
+    const cells = [];
+    for(let r=0;r<size;r++) for(let c=0;c<size;c++) cells.push([r,c]);
+    for(let i=cells.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [cells[i],cells[j]] = [cells[j],cells[i]];
+    }
+    return cells;
+  }
+
+  function buildUniquePuzzle(size){
+    const maxNodes = MAX_NODES[size] || 2000000;
+    let attempt = 0;
+    while(true){
+      attempt++;
+      const grid = randomGrid(size);
+      const {rowCounts: rc, colCounts: cc} = computeCounts(grid, size);
+
+      const hg = emptyGrid(size, false);
+      const order = shuffledCellOrder(size);
+      let idx = 0;
+
+      while(countSolutions(size, rc, cc, hg, grid, 2, maxNodes) !== 1){
+        if(idx >= order.length) break; // a fully-hinted grid is always unique
+        const [r,c] = order[idx++];
+        hg[r][c] = true;
+      }
+
+      if(countSolutions(size, rc, cc, hg, grid, 2, maxNodes) !== 1){
+        if(attempt <= 8) continue;
+        // extremely unlikely fallback: keep the fully-hinted grid as-is
+      }
+
+      // Minimize: try removing each hint; keep it removed if uniqueness survives.
+      const hintCells = [];
+      for(let r=0;r<size;r++) for(let c=0;c<size;c++) if(hg[r][c]) hintCells.push([r,c]);
+      for(let i=hintCells.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [hintCells[i],hintCells[j]] = [hintCells[j],hintCells[i]];
+      }
+      for(const [r,c] of hintCells){
+        hg[r][c] = false;
+        if(countSolutions(size, rc, cc, hg, grid, 2, maxNodes) !== 1){
+          hg[r][c] = true;
+        }
+      }
+
+      return {sol: grid, rowCounts: rc, colCounts: cc, minimalHinted: hg};
+    }
+  }
+
+  function extraFraction(level){
+    if(level === 'easy') return 0.35;
+    if(level === 'medium') return 0.15;
+    return 0; // hard: only the bare minimum
+  }
+
+  function applyDifficulty(level){
+    hinted = minimalHinted.map(row => row.slice());
+    const free = [];
+    for(let r=0;r<N;r++) for(let c=0;c<N;c++) if(!hinted[r][c]) free.push([r,c]);
+    for(let i=free.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [free[i],free[j]] = [free[j],free[i]];
+    }
+    const extra = Math.round(free.length * extraFraction(level));
+    for(let i=0;i<extra;i++){
+      const [r,c] = free[i];
+      hinted[r][c] = true;
+    }
+
+    userGrid = emptyGrid(N, 0);
+    for(let r=0;r<N;r++){
+      for(let c=0;c<N;c++){
+        if(hinted[r][c]) userGrid[r][c] = sol[r][c] + 1;
+      }
+    }
+  }
+
+  function newPuzzle(){
+    const p = buildUniquePuzzle(N);
+    sol = p.sol;
+    rowCounts = p.rowCounts;
+    colCounts = p.colCounts;
+    minimalHinted = p.minimalHinted;
+    applyDifficulty(selectedLevel);
+    render();
+    clearResult();
+  }
+
+  function badgeHTML(counts){
+    let html = '';
+    for(let k=0;k<K;k++){
+      const zero = counts[k] === 0 ? ' zero' : '';
+      html += `<div class="badge ${COLORS[k]}${zero}">${counts[k]}</div>`;
+    }
+    return html;
+  }
+
+  function fitBoard(){
+    const area = document.getElementById('boardArea');
+    const board = document.getElementById('board');
+    if(!area || area.clientWidth === 0 || area.clientHeight === 0) return; // not visible/measurable yet
+
+    const cellsPerSide = N + 1; // +1 for the clue row/column
+    const gap = GAP[N] || 4;
+    const padding = 8; // .board-area's own padding (4px each side)
+
+    const availW = area.clientWidth - padding;
+    const availH = area.clientHeight - padding;
+
+    const fromW = Math.floor((availW - gap * (cellsPerSide - 1)) / cellsPerSide);
+    const fromH = Math.floor((availH - gap * (cellsPerSide - 1)) / cellsPerSide);
+    const cap = CELL_SIZE[N] || 48;
+
+    let cellPx = Math.min(fromW, fromH, cap);
+    cellPx = Math.max(cellPx, MIN_CELL);
+
+    board.style.gridTemplateColumns = cellPx + 'px repeat(' + N + ', ' + cellPx + 'px)';
+    board.style.gridTemplateRows = cellPx + 'px repeat(' + N + ', ' + cellPx + 'px)';
+  }
+
+  function render(){
+    const board = document.getElementById('board');
+    board.innerHTML = '';
+
+    board.appendChild(makeDiv('corner'));
+
+    for(let c=0;c<N;c++){
+      const div = makeDiv('clue-col');
+      div.innerHTML = badgeHTML(colCounts[c]);
+      board.appendChild(div);
+    }
+
+    for(let r=0;r<N;r++){
+      const rowClue = makeDiv('clue-row');
+      rowClue.innerHTML = badgeHTML(rowCounts[r]);
+      board.appendChild(rowClue);
+
+      for(let c=0;c<N;c++){
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        updateCellVisual(cell, r, c);
+        if(!hinted[r][c]){
+          cell.addEventListener('click', onCellClick);
+        }
+        board.appendChild(cell);
+      }
+    }
+
+    fitBoard();
+  }
+
+  function makeDiv(cls){
+    const d = document.createElement('div');
+    d.className = cls;
+    return d;
+  }
+
+  function updateCellVisual(cell, r, c){
+    COLORS.forEach(name => cell.classList.remove('tile-'+name));
+    cell.classList.remove('locked');
+    const val = userGrid[r][c];
+    if(val > 0){
+      cell.classList.add('tile-' + COLORS[val-1]);
+    }
+    if(hinted[r][c]){
+      cell.classList.add('locked');
+    }
+  }
+
+  function onCellClick(e){
+    const r = +this.dataset.r;
+    const c = +this.dataset.c;
+    userGrid[r][c] = (userGrid[r][c] + 1) % (K+1); // 0 = empty, 1..K = color
+    this.classList.remove('mismatch');
+    updateCellVisual(this, r, c);
+    clearResult();
+  }
+
+  function clearResult(){
+    const risultato = document.getElementById('risultato');
+    risultato.textContent = '';
+    risultato.className = '';
+  }
+
+  function pulisci(){
+    for(let r=0;r<N;r++){
+      for(let c=0;c<N;c++){
+        if(!hinted[r][c]) userGrid[r][c] = 0;
+      }
+    }
+    document.querySelectorAll('.cell[data-r]').forEach(cell => {
+      const r = +cell.dataset.r;
+      const c = +cell.dataset.c;
+      cell.classList.remove('mismatch');
+      updateCellVisual(cell, r, c);
+    });
+    clearResult();
+  }
+
+  function verifica(){
+    let corretto = true;
+    let completo = true;
+    const cells = document.querySelectorAll('.cell[data-r]');
+    cells.forEach(cell => {
+      const r = +cell.dataset.r;
+      const c = +cell.dataset.c;
+      cell.classList.remove('mismatch');
+      if(userGrid[r][c] === 0) completo = false;
+      if(userGrid[r][c] !== sol[r][c] + 1){
+        corretto = false;
+        if(userGrid[r][c] !== 0) cell.classList.add('mismatch');
+      }
+    });
+
+    const risultato = document.getElementById('risultato');
+    if(corretto && completo){
+      risultato.textContent = 'Correct! Puzzle complete.';
+      risultato.className = 'ok';
+    } else if(!completo){
+      risultato.textContent = 'Some cells are still empty.';
+      risultato.className = 'err';
+    } else {
+      risultato.textContent = "There are mistakes: the marked cells don't match the clues.";
+      risultato.className = 'err';
+    }
+  }
+
+  function levelHintText(level){
+    if(level === 'easy') return 'Plenty of extra clues beyond the bare minimum.';
+    if(level === 'medium') return 'A few extra clues beyond the bare minimum.';
+    return 'Only the minimum number of clues needed for a unique solution.';
+  }
+
+  function updateLevelHint(){
+    document.getElementById('levelHint').textContent = levelHintText(selectedLevel);
+  }
+
+  // ---------- setup screen wiring ----------
+
+  document.getElementById('sizeGroup').addEventListener('click', function(e){
+    const btn = e.target.closest('button[data-size]');
+    if(!btn) return;
+    document.querySelectorAll('#sizeGroup button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedSize = +btn.dataset.size;
+  });
+
+  document.getElementById('levelGroup').addEventListener('click', function(e){
+    const btn = e.target.closest('button[data-level]');
+    if(!btn) return;
+    document.querySelectorAll('#levelGroup button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedLevel = btn.dataset.level;
+    updateLevelHint();
+  });
+
+  document.getElementById('iniziaBtn').addEventListener('click', function(){
+    const btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Generating puzzle…';
+    // brief timeout so the button label repaints before the (usually fast) generation runs
+    setTimeout(function(){
+      N = selectedSize;
+      newPuzzle();
+      document.getElementById('setupScreen').classList.add('hidden');
+      document.getElementById('gameScreen').classList.remove('hidden');
+      requestAnimationFrame(fitBoard); // board-area was hidden during render(); measure now that it's visible
+      btn.disabled = false;
+      btn.textContent = 'Start';
+    }, 30);
+  });
+
+  document.getElementById('cambiaImpostazioni').addEventListener('click', function(){
+    document.getElementById('gameScreen').classList.add('hidden');
+    document.getElementById('setupScreen').classList.remove('hidden');
+  });
+
+  document.getElementById('pulisci').addEventListener('click', pulisci);
+  document.getElementById('nuovoSchema').addEventListener('click', newPuzzle);
+  document.getElementById('verifica').addEventListener('click', verifica);
+
+  let resizeRaf = null;
+  window.addEventListener('resize', function(){
+    if(resizeRaf) cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(fitBoard);
+  });
+
+  updateLevelHint();
+})();
+</script>
+</body>
+</html>
