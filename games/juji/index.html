@@ -188,6 +188,19 @@
     filter: drop-shadow(0 8px 14px rgba(0,0,0,0.45));
   }
 
+  .floating-piece::after{
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--ink);
+    transform: translate(-50%, 50%);
+  }
+
   .piece-preview{
     display:grid;
     gap: 2px;
@@ -232,6 +245,33 @@
   .swatch.blue{ background: var(--blue); }
   .swatch.yellow{ background: var(--yellow); }
   .swatch.green{ background: var(--green); }
+
+  .game-over-overlay{
+    position: fixed;
+    inset: 0;
+    background: rgba(15,12,10,0.75);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index: 200;
+  }
+
+  .game-over-overlay.hidden{ display:none; }
+
+  .game-over-box{
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 28px 32px;
+    text-align:center;
+    box-shadow: var(--shadow);
+  }
+
+  .game-over-box h2{
+    font-family:'Fraunces', serif;
+    margin: 0 0 8px;
+  }
+
+  .game-over-box .score-line{ color: var(--muted); margin-bottom: 18px; font-size: 14px; }
 
   @media (max-width: 480px){
     .layout{
@@ -295,6 +335,14 @@
 
 </div>
 
+<div class="game-over-overlay hidden" id="gameOverOverlay">
+  <div class="game-over-box">
+    <h2>Game Over</h2>
+    <div class="score-line">No room left for this piece. Final score: <span id="finalScore">0</span></div>
+    <button class="btn-primary" id="restartBtn">New game</button>
+  </div>
+</div>
+
 <script>
 (function(){
   const SIZE = 10;
@@ -350,6 +398,7 @@
 
   let colorsUnlocked = 2;
   let score = 0;
+  let gameOver = false;
 
   let board = makeEmptyBoard();
   let cellEls = [];
@@ -392,6 +441,20 @@
 
   function isValidPlacement(cells){
     return cells.every(({r,c}) => r >= 0 && r < SIZE && c >= 0 && c < SIZE && board[r][c] === null);
+  }
+
+  // True if the current piece fits somewhere on the board, in at least one of its 4 rotations.
+  function hasAnyValidPlacement(){
+    for(let rot=0; rot<4; rot++){
+      const shape = SHAPES[pieceType][rot];
+      for(let r=0;r<SIZE;r++){
+        for(let c=0;c<SIZE;c++){
+          const cells = shape.map(([dr,dc]) => ({ r: r+dr, c: c+dc }));
+          if(isValidPlacement(cells)) return true;
+        }
+      }
+    }
+    return false;
   }
 
   // ---------- clearing logic ----------
@@ -477,6 +540,13 @@
     if(score > 100) colorsUnlocked = 4;
   }
 
+  function checkGameOver(){
+    if(hasAnyValidPlacement()) return;
+    gameOver = true;
+    document.getElementById('finalScore').textContent = score;
+    document.getElementById('gameOverOverlay').classList.remove('hidden');
+  }
+
   // ---------- placement ----------
 
   function commitPlacement(pivotR, pivotC){
@@ -495,6 +565,7 @@
     createPiece();
     renderBoard();
     updateHud();
+    checkGameOver();
     return true;
   }
 
@@ -687,6 +758,7 @@
     const previewFrame = document.getElementById('piecePreviewFrame');
 
     previewFrame.addEventListener('pointerdown', (e) => {
+      if(gameOver) return;
       e.preventDefault();
       startDrag(e.clientX, e.clientY);
     });
@@ -706,7 +778,9 @@
   function resetGame(){
     colorsUnlocked = 2;
     score = 0;
+    gameOver = false;
     board = makeEmptyBoard();
+    document.getElementById('gameOverOverlay').classList.add('hidden');
     createPiece();
     renderBoard();
     updateHud();
@@ -714,6 +788,7 @@
 
   document.getElementById('rotateBtn').addEventListener('click', rotatePiece);
   document.getElementById('newGameBtn').addEventListener('click', resetGame);
+  document.getElementById('restartBtn').addEventListener('click', resetGame);
 
   initPointerHandling();
   resetGame();
