@@ -592,11 +592,11 @@
 
   // ---------- pointer interaction: grab the piece from its tray and drag it onto the grid ----------
 
-  const LIFT_Y = 55; // px the pivot cell (and its ghost) is lifted above the touch point, keeping the finger clearly below it
+  const CLEARANCE = 24; // px of guaranteed empty gap kept between the piece's bottom edge and the finger
 
   let dragging = false;
   let floatingEl = null;
-  let dragMeta = null; // { pivotRow, pivotCol, cellPx, gap } for the piece currently being dragged
+  let dragMeta = null; // { pivotRow, pivotCol, cellPx, gap, liftY } for the piece currently being dragged
 
   function cellFromPoint(clientX, clientY){
     const el = document.elementFromPoint(clientX, clientY);
@@ -607,7 +607,8 @@
   }
 
   function aimPoint(clientX, clientY){
-    return { x: clientX, y: clientY - LIFT_Y };
+    const lift = dragMeta ? dragMeta.liftY : CLEARANCE;
+    return { x: clientX, y: clientY - lift };
   }
 
   function buildFloatingPiece(){
@@ -616,7 +617,14 @@
     // so it visually lines up with the ghost preview underneath instead of looking like a separate, smaller icon
     const cellPx = cellEls[0][0].getBoundingClientRect().width;
     const gap = 2; // matches .board's grid gap
-    dragMeta = { pivotRow, pivotCol, cellPx, gap };
+    const pitch = cellPx + gap;
+
+    // how many rows of the shape sit below the pivot row — this varies by piece/rotation
+    // (e.g. a vertical I-piece with the pivot at its top extends 3 rows below it)
+    const rowsBelowPivot = (h - 1) - pivotRow;
+    const liftY = rowsBelowPivot * pitch + cellPx / 2 + CLEARANCE;
+
+    dragMeta = { pivotRow, pivotCol, cellPx, gap, liftY };
 
     const el = document.createElement('div');
     el.className = 'floating-piece';
