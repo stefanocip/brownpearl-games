@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Savannah Smash</title>
+<title>Savanna Smash</title>
 <style>
   :root{
     --sand:#e8c77e;
@@ -45,9 +45,21 @@
   }
   #chargeBar.full{ background:linear-gradient(90deg,#8fd35c,#4a9d2f); }
   #chargeBar.active{ background:linear-gradient(90deg,#ffce7a,#ff9a3d); }
-  #chargeBar.full.over{ background:linear-gradient(90deg,#ffe27a,#ffb020); animation:overpulse 0.5s infinite; }
-  #chargeBar.active.super{ background:linear-gradient(90deg,#fff2b0,#ff5a1a); }
+  #chargeBar.onfire{ background:linear-gradient(90deg,#ff5a3a,#c8121a); animation:overpulse 0.4s infinite; }
   @keyframes overpulse{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.4); } }
+
+  #energyWrap{
+    margin:5px auto 4px; width:min(320px, 82vw); height:10px;
+    background:rgba(0,0,0,0.35); border:2px solid rgba(139,179,90,0.5); border-radius:6px;
+    overflow:hidden;
+  }
+  #energyBar{
+    height:100%; width:0%; border-radius:4px;
+    background:linear-gradient(90deg,#6b8f34,#4a9d2f);
+    transition:width 0.08s linear, background 0.2s;
+  }
+  #energyBar.full{ background:linear-gradient(90deg,#a8e05c,#6bc22f); animation:overpulse 0.4s infinite; }
+  #energyBar.draining{ background:linear-gradient(90deg,#ffb347,#ff5a1a); }
 
   #tiltBadge{
     text-align:center; margin-top:4px;
@@ -99,6 +111,7 @@
   <div id="hud">
     <div id="score" class="hidden">0<div id="best"></div></div>
     <div id="chargeWrap" class="hidden"><div id="chargeBar"></div></div>
+    <div id="energyWrap" class="hidden"><div id="energyBar"></div></div>
     <div id="tiltBadge" class="hidden"></div>
   </div>
 
@@ -107,7 +120,7 @@
   <button id="smashBtn" class="hidden notready">SMASH</button>
 
   <div class="screen" id="startScreen">
-    <h1>SAVANNAH<br>SMASH</h1>
+    <h1>SAVANNA<br>SMASH</h1>
     <div class="sub">un rinoceronte molto nervoso</div>
     <p class="rules">
       Inclina il telefono a <b>sinistra/destra</b> per muovere il rinoceronte.<br><br>
@@ -139,6 +152,8 @@
   const tiltBadge = document.getElementById('tiltBadge');
   const chargeWrap = document.getElementById('chargeWrap');
   const chargeBar = document.getElementById('chargeBar');
+  const energyWrap = document.getElementById('energyWrap');
+  const energyBar = document.getElementById('energyBar');
 
   let W,H,DPR;
   function resize(){
@@ -156,9 +171,9 @@
   let best = Number(localStorage.getItem('savannaBest')||0);
   bestEl.textContent = 'Record: '+best;
 
-  const GRASS_GAIN = 18, OVERCHARGE_MAX = 130;
+  const ENERGY_GAIN = 10, ENERGY_DRAIN = 0.55;
 
-  let player, rocks, grasses, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, boostActive, superMode, boostTimer, charge, shake, roadOffset;
+  let player, rocks, grasses, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, boostActive, superMode, boostTimer, charge, energy, shake, roadOffset;
   let tiltX = 0;       // -1..1 target from gyroscope/touch
   let smoothX = 0;      // smoothed player position factor
 
@@ -177,6 +192,7 @@
     superMode = false;
     boostTimer = 0;
     charge = 0;
+    energy = 0;
     shake = 0;
     roadOffset = 0;
     tiltX = 0; smoothX = 0;
@@ -457,6 +473,7 @@
     scoreEl.classList.add('hidden');
     tiltBadge.classList.add('hidden');
     chargeWrap.classList.add('hidden');
+    energyWrap.classList.add('hidden');
     resize();
     if(score>best){ best=score; localStorage.setItem('savannaBest', String(best)); }
     finalScoreEl.innerHTML = 'Punteggio: <b>'+score+'</b><br>Record: '+best;
@@ -525,21 +542,24 @@
       if(hit){
         burst(g.x, g.y, '#6b8f34', 10);
         grasses.splice(i,1);
-        charge = Math.min(charge + GRASS_GAIN, OVERCHARGE_MAX);
-        if(charge>=OVERCHARGE_MAX && !boostActive){
-          boostActive = true; superMode = true; boostTimer = SUPER_BOOST_MAX;
-          charge = 0; shake = 14;
+        energy = Math.min(energy + ENERGY_GAIN, 100);
+        if(energy>=100 && !superMode){
+          superMode = true; boostActive = true;
+          shake = 14;
           burst(player.x, player.y, '#ff9a3d', 26);
         }
       }
     }
 
-    const BOOST_MAX = 55, SUPER_BOOST_MAX = 150, RECHARGE_RATE = 100/70;
-    if(boostActive){
+    const BOOST_MAX = 55, RECHARGE_RATE = 100/70;
+    if(superMode){
+      energy -= ENERGY_DRAIN * diff;
+      if(t%2===0) dust.push({x:player.x-30, y:player.y+12, size:6+Math.random()*4, life:26, color:'#ff9a3d'});
+      if(energy<=0){ energy=0; superMode=false; boostActive=false; }
+    } else if(boostActive){
       boostTimer--;
-      const trailColor = superMode ? '#ff9a3d' : '#fff4da';
-      if(t%2===0) dust.push({x:player.x-30, y:player.y+12, size:6+Math.random()*4, life:26, color:trailColor});
-      if(boostTimer<=0){ boostActive=false; superMode=false; }
+      if(t%2===0) dust.push({x:player.x-30, y:player.y+12, size:6+Math.random()*4, life:26, color:'#fff4da'});
+      if(boostTimer<=0){ boostActive=false; }
     } else if(charge<100){
       charge = Math.min(charge + RECHARGE_RATE*diff, 100);
     }
@@ -552,16 +572,22 @@
     score += 0.06*diff;
     scoreEl.firstChild.textContent = Math.floor(score);
 
+    // smash bar: normal recharge/ready display, forced full+red while on fire
     let pct, ready = false;
-    const curBoostMax = superMode ? SUPER_BOOST_MAX : BOOST_MAX;
-    if(boostActive){ pct = boostTimer/curBoostMax; chargeBar.className = superMode ? 'active super' : 'active'; }
+    if(superMode){ pct = 1; chargeBar.className = 'onfire'; }
+    else if(boostActive){ pct = boostTimer/BOOST_MAX; chargeBar.className='active'; }
     else if(charge<100){ pct = charge/100; chargeBar.className=''; }
-    else { pct = 1; ready = true; chargeBar.className = charge>100 ? 'full over' : 'full'; }
+    else { pct = 1; ready = true; chargeBar.className='full'; }
     chargeBar.style.width = Math.max(0,Math.min(1,pct))*100 + '%';
+
+    // energy bar: fed by grass, drains while on fire
+    energyBar.style.width = Math.max(0,Math.min(100,energy)) + '%';
+    energyBar.className = superMode ? 'draining' : (energy>=100 ? 'full' : '');
+
     smashBtn.classList.toggle('notready', !ready && !boostActive);
     smashBtn.classList.toggle('boosting', boostActive && !superMode);
     smashBtn.classList.toggle('super', superMode);
-    smashBtn.textContent = superMode ? 'FIRE!!!' : (boostActive ? 'SMASH!' : (ready ? 'SMASH' : 'RICARICA...'));
+    smashBtn.textContent = superMode ? 'SMASH!' : (boostActive ? 'SMASH!' : (ready ? 'SMASH' : 'RICARICA...'));
   }
 
   function loop(){
@@ -640,6 +666,7 @@
     smashBtn.classList.remove('hidden');
     tiltBadge.classList.remove('hidden');
     chargeWrap.classList.remove('hidden');
+    energyWrap.classList.remove('hidden');
     resize();
     resetGame();
     setupGyro();
