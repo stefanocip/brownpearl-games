@@ -188,6 +188,19 @@
     filter: drop-shadow(0 8px 14px rgba(0,0,0,0.45));
   }
 
+  .floating-piece::after{
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--ink);
+    transform: translate(-50%, 50%);
+  }
+
   .piece-preview{
     display:grid;
     gap: 2px;
@@ -579,7 +592,7 @@
 
   // ---------- pointer interaction: grab the piece from its tray and drag it onto the grid ----------
 
-  const LIFT_Y = 46; // px the piece is lifted above the actual touch/cursor point, so it isn't hidden under the finger
+  const LIFT_Y = 90; // px the piece is lifted above the actual touch/cursor point, so the finger stays clearly below it
 
   let dragging = false;
   let floatingEl = null;
