@@ -141,7 +141,8 @@
     <p class="rules">
       Tilt your phone <b>left/right</b> to move the rhino.<br><br>
       <b>Light rocks</b> break if you hit them while pressing <b>SMASH</b> (which also gives you a burst of speed).<br><br>
-      <b>Dark boulders</b> must always be avoided: they never break.
+      <b>Dark boulders</b> must always be avoided: they never break.<br><br>
+      <b>Warthogs</b> dash side to side — smash them and they go flying!
     </p>
     <button class="primary" id="startBtn">Play</button>
   </div>
@@ -189,7 +190,7 @@
 
   const ENERGY_GAIN = 17, ENERGY_DRAIN = 0.55;
 
-  let player, rocks, grasses, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, boostActive, superMode, boostTimer, charge, energy, shake, roadOffset;
+  let player, rocks, grasses, hogs, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, boostActive, superMode, boostTimer, charge, energy, shake, roadOffset;
   let tiltX = 0;       // -1..1 target from gyroscope/touch
   let smoothX = 0;      // smoothed player position factor
 
@@ -197,6 +198,7 @@
     player = { x: W/2, y: H-120, w: 74, h: 58, vx:0 };
     rocks = [];
     grasses = [];
+    hogs = [];
     particles = [];
     dust = [];
     t = 0;
@@ -204,6 +206,7 @@
     scrollSpeed = 4.3;
     spawnTimer = 0;
     grassTimer = 90;
+    hogTimer = 160;
     boostActive = false;
     superMode = false;
     boostTimer = 0;
@@ -243,6 +246,21 @@
       y: -size,
       r: size,
       sway: Math.random()*6.28,
+    });
+  }
+
+  function spawnHog(){
+    const size = 24+Math.random()*6;
+    const b = roadBounds();
+    const center = b.left + Math.random()*(b.right-b.left);
+    const amp = Math.min((b.right-b.left)*0.32, 60+Math.random()*30);
+    hogs.push({
+      state:'normal',
+      cx: center, x: center,
+      y: -size, r: size,
+      amp, phase: Math.random()*6.28,
+      freq: 0.035 + Math.random()*0.02,
+      rot:0, vx:0, vy:0, spin:0, scale:1, life:0,
     });
   }
 
@@ -467,6 +485,78 @@
     ctx.restore();
   }
 
+  function drawHog(h){
+    ctx.save();
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(40,26,12,0.22)';
+    ctx.ellipse(h.x+h.r*0.1, h.y+h.r*0.28, h.r*0.9, h.r*0.5, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.translate(h.x, h.y);
+    if(h.state==='flying'){
+      ctx.globalAlpha = Math.max(0, h.life/40);
+      ctx.rotate(h.rot);
+      ctx.scale(h.scale, h.scale);
+    } else {
+      const wob = Math.sin(t*0.3 + h.phase)*0.08;
+      ctx.rotate(wob);
+    }
+
+    // legs
+    ctx.fillStyle = '#3f3226';
+    ctx.beginPath(); ctx.ellipse(-h.r*0.5, h.r*0.55, h.r*0.16, h.r*0.3, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(h.r*0.5, h.r*0.55, h.r*0.16, h.r*0.3, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-h.r*0.45, -h.r*0.1, h.r*0.14, h.r*0.26, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(h.r*0.45, -h.r*0.1, h.r*0.14, h.r*0.26, 0, 0, Math.PI*2); ctx.fill();
+
+    // body
+    ctx.fillStyle = '#8a7355';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, h.r*0.62, h.r*0.9, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // mane bristles
+    ctx.strokeStyle = '#4a3d2a'; ctx.lineWidth = h.r*0.12; ctx.lineCap='round';
+    for(let i=-2;i<=2;i++){
+      ctx.beginPath();
+      ctx.moveTo(i*h.r*0.12, -h.r*0.5);
+      ctx.lineTo(i*h.r*0.12, -h.r*0.85);
+      ctx.stroke();
+    }
+
+    // head/snout
+    ctx.fillStyle = '#8a7355';
+    ctx.beginPath();
+    ctx.ellipse(0, -h.r*0.95, h.r*0.42, h.r*0.5, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#6b5a42';
+    ctx.beginPath();
+    ctx.ellipse(0, -h.r*1.18, h.r*0.28, h.r*0.2, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // tusks
+    ctx.strokeStyle = '#f4e8c8'; ctx.lineWidth = h.r*0.1; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(-h.r*0.22,-h.r*1.05); ctx.quadraticCurveTo(-h.r*0.4,-h.r*0.85, -h.r*0.32,-h.r*0.7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(h.r*0.22,-h.r*1.05); ctx.quadraticCurveTo(h.r*0.4,-h.r*0.85, h.r*0.32,-h.r*0.7); ctx.stroke();
+
+    // ears
+    ctx.fillStyle = '#6b5a42';
+    ctx.beginPath(); ctx.ellipse(-h.r*0.32,-h.r*1.15,h.r*0.14,h.r*0.2,0.5,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(h.r*0.32,-h.r*1.15,h.r*0.14,h.r*0.2,-0.5,0,Math.PI*2); ctx.fill();
+
+    // eyes
+    ctx.fillStyle = '#241708';
+    ctx.beginPath(); ctx.arc(-h.r*0.16,-h.r*1.0,h.r*0.06,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(h.r*0.16,-h.r*1.0,h.r*0.06,0,Math.PI*2); ctx.fill();
+
+    // tail
+    ctx.strokeStyle = '#3f3226'; ctx.lineWidth = h.r*0.08; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(0,h.r*0.85); ctx.quadraticCurveTo(h.r*0.2,h.r*1.05, h.r*0.1,h.r*1.2); ctx.stroke();
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
   function drawParticles(){
     for(const p of particles){
       ctx.globalAlpha = Math.max(0,p.life/38);
@@ -523,6 +613,11 @@
       spawnGrass();
       grassTimer = 130 + Math.random()*90;
     }
+    hogTimer -= diff;
+    if(hogTimer<=0){
+      spawnHog();
+      hogTimer = 200 + Math.random()*140;
+    }
 
     for(let i=rocks.length-1;i>=0;i--){
       const rk = rocks[i];
@@ -541,6 +636,42 @@
           burst(rk.x, rk.y, '#cdb27f', 14);
           rocks.splice(i,1);
           score += 8;
+          shake = 8;
+        } else {
+          burst(player.x, player.y, '#b23a1a', 22);
+          shake = 16;
+          endGame();
+          return;
+        }
+      }
+    }
+
+    for(let i=hogs.length-1;i>=0;i--){
+      const h = hogs[i];
+      if(h.state==='flying'){
+        h.x += h.vx; h.y += h.vy; h.vy += 0.3; h.rot += h.spin;
+        h.scale = Math.max(0, h.scale - 0.012);
+        h.life--;
+        if(h.life<=0 || h.y>H+80 || h.x<-80 || h.x>W+80){ hogs.splice(i,1); }
+        continue;
+      }
+      h.y += curSpeed;
+      h.cx = Math.max(rb.left, Math.min(rb.right, h.cx));
+      h.x = h.cx + Math.sin((t)*h.freq + h.phase) * h.amp;
+      h.x = Math.max(rb.left, Math.min(rb.right, h.x));
+      if(h.y - h.r > H+20){ hogs.splice(i,1); score += 1; continue; }
+
+      const hit = circleRectHit(h.x, h.y, h.r*0.7, player.x, player.y, player.w, player.h);
+      if(hit){
+        if(boostActive){
+          burst(h.x, h.y, '#8a7355', 12);
+          const dir = (player.x < h.x) ? 1 : -1;
+          h.state='flying';
+          h.vx = dir*(7+Math.random()*4);
+          h.vy = -(5+Math.random()*3);
+          h.spin = (Math.random()-0.5)*0.6;
+          h.life = 40;
+          score += 10;
           shake = 8;
         } else {
           burst(player.x, player.y, '#b23a1a', 22);
@@ -619,6 +750,7 @@
     drawDust();
     for(const g of (grasses||[])) drawGrass(g);
     for(const rk of rocks) drawRock(rk);
+    for(const h of (hogs||[])) drawHog(h);
     if(state!=='idle') drawRhino();
     drawParticles();
     ctx.restore();
