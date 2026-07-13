@@ -217,11 +217,10 @@
 
   @media (max-width: 480px){
     .layout{
-      grid-template-columns: 1fr;
+      grid-template-columns: 1fr 1fr;
       grid-template-areas:
-        "board"
-        "hud"
-        "piece";
+        "board board"
+        "piece hud";
       justify-items: center;
       row-gap: 14px;
     }
@@ -229,7 +228,11 @@
       grid-template-columns: repeat(10, 26px);
       grid-template-rows: repeat(10, 26px);
     }
-    .hud{ width: 100%; }
+    .hud{
+      flex-direction: column;
+      width: 100%;
+    }
+    .hud .btn-primary{ width: 100%; }
   }
 </style>
 </head>
