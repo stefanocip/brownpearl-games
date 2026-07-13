@@ -592,10 +592,11 @@
 
   // ---------- pointer interaction: grab the piece from its tray and drag it onto the grid ----------
 
-  const LIFT_Y = 70; // px the piece is lifted above the actual touch/cursor point, so the finger stays clearly below it
+  const LIFT_Y = 30; // px the pivot cell is lifted above the actual touch/cursor point
 
   let dragging = false;
   let floatingEl = null;
+  let dragMeta = null; // { pivotRow, pivotCol, cellPx, gap } for the piece currently being dragged
 
   function cellFromPoint(clientX, clientY){
     const el = document.elementFromPoint(clientX, clientY);
@@ -610,11 +611,17 @@
   }
 
   function buildFloatingPiece(){
-    const { grid, w, h } = normalizedShape();
+    const { grid, w, h, pivotRow, pivotCol } = normalizedShape();
+    // match the floating piece's cell size to the board's actual (possibly mobile-shrunk) cell size,
+    // so it visually lines up with the ghost preview underneath instead of looking like a separate, smaller icon
+    const cellPx = cellEls[0][0].getBoundingClientRect().width;
+    const gap = 2; // matches .board's grid gap
+    dragMeta = { pivotRow, pivotCol, cellPx, gap };
+
     const el = document.createElement('div');
     el.className = 'floating-piece';
-    el.style.gridTemplateColumns = 'repeat(' + w + ', 20px)';
-    el.style.gridTemplateRows = 'repeat(' + h + ', 20px)';
+    el.style.gridTemplateColumns = 'repeat(' + w + ', ' + cellPx + 'px)';
+    el.style.gridTemplateRows = 'repeat(' + h + ', ' + cellPx + 'px)';
     for(let r=0;r<h;r++){
       for(let c=0;c<w;c++){
         const cell = document.createElement('div');
@@ -626,9 +633,15 @@
   }
 
   function positionFloating(clientX, clientY){
-    if(!floatingEl) return;
-    // center the floating piece horizontally on the pointer, lifted above it vertically
-    floatingEl.style.transform = 'translate(-50%, -100%) translate(' + clientX + 'px, ' + (clientY - LIFT_Y) + 'px)';
+    if(!floatingEl || !dragMeta) return;
+    const { pivotRow, pivotCol, cellPx, gap } = dragMeta;
+    const pitch = cellPx + gap;
+    const { x: aimX, y: aimY } = aimPoint(clientX, clientY);
+    // place the piece so its pivot cell's *center* sits exactly on the aim point —
+    // the same point used to compute the ghost — so piece and ghost stay visually locked together
+    const left = aimX - (pivotCol * pitch + cellPx / 2);
+    const top = aimY - (pivotRow * pitch + cellPx / 2);
+    floatingEl.style.transform = 'translate(' + left + 'px, ' + top + 'px)';
   }
 
   function startDrag(clientX, clientY){
@@ -659,6 +672,7 @@
 
     const el = floatingEl;
     floatingEl = null;
+    dragMeta = null;
     dragging = false;
 
     if(!el) return;
