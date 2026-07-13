@@ -187,7 +187,7 @@
   let best = Math.floor(Number(localStorage.getItem('savannaBest')||0));
   bestEl.textContent = 'Best: '+best;
 
-  const ENERGY_GAIN = 10, ENERGY_DRAIN = 0.55;
+  const ENERGY_GAIN = 17, ENERGY_DRAIN = 0.55;
 
   let player, rocks, grasses, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, boostActive, superMode, boostTimer, charge, energy, shake, roadOffset;
   let tiltX = 0;       // -1..1 target from gyroscope/touch
@@ -201,7 +201,7 @@
     dust = [];
     t = 0;
     score = 0;
-    scrollSpeed = 3.4;
+    scrollSpeed = 4.3;
     spawnTimer = 0;
     grassTimer = 90;
     boostActive = false;
@@ -500,7 +500,7 @@
   function update(){
     t++;
     // player movement toward tilt target
-    smoothX += (tiltX - smoothX) * 0.16;
+    smoothX += (tiltX - smoothX) * 0.24;
     const rbT = roadBounds();
     const targetX = W/2 + smoothX * (rbT.right - W/2);
     player.vx = (targetX - player.x) * 0.18;
@@ -510,13 +510,13 @@
 
     // difficulty ramps with score
     const diff = 1 + score/600;
-    const curSpeed = scrollSpeed * diff * (superMode ? 2.6 : (boostActive?2.0:1));
+    const curSpeed = scrollSpeed * diff * (superMode ? 3.3 : (boostActive?2.0:1));
     roadOffset += curSpeed;
 
     spawnTimer -= diff;
     if(spawnTimer<=0){
       spawnRock();
-      spawnTimer = Math.max(18, 46 - diff*4) - (boostActive?8:0);
+      spawnTimer = Math.max(26, 62 - diff*4) - (boostActive?8:0);
     }
     grassTimer -= diff;
     if(grassTimer<=0){
@@ -630,7 +630,8 @@
     if(e.gamma===null) return;
     let g = e.gamma; // -90..90 left/right tilt
     g = Math.max(-30, Math.min(30, g));
-    tiltX = g/30;
+    const raw = g/30;
+    tiltX = tiltX*0.55 + raw*0.45; // light smoothing to kill sensor jitter
   }
 
   let usingTouchFallback = false;
