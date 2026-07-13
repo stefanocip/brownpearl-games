@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Juji — a color block puzzle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #221d19;
+    --panel: #2f2822;
+    --panel-2: #38302a;
+    --ink: #f3ece0;
+    --muted: #ad9f8c;
+    --accent: #cd9a3e;
+    --accent-soft: rgba(205,154,62,0.18);
+    --red: #c1443b;
+    --blue: #3e7089;
+    --yellow: #d9a441;
+    --green: #57815e;
+    --err: #d1615a;
+    --radius: 6px;
+    --shadow: 0 6px 18px rgba(0,0,0,0.35);
+  }
+
+  *{ box-sizing: border-box; }
+  html, body{ height: 100%; }
+
+  body{
+    margin:0;
+    background:
+      radial-gradient(circle at 15% 10%, rgba(205,154,62,0.08), transparent 40%),
+      radial-gradient(circle at 85% 90%, rgba(87,129,94,0.08), transparent 45%),
+      var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    display:flex;
+    justify-content:center;
+    padding: 24px 16px;
+  }
+
+  .wrap{ width: 100%; max-width: 480px; }
+
+  header{ text-align:center; margin-bottom: 18px; }
+
+  .eyebrow{
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  h1{
+    font-family: 'Fraunces', serif;
+    font-weight: 700;
+    font-size: 32px;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+
+  .sub{
+    color: var(--muted);
+    font-size: 13px;
+    max-width: 400px;
+    margin: 0 auto;
+    line-height: 1.4;
+  }
+
+  .panel{
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 18px;
+  }
+
+  .hud{
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .stat{
+    flex: 1;
+    background: var(--panel-2);
+    border-radius: 10px;
+    padding: 10px 14px;
+    text-align:center;
+  }
+
+  .stat-label{
+    display:block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 3px;
+  }
+
+  .stat-value{ font-family:'Fraunces', serif; font-size: 22px; font-weight: 700; }
+
+  .game-area{
+    display:flex;
+    gap: 16px;
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  .board-area{
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .board{
+    display:grid;
+    grid-template-columns: repeat(10, 30px);
+    grid-template-rows: repeat(10, 30px);
+    gap: 2px;
+    background: var(--panel-2);
+    padding: 6px;
+    border-radius: 8px;
+  }
+
+  .cell{
+    border-radius: 4px;
+    background: rgba(255,255,255,0.04);
+    transition: background-color 0.05s ease;
+  }
+
+  .cell.fill-red{ background: var(--red); }
+  .cell.fill-blue{ background: var(--blue); }
+  .cell.fill-yellow{ background: var(--yellow); }
+  .cell.fill-green{ background: var(--green); }
+
+  .cell.ghost-red{ background: color-mix(in srgb, var(--red) 55%, transparent); box-shadow: inset 0 0 0 2px var(--red); }
+  .cell.ghost-blue{ background: color-mix(in srgb, var(--blue) 55%, transparent); box-shadow: inset 0 0 0 2px var(--blue); }
+  .cell.ghost-yellow{ background: color-mix(in srgb, var(--yellow) 55%, transparent); box-shadow: inset 0 0 0 2px var(--yellow); }
+  .cell.ghost-green{ background: color-mix(in srgb, var(--green) 55%, transparent); box-shadow: inset 0 0 0 2px var(--green); }
+  .cell.ghost-bad{ background: rgba(209,97,90,0.35); box-shadow: inset 0 0 0 2px var(--err); }
+
+  .piece-panel{
+    display:flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding-top: 6px;
+  }
+
+  .piece-preview-frame{
+    background: var(--panel-2);
+    border-radius: 8px;
+    padding: 8px;
+    min-width: 92px;
+    min-height: 92px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .piece-preview{
+    display:grid;
+    gap: 2px;
+  }
+
+  .preview-cell{ width: 20px; height: 20px; border-radius: 3px; }
+  .preview-cell.preview-empty{ background: transparent; }
+  .preview-cell.fill-red{ background: var(--red); }
+  .preview-cell.fill-blue{ background: var(--blue); }
+  .preview-cell.fill-yellow{ background: var(--yellow); }
+  .preview-cell.fill-green{ background: var(--green); }
+
+  .btn-primary{
+    border:none;
+    background: var(--accent);
+    color: #251d10;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 13.5px;
+    padding: 10px 18px;
+    border-radius: 999px;
+    cursor:pointer;
+    transition: filter 0.15s ease;
+    white-space: nowrap;
+  }
+
+  .btn-primary:hover{ filter: brightness(1.08); }
+
+  .legend{
+    display:flex;
+    justify-content:center;
+    gap: 16px;
+    margin-top: 18px;
+    flex-wrap: wrap;
+  }
+
+  .legend-item{ display:flex; align-items:center; gap: 6px; font-size: 12px; color: var(--muted); transition: opacity 0.2s ease; }
+  .legend-item.locked{ opacity: 0.3; }
+
+  .swatch{ width: 12px; height:12px; border-radius: 3px; }
+  .swatch.red{ background: var(--red); }
+  .swatch.blue{ background: var(--blue); }
+  .swatch.yellow{ background: var(--yellow); }
+  .swatch.green{ background: var(--green); }
+
+  @media (max-width: 420px){
+    .board{
+      grid-template-columns: repeat(10, 26px);
+      grid-template-rows: repeat(10, 26px);
+    }
+    .game-area{ gap: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Block puzzle</div>
+    <h1>Juji</h1>
+    <p class="sub">Drag the piece onto the grid to place it. These get cleared: a row or column of a single color, a solid block of 2×2 or bigger of one color, and "crosses" (a row and column of the same color meeting at a cell).</p>
+  </header>
+
+  <div class="panel">
+    <div class="hud">
+      <div class="stat">
+        <span class="stat-label">Points</span>
+        <span class="stat-value" id="points">0</span>
+      </div>
+      <button class="btn-primary" id="newGameBtn">New game</button>
+    </div>
+
+    <div class="game-area">
+      <div class="board-area" id="boardArea">
+        <div class="board" id="board"></div>
+      </div>
+
+      <div class="piece-panel">
+        <div class="piece-preview-frame">
+          <div class="piece-preview" id="piecePreview"></div>
+        </div>
+        <button class="btn-primary" id="rotateBtn">⟳ Rotate</button>
+      </div>
+    </div>
+
+    <div class="legend" id="legend">
+      <div class="legend-item" data-color="red"><span class="swatch red"></span>Red</div>
+      <div class="legend-item" data-color="blue"><span class="swatch blue"></span>Blue</div>
+      <div class="legend-item" data-color="yellow"><span class="swatch yellow"></span>Yellow</div>
+      <div class="legend-item" data-color="green"><span class="swatch green"></span>Green</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const SIZE = 10;
+  const COLOR_NAMES = ['red','blue','yellow','green'];
+
+  // Offset tables reproduced exactly from the original game's placement arithmetic,
+  // so pieces occupy the same cells relative to the pivot in every rotation.
+  const SHAPES = {
+    O: [
+      [[0,0],[0,1],[1,0],[1,1]],
+      [[0,0],[1,0],[0,-1],[1,-1]],
+      [[0,0],[0,-1],[-1,0],[-1,-1]],
+      [[0,0],[-1,0],[0,1],[-1,1]],
+    ],
+    S: [
+      [[0,0],[0,1],[1,-1],[1,0]],
+      [[0,0],[1,0],[-1,-1],[0,-1]],
+      [[0,0],[0,-1],[-1,1],[-1,0]],
+      [[0,0],[-1,0],[1,1],[0,1]],
+    ],
+    Z: [
+      [[0,0],[0,1],[1,1],[1,2]],
+      [[0,0],[1,0],[1,-1],[2,-1]],
+      [[0,0],[0,-1],[-1,-1],[-1,-2]],
+      [[0,0],[-1,0],[-1,1],[-2,1]],
+    ],
+    L: [
+      [[0,0],[1,0],[2,0],[2,1]],
+      [[0,0],[0,-1],[0,-2],[1,-2]],
+      [[0,0],[-1,0],[-2,0],[-2,-1]],
+      [[0,0],[0,1],[0,2],[-1,2]],
+    ],
+    J: [
+      [[0,0],[1,0],[2,0],[2,-1]],
+      [[0,0],[0,-1],[0,-2],[-1,-2]],
+      [[0,0],[-1,0],[-2,0],[-2,1]],
+      [[0,0],[0,1],[0,2],[1,2]],
+    ],
+    T: [
+      [[0,0],[0,1],[0,2],[1,1]],
+      [[0,0],[1,0],[2,0],[1,-1]],
+      [[0,0],[0,-1],[0,-2],[-1,-1]],
+      [[0,0],[-1,0],[-2,0],[-1,1]],
+    ],
+    I: [
+      [[0,0],[1,0],[2,0],[3,0]],
+      [[0,0],[0,-1],[0,-2],[0,-3]],
+      [[0,0],[-1,0],[-2,0],[-3,0]],
+      [[0,0],[0,1],[0,2],[0,3]],
+    ],
+  };
+  const PIECE_TYPES = Object.keys(SHAPES);
+
+  let colorsUnlocked = 2;
+  let score = 0;
+
+  let board = makeEmptyBoard();
+  let cellEls = [];
+  let ghostCells = [];
+  let hoverPivot = null;
+
+  let pieceType = 'O';
+  let rotation = 0;
+  let pieceColors = [];
+
+  function makeEmptyBoard(){
+    const b = [];
+    for(let r=0;r<SIZE;r++) b.push(new Array(SIZE).fill(null));
+    return b;
+  }
+
+  function pickColor(){
+    return COLOR_NAMES[Math.floor(Math.random() * colorsUnlocked)];
+  }
+
+  function createPiece(){
+    pieceType = PIECE_TYPES[Math.floor(Math.random() * PIECE_TYPES.length)];
+    rotation = 0;
+    // A piece is composed from at most 2 colors (never all 4), so it always stays solvable.
+    const col1 = pickColor();
+    const col2 = pickColor();
+    pieceColors = [0,1,2,3].map(() => Math.random() < 0.5 ? col1 : col2);
+    renderPiecePreview();
+  }
+
+  function rotatePiece(){
+    rotation = (rotation + 1) % 4;
+    renderPiecePreview();
+    if(hoverPivot) updateGhost(hoverPivot.r, hoverPivot.c);
+  }
+
+  function getPieceCells(pivotR, pivotC){
+    return SHAPES[pieceType][rotation].map(([dr,dc]) => ({ r: pivotR + dr, c: pivotC + dc }));
+  }
+
+  function isValidPlacement(cells){
+    return cells.every(({r,c}) => r >= 0 && r < SIZE && c >= 0 && c < SIZE && board[r][c] === null);
+  }
+
+  // ---------- clearing logic ----------
+
+  function findSquareCells(size){
+    const toDelete = new Set();
+    for(let r=0; r<=SIZE-size; r++){
+      for(let c=0; c<=SIZE-size; c++){
+        const color = board[r][c];
+        if(!color) continue;
+        let match = true;
+        for(let i=0;i<size && match;i++){
+          for(let j=0;j<size;j++){
+            if(board[r+i][c+j] !== color){ match = false; break; }
+          }
+        }
+        if(match){
+          for(let i=0;i<size;i++) for(let j=0;j<size;j++) toDelete.add((r+i)+','+(c+j));
+        }
+      }
+    }
+    return toDelete;
+  }
+
+  function runClearSequence(){
+    const toDelete = new Set();
+
+    // crosses: a full row and a full column of the same color meeting at a cell
+    for(let r=0;r<SIZE;r++){
+      for(let c=0;c<SIZE;c++){
+        const color = board[r][c];
+        if(!color) continue;
+        const rowFull = board[r].every(cell => cell === color);
+        const colFull = board.every(row => row[c] === color);
+        if(rowFull && colFull){
+          for(let cc=0; cc<SIZE; cc++) toDelete.add(r+','+cc);
+          for(let rr=0; rr<SIZE; rr++) toDelete.add(rr+','+c);
+        }
+      }
+    }
+
+    // uniform-color squares, largest first (5x5 down to 2x2)
+    for(let size=5; size>=2; size--){
+      for(const key of findSquareCells(size)) toDelete.add(key);
+    }
+
+    // full rows
+    for(let r=0;r<SIZE;r++){
+      const color = board[r][0];
+      if(color && board[r].every(cell => cell === color)){
+        for(let c=0;c<SIZE;c++) toDelete.add(r+','+c);
+      }
+    }
+
+    // full columns
+    for(let c=0;c<SIZE;c++){
+      const color = board[0][c];
+      if(color && board.every(row => row[c] === color)){
+        for(let r=0;r<SIZE;r++) toDelete.add(r+','+c);
+      }
+    }
+
+    if(toDelete.size > 0){
+      toDelete.forEach(key => {
+        const [r,c] = key.split(',').map(Number);
+        board[r][c] = null;
+        score++;
+      });
+    }
+  }
+
+  function checkFullBoardOfOneColor(){
+    for(const color of COLOR_NAMES){
+      let count = 0;
+      for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++) if(board[r][c] === color) count++;
+      if(count === SIZE*SIZE) return true;
+    }
+    return false;
+  }
+
+  function updateUnlockedColors(){
+    if(score > 50) colorsUnlocked = 3;
+    if(score > 100) colorsUnlocked = 4;
+  }
+
+  // ---------- placement ----------
+
+  function commitPlacement(pivotR, pivotC){
+    const cells = getPieceCells(pivotR, pivotC);
+    if(!isValidPlacement(cells)) return false;
+
+    cells.forEach((cell, i) => { board[cell.r][cell.c] = pieceColors[i]; });
+
+    if(checkFullBoardOfOneColor()){
+      board = makeEmptyBoard();
+    } else {
+      runClearSequence();
+    }
+
+    updateUnlockedColors();
+    createPiece();
+    renderBoard();
+    updateHud();
+    return true;
+  }
+
+  // ---------- rendering ----------
+
+  function renderBoard(){
+    const boardEl = document.getElementById('board');
+    boardEl.innerHTML = '';
+    cellEls = [];
+    for(let r=0;r<SIZE;r++){
+      const rowEls = [];
+      for(let c=0;c<SIZE;c++){
+        const cell = document.createElement('div');
+        cell.className = 'cell' + (board[r][c] ? ' fill-' + board[r][c] : '');
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        boardEl.appendChild(cell);
+        rowEls.push(cell);
+      }
+      cellEls.push(rowEls);
+    }
+  }
+
+  function clearGhost(){
+    ghostCells.forEach(({r,c}) => {
+      const el = cellEls[r] && cellEls[r][c];
+      if(!el) return;
+      el.classList.remove('ghost-bad');
+      COLOR_NAMES.forEach(col => el.classList.remove('ghost-' + col));
+    });
+    ghostCells = [];
+  }
+
+  function updateGhost(pivotR, pivotC){
+    clearGhost();
+    hoverPivot = { r: pivotR, c: pivotC };
+    const cells = getPieceCells(pivotR, pivotC);
+    const valid = isValidPlacement(cells);
+
+    cells.forEach((cell, i) => {
+      if(cell.r < 0 || cell.r >= SIZE || cell.c < 0 || cell.c >= SIZE) return;
+      const el = cellEls[cell.r][cell.c];
+      el.classList.add(valid ? 'ghost-' + pieceColors[i] : 'ghost-bad');
+      ghostCells.push({ r: cell.r, c: cell.c });
+    });
+  }
+
+  function renderPiecePreview(){
+    const shape = SHAPES[pieceType][rotation];
+    const rows = shape.map(([dr]) => dr);
+    const cols = shape.map(([,dc]) => dc);
+    const minR = Math.min(...rows), maxR = Math.max(...rows);
+    const minC = Math.min(...cols), maxC = Math.max(...cols);
+    const h = maxR - minR + 1, w = maxC - minC + 1;
+
+    const grid = Array.from({length: h}, () => new Array(w).fill(null));
+    shape.forEach(([dr,dc], i) => { grid[dr-minR][dc-minC] = pieceColors[i]; });
+
+    const previewEl = document.getElementById('piecePreview');
+    previewEl.style.gridTemplateColumns = 'repeat(' + w + ', 20px)';
+    previewEl.style.gridTemplateRows = 'repeat(' + h + ', 20px)';
+    previewEl.innerHTML = '';
+    for(let r=0;r<h;r++){
+      for(let c=0;c<w;c++){
+        const cell = document.createElement('div');
+        cell.className = 'preview-cell' + (grid[r][c] ? ' fill-' + grid[r][c] : ' preview-empty');
+        previewEl.appendChild(cell);
+      }
+    }
+  }
+
+  function updateHud(){
+    document.getElementById('points').textContent = score;
+    document.querySelectorAll('#legend .legend-item').forEach((item, idx) => {
+      item.classList.toggle('locked', idx >= colorsUnlocked);
+    });
+  }
+
+  // ---------- pointer interaction (mouse hover + click, or touch drag, unified) ----------
+
+  function cellFromPoint(clientX, clientY){
+    const el = document.elementFromPoint(clientX, clientY);
+    if(!el) return null;
+    const cellEl = el.closest('.cell');
+    if(!cellEl) return null;
+    return { r: +cellEl.dataset.r, c: +cellEl.dataset.c };
+  }
+
+  function initPointerHandling(){
+    const boardArea = document.getElementById('boardArea');
+
+    boardArea.addEventListener('pointerdown', (e) => { e.preventDefault(); });
+
+    boardArea.addEventListener('pointermove', (e) => {
+      const cell = cellFromPoint(e.clientX, e.clientY);
+      if(cell) updateGhost(cell.r, cell.c);
+      else { clearGhost(); hoverPivot = null; }
+    });
+
+    boardArea.addEventListener('pointerleave', () => {
+      clearGhost();
+      hoverPivot = null;
+    });
+
+    // Listening on window (not just boardArea) means a release is only ever a
+    // commit when it lands on an actual cell — clicking the rotate button or
+    // releasing off the board simply cancels, it never fires a stale placement.
+    window.addEventListener('pointerup', (e) => {
+      const cell = cellFromPoint(e.clientX, e.clientY);
+      if(cell) commitPlacement(cell.r, cell.c);
+      clearGhost();
+      hoverPivot = null;
+    });
+  }
+
+  function resetGame(){
+    colorsUnlocked = 2;
+    score = 0;
+    board = makeEmptyBoard();
+    createPiece();
+    renderBoard();
+    updateHud();
+  }
+
+  document.getElementById('rotateBtn').addEventListener('click', rotatePiece);
+  document.getElementById('newGameBtn').addEventListener('click', resetGame);
+
+  initPointerHandling();
+  resetGame();
+})();
+</script>
+</body>
+</html>
