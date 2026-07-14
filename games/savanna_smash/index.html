@@ -46,6 +46,7 @@
   #chargeBar.full{ background:linear-gradient(90deg,#8fd35c,#4a9d2f); }
   #chargeBar.active{ background:linear-gradient(90deg,#ffce7a,#ff9a3d); }
   #chargeBar.onfire{ background:linear-gradient(90deg,#ff5a3a,#c8121a); animation:overpulse 0.4s infinite; }
+  #chargeBar.frenzy{ background:linear-gradient(90deg,#fff2a0,#f2c94c); animation:overpulse 0.2s infinite; }
   @keyframes overpulse{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.4); } }
 
   #energyWrap{
@@ -95,6 +96,15 @@
   #smashBtn.notready{ background:linear-gradient(to bottom, #9a7a5f 0%, #7a5a44 45%, #4a3626 100%); color:rgba(244,232,200,0.55); text-shadow:0 2px 0 rgba(0,0,0,0.3); }
   #smashBtn.boosting{ background:linear-gradient(to bottom, #ffb35c 0%, #ff9a3d 45%, #e2762f 100%); }
   #smashBtn.super{ background:linear-gradient(to bottom, #ffe08a 0%, #ffcf5a 45%, #ff3a10 100%); animation:overpulse 0.3s infinite; }
+  #smashBtn.frenzyGlow{
+    box-shadow:
+      inset 0 4px 0 rgba(255,255,255,0.4),
+      inset 0 -14px 20px rgba(0,0,0,0.4),
+      0 7px 0 #4a1808,
+      0 12px 20px rgba(0,0,0,0.5),
+      0 0 26px 6px rgba(255,220,80,0.8);
+    animation: overpulse 0.18s infinite;
+  }
 
   .screen{
     position:absolute; inset:0; display:flex; flex-direction:column;
@@ -144,7 +154,7 @@
       <b>Dark boulders</b> must always be avoided: they never break.<br><br>
       <b>Warthogs</b> dash side to side — smash them and they go flying!<br><br>
       Watch for <b>water</b> — crocodiles can surge out at the last second.<br><br>
-      When the road is clear, a <b>helicopter</b> may sweep by and strike the ground — dodge the blasts!
+      A rare <b>chili</b> sets you on fire for a very long time. Yellow <b>smash grass</b> recharges SMASH almost instantly — keep tapping!
     </p>
     <button class="primary" id="startBtn">Play</button>
   </div>
@@ -190,11 +200,8 @@
   let best = Math.floor(Number(localStorage.getItem('savannaBest')||0));
   bestEl.textContent = 'Best: '+best;
 
-  const ENERGY_GAIN = 17, ENERGY_DRAIN = 0.32;
-
-  let player, rocks, grasses, hogs, waters, crocs, copters, strikes, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, copterTimer, boostActive, superMode, boostTimer, charge, energy, invuln, shake, roadOffset;
-
-  const COPTER_DURATION = 320, STRIKE_WARN = 42, STRIKE_ACTIVE = 18, SHOT_FRACTIONS = [0.32, 0.5, 0.68];
+  const ENERGY_GAIN = 17, ENERGY_DRAIN = 0.32, CHILI_ENERGY = 380, FRENZY_MULT = 32;
+  let player, rocks, grasses, hogs, waters, crocs, chilis, smashGrasses, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, chiliTimer, smashGrassTimer, boostActive, superMode, boostTimer, charge, energy, invuln, frenzyTimer, shake, roadOffset;
   let tiltX = 0;       // -1..1 target from gyroscope/touch
   let smoothX = 0;      // smoothed player position factor
 
@@ -205,8 +212,8 @@
     hogs = [];
     waters = [];
     crocs = [];
-    copters = [];
-    strikes = [];
+    chilis = [];
+    smashGrasses = [];
     particles = [];
     dust = [];
     t = 0;
@@ -217,13 +224,15 @@
     hogTimer = 160;
     waterTimer = 260;
     crocTimer = 60;
-    copterTimer = 320;
+    chiliTimer = 700;
+    smashGrassTimer = 380;
     boostActive = false;
     superMode = false;
     boostTimer = 0;
     charge = 0;
     energy = 0;
     invuln = 0;
+    frenzyTimer = 0;
     shake = 0;
     roadOffset = 0;
     tiltX = 0; smoothX = 0;
@@ -300,19 +309,30 @@
     });
   }
 
-  function spawnCopter(){
-    const dir = Math.random()<0.5 ? 1 : -1;
-    copters.push({
-      dir, startT: t,
-      baseY: H*0.15 + Math.random()*18,
-      peakAmp: H*0.09 + Math.random()*10,
-      shotIdx: 0,
-      rot: 0,
-    });
+  function spawnChili(){
+    const size = 15+Math.random()*4;
+    const b = roadBounds();
+    const y = -size;
+    let x;
+    for(let attempt=0; attempt<8; attempt++){
+      x = b.left + Math.random()*(b.right-b.left);
+      if(spotFree(x, y, size, 14)) break;
+      if(attempt===7) return;
+    }
+    chilis.push({ x, y, r: size, wob: Math.random()*6.28 });
   }
 
-  function spawnStrike(x, y){
-    strikes.push({ x, y, state:'warn', t:0 });
+  function spawnSmashGrass(){
+    const size = 15+Math.random()*5;
+    const b = roadBounds();
+    const y = -size;
+    let x;
+    for(let attempt=0; attempt<8; attempt++){
+      x = b.left + Math.random()*(b.right-b.left);
+      if(spotFree(x, y, size, 14)) break;
+      if(attempt===7) return;
+    }
+    smashGrasses.push({ x, y, r: size, sway: Math.random()*6.28 });
   }
 
   function spawnWater(){
@@ -428,6 +448,14 @@
   function drawRhino(){
     ctx.save();
     if(invuln>0 && Math.floor(invuln/4)%2===0){ ctx.globalAlpha = 0.4; }
+    if(frenzyTimer>0){
+      const pulse = 0.5 + 0.5*Math.sin(t*0.5);
+      const glow = ctx.createRadialGradient(player.x,player.y,10, player.x,player.y, 55+pulse*10);
+      glow.addColorStop(0, `rgba(255,230,120,${0.45+0.25*pulse})`);
+      glow.addColorStop(1, 'rgba(255,230,120,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(player.x, player.y, 55+pulse*10, 0, Math.PI*2); ctx.fill();
+    }
     // ground shadow
     ctx.beginPath();
     ctx.fillStyle = 'rgba(40,26,12,0.28)';
@@ -720,80 +748,52 @@
     ctx.restore();
   }
 
-  function copterPos(c){
-    const p = Math.max(0, Math.min(1, (t - c.startT) / COPTER_DURATION));
-    const span = W + 200;
-    const x = c.dir===1 ? (-100 + p*span) : (W+100 - p*span);
-    const y = c.baseY - c.peakAmp * Math.sin(p*Math.PI);
-    return { x, y, p };
-  }
-
-  function drawCopter(c){
-    const { x, y } = copterPos(c);
+  function drawChili(c){
     ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(c.dir, 1); // face travel direction
-
-    // soft ground shadow, projected straight down
-    ctx.globalAlpha = 0.18;
-    ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.ellipse(0, H*0.55, 34, 10, 0, 0, Math.PI*2); ctx.fill();
-    ctx.globalAlpha = 1;
-
-    // tail boom
-    ctx.fillStyle = '#3a4a3a';
-    ctx.fillRect(14, -4, 34, 8);
-    // tail rotor blur
-    ctx.globalAlpha = 0.5;
-    ctx.beginPath(); ctx.ellipse(48, -4, 3, 10, 0, 0, Math.PI*2); ctx.fill();
-    ctx.globalAlpha = 1;
-
-    // body
-    ctx.fillStyle = '#4a5c3f';
     ctx.beginPath();
-    ctx.ellipse(0, 0, 26, 15, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(40,26,12,0.18)';
+    ctx.ellipse(c.x, c.y+c.r*0.3, c.r*0.8, c.r*0.35, 0, 0, Math.PI*2);
     ctx.fill();
-    // cockpit
-    ctx.fillStyle = 'rgba(180,220,230,0.7)';
-    ctx.beginPath(); ctx.ellipse(14, -2, 9, 8, 0, 0, Math.PI*2); ctx.fill();
-    // skids
-    ctx.strokeStyle = '#2a3a2a'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(-16, 13); ctx.lineTo(16, 13); ctx.stroke();
-
-    // main rotor blur (spinning disc)
-    c.rot += 1.2;
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = '#1a1a1a';
-    ctx.beginPath(); ctx.ellipse(0, -16, 46, 8, 0, 0, Math.PI*2); ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
-    ctx.save(); ctx.translate(0,-16); ctx.rotate(c.rot*0.05);
-    ctx.beginPath(); ctx.moveTo(-46,0); ctx.lineTo(46,0); ctx.stroke();
-    ctx.restore();
-
+    ctx.translate(c.x, c.y);
+    const wob = Math.sin(t*0.1 + c.wob)*0.1;
+    ctx.rotate(wob);
+    // curved red pod
+    ctx.fillStyle = '#d9291c';
+    ctx.beginPath();
+    ctx.moveTo(-c.r*0.15, -c.r*0.8);
+    ctx.quadraticCurveTo(c.r*0.75, -c.r*0.55, c.r*0.55, c.r*0.15);
+    ctx.quadraticCurveTo(c.r*0.35, c.r*0.85, -c.r*0.1, c.r*0.6);
+    ctx.quadraticCurveTo(-c.r*0.35, c.r*0.1, -c.r*0.15, -c.r*0.8);
+    ctx.fill();
+    // highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(c.r*0.05, -c.r*0.3, c.r*0.12, c.r*0.32, 0.5, 0, Math.PI*2);
+    ctx.fill();
+    // green stem
+    ctx.strokeStyle = '#4a7a2a'; ctx.lineWidth = c.r*0.22; ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.moveTo(-c.r*0.15, -c.r*0.8);
+    ctx.lineTo(-c.r*0.05, -c.r*1.15);
+    ctx.stroke();
     ctx.restore();
   }
 
-  function drawStrike(s){
+  function drawSmashGrass(g){
     ctx.save();
-    if(s.state==='warn'){
-      const p = s.t / STRIKE_WARN;
-      const r = 34 * (1 - p*0.55);
-      ctx.strokeStyle = `rgba(255,60,30,${0.4+0.4*Math.sin(p*18)})`;
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(40,26,12,0.18)';
+    ctx.ellipse(g.x, g.y+g.r*0.3, g.r*0.9, g.r*0.4, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.translate(g.x, g.y);
+    const sw = Math.sin(t*0.08 + g.sway)*0.15;
+    ctx.lineWidth = 2.6; ctx.lineCap='round';
+    for(let i=-2;i<=2;i++){
       ctx.beginPath();
-      ctx.moveTo(s.x-r*1.3, s.y); ctx.lineTo(s.x+r*1.3, s.y);
-      ctx.moveTo(s.x, s.y-r*1.3); ctx.lineTo(s.x, s.y+r*1.3);
+      ctx.moveTo(i*4, g.r*0.4);
+      ctx.quadraticCurveTo(i*4 + sw*10, -g.r*0.2, i*4 + sw*18, -g.r*0.95);
+      ctx.strokeStyle = i%2===0 ? '#f2c94c' : '#e0a92e';
       ctx.stroke();
-    } else {
-      const p = s.t / STRIKE_ACTIVE;
-      const grad = ctx.createRadialGradient(s.x,s.y,0, s.x,s.y, 44*(1+p*0.3));
-      grad.addColorStop(0, `rgba(255,230,140,${0.9*(1-p)})`);
-      grad.addColorStop(0.5, `rgba(255,120,40,${0.7*(1-p)})`);
-      grad.addColorStop(1, 'rgba(120,30,10,0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(s.x, s.y, 44*(1+p*0.3), 0, Math.PI*2); ctx.fill();
     }
     ctx.restore();
   }
@@ -880,43 +880,41 @@
       }
     }
 
-    copterTimer -= diff;
-    if(copterTimer<=0){
-      const areaClear = rocks.length===0 && hogs.length===0 && waters.length===0 && crocs.length===0 && copters.length===0;
-      if(areaClear){
-        spawnCopter();
-        copterTimer = 420 + Math.random()*260;
-      } else {
-        copterTimer = 30; // check again soon
+    chiliTimer -= diff;
+    if(chiliTimer<=0){
+      spawnChili();
+      chiliTimer = 900 + Math.random()*600; // rare
+    }
+    smashGrassTimer -= diff;
+    if(smashGrassTimer<=0){
+      spawnSmashGrass();
+      smashGrassTimer = 420 + Math.random()*260;
+    }
+
+    for(let i=chilis.length-1;i>=0;i--){
+      const c = chilis[i];
+      c.y += curSpeed;
+      if(c.y - c.r > H+20){ chilis.splice(i,1); continue; }
+      const hit = circleRectHit(c.x, c.y, c.r*0.85, player.x, player.y, player.w, player.h);
+      if(hit){
+        burst(c.x, c.y, '#d9291c', 20);
+        chilis.splice(i,1);
+        superMode = true; boostActive = true;
+        energy = Math.min(energy + CHILI_ENERGY, 500);
+        shake = 18;
       }
     }
 
-    for(let i=copters.length-1;i>=0;i--){
-      const c = copters[i];
-      const { x, y, p } = copterPos(c);
-      if(c.shotIdx < SHOT_FRACTIONS.length && p >= SHOT_FRACTIONS[c.shotIdx]){
-        const b = roadBounds();
-        const tx = Math.max(b.left, Math.min(b.right, x));
-        spawnStrike(tx, player.y);
-        c.shotIdx++;
-      }
-      if(p>=1){ copters.splice(i,1); }
-    }
-
-    for(let i=strikes.length-1;i>=0;i--){
-      const s = strikes[i];
-      s.t++;
-      if(s.state==='warn'){
-        if(s.t>=STRIKE_WARN){ s.state='active'; s.t=0; burst(s.x, s.y, '#ff9a3d', 20); shake = 14; }
-        continue; // just a warning reticle, not dangerous yet
-      }
-      if(s.t>=STRIKE_ACTIVE){ strikes.splice(i,1); continue; }
-      const hit = circleRectHit(s.x, s.y, 32, player.x, player.y, player.w, player.h);
-      if(hit && invuln<=0){
-        burst(player.x, player.y, '#b23a1a', 22);
-        shake = 24;
-        endGame();
-        return;
+    for(let i=smashGrasses.length-1;i>=0;i--){
+      const g = smashGrasses[i];
+      g.y += curSpeed;
+      if(g.y - g.r > H+20){ smashGrasses.splice(i,1); continue; }
+      const hit = circleRectHit(g.x, g.y, g.r*0.8, player.x, player.y, player.w, player.h);
+      if(hit){
+        burst(g.x, g.y, '#f2c94c', 12);
+        smashGrasses.splice(i,1);
+        frenzyTimer = 160;
+        shake = 8;
       }
     }
 
@@ -1052,9 +1050,11 @@
       if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:6+Math.random()*4, life:26, color:'#fff4da'});
       if(boostTimer<=0){ boostActive=false; }
     } else if(charge<100){
-      charge = Math.min(charge + RECHARGE_RATE*diff, 100);
+      const mult = frenzyTimer>0 ? FRENZY_MULT : 1;
+      charge = Math.min(charge + RECHARGE_RATE*diff*mult, 100);
     }
     if(invuln>0) invuln--;
+    if(frenzyTimer>0) frenzyTimer--;
 
     for(let i=dust.length-1;i>=0;i--){ const d=dust[i]; d.y += curSpeed*0.4; d.life--; if(d.life<=0) dust.splice(i,1); }
     for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.25; p.life--; if(p.life<=0) particles.splice(i,1); }
@@ -1067,8 +1067,8 @@
     // smash bar: normal recharge/ready display, forced full+red while on fire
     let pct, ready = false;
     if(superMode){ pct = 1; chargeBar.className = 'onfire'; }
-    else if(boostActive){ pct = boostTimer/BOOST_MAX; chargeBar.className='active'; }
-    else if(charge<100){ pct = charge/100; chargeBar.className=''; }
+    else if(boostActive){ const bm = frenzyTimer>0 ? 10 : BOOST_MAX; pct = boostTimer/bm; chargeBar.className = frenzyTimer>0 ? 'active frenzy' : 'active'; }
+    else if(charge<100){ pct = charge/100; chargeBar.className = frenzyTimer>0 ? 'frenzy' : ''; }
     else { pct = 1; ready = true; chargeBar.className='full'; }
     chargeBar.style.width = Math.max(0,Math.min(1,pct))*100 + '%';
 
@@ -1079,6 +1079,7 @@
     smashBtn.classList.toggle('notready', !ready && !boostActive);
     smashBtn.classList.toggle('boosting', boostActive && !superMode);
     smashBtn.classList.toggle('super', superMode);
+    smashBtn.classList.toggle('frenzyGlow', frenzyTimer>0);
     smashBtn.textContent = superMode ? 'SMASH!' : (boostActive ? 'SMASH!' : (ready ? 'SMASH' : 'CHARGING...'));
   }
 
@@ -1094,13 +1095,13 @@
     for(const wtr of (waters||[])) drawWater(wtr);
     drawDust();
     for(const g of (grasses||[])) drawGrass(g);
+    for(const g of (smashGrasses||[])) drawSmashGrass(g);
+    for(const c of (chilis||[])) drawChili(c);
     for(const rk of rocks) drawRock(rk);
     for(const h of (hogs||[])) drawHog(h);
     for(const c of (crocs||[])) drawCroc(c);
-    for(const s of (strikes||[])) drawStrike(s);
     if(state!=='idle') drawRhino();
     drawParticles();
-    for(const c of (copters||[])) drawCopter(c);
     ctx.restore();
     requestAnimationFrame(loop);
   }
@@ -1175,7 +1176,7 @@
     if(boostActive || charge<100) return;
     boostActive = true;
     superMode = false;
-    boostTimer = 55;
+    boostTimer = frenzyTimer>0 ? 10 : 55;
     charge = 0;
     shake = 9;
   }
