@@ -806,7 +806,7 @@
       const hit = circleRectHit(c.x, c.y, c.r*0.7, player.x, player.y, player.w, player.h);
       if(hit && invuln<=0){
         burst(player.x, player.y, '#3f5c30', 22);
-        shake = 16;
+        shake = 24;
         endGame();
         return;
       }
@@ -831,17 +831,17 @@
           burst(rk.x, rk.y, rk.weak ? '#cdb27f' : '#8a8378', 16);
           rocks.splice(i,1);
           score += rk.weak ? 8 : 16;
-          shake = 13;
+          shake = 19;
         } else if(rk.weak && boostActive){
           burst(rk.x, rk.y, '#cdb27f', 14);
           rocks.splice(i,1);
           score += 8;
-          shake = 12;
+          shake = 18;
         } else if(invuln>0){
           // brief grace period after Fire ends
         } else {
           burst(player.x, player.y, '#b23a1a', 22);
-          shake = 16;
+          shake = 24;
           endGame();
           return;
         }
@@ -874,12 +874,12 @@
           h.spin = (Math.random()-0.5)*0.6;
           h.life = 40;
           score += 10;
-          shake = 12;
+          shake = 18;
         } else if(invuln>0){
           // brief grace period after Fire ends
         } else {
           burst(player.x, player.y, '#b23a1a', 22);
-          shake = 16;
+          shake = 24;
           endGame();
           return;
         }
@@ -897,7 +897,7 @@
         energy = Math.min(energy + ENERGY_GAIN, 100);
         if(energy>=100 && !superMode){
           superMode = true; boostActive = true;
-          shake = 14;
+          shake = 20;
           burst(player.x, player.y, '#ff9a3d', 26);
         }
       }
@@ -920,7 +920,7 @@
     for(let i=dust.length-1;i>=0;i--){ const d=dust[i]; d.y += curSpeed*0.4; d.life--; if(d.life<=0) dust.splice(i,1); }
     for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.25; p.life--; if(p.life<=0) particles.splice(i,1); }
 
-    if(shake>0) shake *= 0.85;
+    if(shake>0) shake *= 0.88;
 
     score += 0.06*diff;
     scoreEl.firstChild.textContent = Math.floor(score);
@@ -949,7 +949,7 @@
     }
     ctx.save();
     if(shake>0.3){
-      ctx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
+      ctx.translate((Math.random()-0.5)*shake*1.5, (Math.random()-0.5)*shake*1.5);
     }
     drawBackground(roadOffset||0);
     for(const wtr of (waters||[])) drawWater(wtr);
@@ -1036,7 +1036,7 @@
     superMode = false;
     boostTimer = 55;
     charge = 0;
-    shake = 6;
+    shake = 9;
   }
 
   startBtn.addEventListener('click', startGame);
