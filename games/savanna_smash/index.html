@@ -143,7 +143,8 @@
       <b>Light rocks</b> break if you hit them while pressing <b>SMASH</b> (which also gives you a burst of speed).<br><br>
       <b>Dark boulders</b> must always be avoided: they never break.<br><br>
       <b>Warthogs</b> dash side to side — smash them and they go flying!<br><br>
-      Watch for <b>water</b> — crocodiles can surge out at the last second.
+      Watch for <b>water</b> — crocodiles can surge out at the last second.<br><br>
+      When the road is clear, a <b>helicopter</b> may sweep by and strike the ground — dodge the blasts!
     </p>
     <button class="primary" id="startBtn">Play</button>
   </div>
@@ -189,9 +190,11 @@
   let best = Math.floor(Number(localStorage.getItem('savannaBest')||0));
   bestEl.textContent = 'Best: '+best;
 
-  const ENERGY_GAIN = 17, ENERGY_DRAIN = 0.55;
+  const ENERGY_GAIN = 17, ENERGY_DRAIN = 0.32;
 
-  let player, rocks, grasses, hogs, waters, crocs, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, boostActive, superMode, boostTimer, charge, energy, invuln, shake, roadOffset;
+  let player, rocks, grasses, hogs, waters, crocs, copters, strikes, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, copterTimer, boostActive, superMode, boostTimer, charge, energy, invuln, shake, roadOffset;
+
+  const COPTER_DURATION = 320, STRIKE_WARN = 42, STRIKE_ACTIVE = 18, SHOT_FRACTIONS = [0.32, 0.5, 0.68];
   let tiltX = 0;       // -1..1 target from gyroscope/touch
   let smoothX = 0;      // smoothed player position factor
 
@@ -202,6 +205,8 @@
     hogs = [];
     waters = [];
     crocs = [];
+    copters = [];
+    strikes = [];
     particles = [];
     dust = [];
     t = 0;
@@ -212,6 +217,7 @@
     hogTimer = 160;
     waterTimer = 260;
     crocTimer = 60;
+    copterTimer = 320;
     boostActive = false;
     superMode = false;
     boostTimer = 0;
@@ -292,6 +298,21 @@
       freq: 0.035 + Math.random()*0.02,
       rot:0, vx:0, vy:0, spin:0, scale:1, life:0,
     });
+  }
+
+  function spawnCopter(){
+    const dir = Math.random()<0.5 ? 1 : -1;
+    copters.push({
+      dir, startT: t,
+      baseY: H*0.15 + Math.random()*18,
+      peakAmp: H*0.09 + Math.random()*10,
+      shotIdx: 0,
+      rot: 0,
+    });
+  }
+
+  function spawnStrike(x, y){
+    strikes.push({ x, y, state:'warn', t:0 });
   }
 
   function spawnWater(){
@@ -699,6 +720,84 @@
     ctx.restore();
   }
 
+  function copterPos(c){
+    const p = Math.max(0, Math.min(1, (t - c.startT) / COPTER_DURATION));
+    const span = W + 200;
+    const x = c.dir===1 ? (-100 + p*span) : (W+100 - p*span);
+    const y = c.baseY - c.peakAmp * Math.sin(p*Math.PI);
+    return { x, y, p };
+  }
+
+  function drawCopter(c){
+    const { x, y } = copterPos(c);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(c.dir, 1); // face travel direction
+
+    // soft ground shadow, projected straight down
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.ellipse(0, H*0.55, 34, 10, 0, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // tail boom
+    ctx.fillStyle = '#3a4a3a';
+    ctx.fillRect(14, -4, 34, 8);
+    // tail rotor blur
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath(); ctx.ellipse(48, -4, 3, 10, 0, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // body
+    ctx.fillStyle = '#4a5c3f';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 26, 15, 0, 0, Math.PI*2);
+    ctx.fill();
+    // cockpit
+    ctx.fillStyle = 'rgba(180,220,230,0.7)';
+    ctx.beginPath(); ctx.ellipse(14, -2, 9, 8, 0, 0, Math.PI*2); ctx.fill();
+    // skids
+    ctx.strokeStyle = '#2a3a2a'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-16, 13); ctx.lineTo(16, 13); ctx.stroke();
+
+    // main rotor blur (spinning disc)
+    c.rot += 1.2;
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath(); ctx.ellipse(0, -16, 46, 8, 0, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
+    ctx.save(); ctx.translate(0,-16); ctx.rotate(c.rot*0.05);
+    ctx.beginPath(); ctx.moveTo(-46,0); ctx.lineTo(46,0); ctx.stroke();
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  function drawStrike(s){
+    ctx.save();
+    if(s.state==='warn'){
+      const p = s.t / STRIKE_WARN;
+      const r = 34 * (1 - p*0.55);
+      ctx.strokeStyle = `rgba(255,60,30,${0.4+0.4*Math.sin(p*18)})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(s.x-r*1.3, s.y); ctx.lineTo(s.x+r*1.3, s.y);
+      ctx.moveTo(s.x, s.y-r*1.3); ctx.lineTo(s.x, s.y+r*1.3);
+      ctx.stroke();
+    } else {
+      const p = s.t / STRIKE_ACTIVE;
+      const grad = ctx.createRadialGradient(s.x,s.y,0, s.x,s.y, 44*(1+p*0.3));
+      grad.addColorStop(0, `rgba(255,230,140,${0.9*(1-p)})`);
+      grad.addColorStop(0.5, `rgba(255,120,40,${0.7*(1-p)})`);
+      grad.addColorStop(1, 'rgba(120,30,10,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(s.x, s.y, 44*(1+p*0.3), 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function drawParticles(){
     for(const p of particles){
       ctx.globalAlpha = Math.max(0,p.life/38);
@@ -778,6 +877,46 @@
         crocTimer = 65 + Math.random()*45;
       } else {
         crocTimer = 20; // check again soon
+      }
+    }
+
+    copterTimer -= diff;
+    if(copterTimer<=0){
+      const areaClear = rocks.length===0 && hogs.length===0 && waters.length===0 && crocs.length===0 && copters.length===0;
+      if(areaClear){
+        spawnCopter();
+        copterTimer = 420 + Math.random()*260;
+      } else {
+        copterTimer = 30; // check again soon
+      }
+    }
+
+    for(let i=copters.length-1;i>=0;i--){
+      const c = copters[i];
+      const { x, y, p } = copterPos(c);
+      if(c.shotIdx < SHOT_FRACTIONS.length && p >= SHOT_FRACTIONS[c.shotIdx]){
+        const b = roadBounds();
+        const tx = Math.max(b.left, Math.min(b.right, x));
+        spawnStrike(tx, player.y);
+        c.shotIdx++;
+      }
+      if(p>=1){ copters.splice(i,1); }
+    }
+
+    for(let i=strikes.length-1;i>=0;i--){
+      const s = strikes[i];
+      s.t++;
+      if(s.state==='warn'){
+        if(s.t>=STRIKE_WARN){ s.state='active'; s.t=0; burst(s.x, s.y, '#ff9a3d', 20); shake = 14; }
+        continue; // just a warning reticle, not dangerous yet
+      }
+      if(s.t>=STRIKE_ACTIVE){ strikes.splice(i,1); continue; }
+      const hit = circleRectHit(s.x, s.y, 32, player.x, player.y, player.w, player.h);
+      if(hit && invuln<=0){
+        burst(player.x, player.y, '#b23a1a', 22);
+        shake = 24;
+        endGame();
+        return;
       }
     }
 
@@ -958,8 +1097,10 @@
     for(const rk of rocks) drawRock(rk);
     for(const h of (hogs||[])) drawHog(h);
     for(const c of (crocs||[])) drawCroc(c);
+    for(const s of (strikes||[])) drawStrike(s);
     if(state!=='idle') drawRhino();
     drawParticles();
+    for(const c of (copters||[])) drawCopter(c);
     ctx.restore();
     requestAnimationFrame(loop);
   }
