@@ -191,7 +191,7 @@
 
   const ENERGY_GAIN = 17, ENERGY_DRAIN = 0.55;
 
-  let player, rocks, grasses, hogs, waters, crocs, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, boostActive, superMode, boostTimer, charge, energy, shake, roadOffset;
+  let player, rocks, grasses, hogs, waters, crocs, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, boostActive, superMode, boostTimer, charge, energy, invuln, shake, roadOffset;
   let tiltX = 0;       // -1..1 target from gyroscope/touch
   let smoothX = 0;      // smoothed player position factor
 
@@ -217,6 +217,7 @@
     boostTimer = 0;
     charge = 0;
     energy = 0;
+    invuln = 0;
     shake = 0;
     roadOffset = 0;
     tiltX = 0; smoothX = 0;
@@ -405,6 +406,7 @@
 
   function drawRhino(){
     ctx.save();
+    if(invuln>0 && Math.floor(invuln/4)%2===0){ ctx.globalAlpha = 0.4; }
     // ground shadow
     ctx.beginPath();
     ctx.fillStyle = 'rgba(40,26,12,0.28)';
@@ -802,7 +804,7 @@
       if(c.state==='surge'){ c.spawnT++; if(c.spawnT>=14) c.state='active'; }
 
       const hit = circleRectHit(c.x, c.y, c.r*0.7, player.x, player.y, player.w, player.h);
-      if(hit){
+      if(hit && invuln<=0){
         burst(player.x, player.y, '#3f5c30', 22);
         shake = 16;
         endGame();
@@ -829,12 +831,14 @@
           burst(rk.x, rk.y, rk.weak ? '#cdb27f' : '#8a8378', 16);
           rocks.splice(i,1);
           score += rk.weak ? 8 : 16;
-          shake = 9;
+          shake = 13;
         } else if(rk.weak && boostActive){
           burst(rk.x, rk.y, '#cdb27f', 14);
           rocks.splice(i,1);
           score += 8;
-          shake = 8;
+          shake = 12;
+        } else if(invuln>0){
+          // brief grace period after Fire ends
         } else {
           burst(player.x, player.y, '#b23a1a', 22);
           shake = 16;
@@ -870,7 +874,9 @@
           h.spin = (Math.random()-0.5)*0.6;
           h.life = 40;
           score += 10;
-          shake = 8;
+          shake = 12;
+        } else if(invuln>0){
+          // brief grace period after Fire ends
         } else {
           burst(player.x, player.y, '#b23a1a', 22);
           shake = 16;
@@ -901,7 +907,7 @@
     if(superMode){
       energy -= ENERGY_DRAIN * diff;
       if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:6+Math.random()*4, life:26, color:'#ff9a3d'});
-      if(energy<=0){ energy=0; superMode=false; boostActive=false; }
+      if(energy<=0){ energy=0; superMode=false; boostActive=false; invuln=48; }
     } else if(boostActive){
       boostTimer--;
       if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:6+Math.random()*4, life:26, color:'#fff4da'});
@@ -909,6 +915,7 @@
     } else if(charge<100){
       charge = Math.min(charge + RECHARGE_RATE*diff, 100);
     }
+    if(invuln>0) invuln--;
 
     for(let i=dust.length-1;i>=0;i--){ const d=dust[i]; d.y += curSpeed*0.4; d.life--; if(d.life<=0) dust.splice(i,1); }
     for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.25; p.life--; if(p.life<=0) particles.splice(i,1); }
