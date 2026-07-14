@@ -142,7 +142,8 @@
       Tilt your phone <b>left/right</b> to move the rhino.<br><br>
       <b>Light rocks</b> break if you hit them while pressing <b>SMASH</b> (which also gives you a burst of speed).<br><br>
       <b>Dark boulders</b> must always be avoided: they never break.<br><br>
-      <b>Warthogs</b> dash side to side — smash them and they go flying!
+      <b>Warthogs</b> dash side to side — smash them and they go flying!<br><br>
+      Watch for <b>water</b> — crocodiles can surge out at the last second.
     </p>
     <button class="primary" id="startBtn">Play</button>
   </div>
@@ -190,7 +191,7 @@
 
   const ENERGY_GAIN = 17, ENERGY_DRAIN = 0.55;
 
-  let player, rocks, grasses, hogs, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, boostActive, superMode, boostTimer, charge, energy, shake, roadOffset;
+  let player, rocks, grasses, hogs, waters, crocs, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, boostActive, superMode, boostTimer, charge, energy, shake, roadOffset;
   let tiltX = 0;       // -1..1 target from gyroscope/touch
   let smoothX = 0;      // smoothed player position factor
 
@@ -199,6 +200,8 @@
     rocks = [];
     grasses = [];
     hogs = [];
+    waters = [];
+    crocs = [];
     particles = [];
     dust = [];
     t = 0;
@@ -207,6 +210,8 @@
     spawnTimer = 0;
     grassTimer = 90;
     hogTimer = 160;
+    waterTimer = 260;
+    crocTimer = 60;
     boostActive = false;
     superMode = false;
     boostTimer = 0;
@@ -224,14 +229,30 @@
   }
 
   // ---------- rock helpers ----------
+  // checks if a candidate spawn spot is too close to anything already spawned near the top of the road
+  function spotFree(x, y, r, margin){
+    for(const rk of rocks){ const d=r+rk.r+margin; if((x-rk.x)**2+(y-rk.y)**2 < d*d) return false; }
+    for(const g of grasses){ const d=r+g.r+margin; if((x-g.x)**2+(y-g.y)**2 < d*d) return false; }
+    for(const h of hogs){ const hr = h.r + (h.state==='normal' ? h.amp*0.5 : 0); const d=r+hr+margin; if((x-h.cx)**2+(y-h.y)**2 < d*d) return false; }
+    for(const wtr of (waters||[])){
+      if(Math.abs(y-wtr.y) < (wtr.hh+r)) return false;
+    }
+    return true;
+  }
+
   function spawnRock(){
     const isWeak = Math.random() < 0.62;
     const size = 24+Math.random()*12;
     const b = roadBounds();
+    const y = -size;
+    let x;
+    for(let attempt=0; attempt<8; attempt++){
+      x = b.left + Math.random()*(b.right-b.left);
+      if(spotFree(x, y, size, 16)) break;
+      if(attempt===7) return; // too crowded right now, skip this spawn
+    }
     rocks.push({
-      x: b.left + Math.random()*(b.right-b.left),
-      y: -size,
-      r: size,
+      x, y, r: size,
       weak: isWeak,
       rot: Math.random()*6,
       spin: (Math.random()-0.5)*0.006,
@@ -241,26 +262,50 @@
   function spawnGrass(){
     const size = 15+Math.random()*5;
     const b = roadBounds();
-    grasses.push({
-      x: b.left + Math.random()*(b.right-b.left),
-      y: -size,
-      r: size,
-      sway: Math.random()*6.28,
-    });
+    const y = -size;
+    let x;
+    for(let attempt=0; attempt<8; attempt++){
+      x = b.left + Math.random()*(b.right-b.left);
+      if(spotFree(x, y, size, 14)) break;
+      if(attempt===7) return;
+    }
+    grasses.push({ x, y, r: size, sway: Math.random()*6.28 });
   }
 
   function spawnHog(){
     const size = 24+Math.random()*6;
     const b = roadBounds();
-    const center = b.left + Math.random()*(b.right-b.left);
+    const y = -size;
     const amp = Math.min((b.right-b.left)*0.32, 60+Math.random()*30);
+    let center;
+    for(let attempt=0; attempt<8; attempt++){
+      center = b.left + Math.random()*(b.right-b.left);
+      if(spotFree(center, y, size+amp*0.5, 16)) break;
+      if(attempt===7) return;
+    }
     hogs.push({
       state:'normal',
       cx: center, x: center,
-      y: -size, r: size,
+      y, r: size,
       amp, phase: Math.random()*6.28,
       freq: 0.035 + Math.random()*0.02,
       rot:0, vx:0, vy:0, spin:0, scale:1, life:0,
+    });
+  }
+
+  function spawnWater(){
+    const hh = 150+Math.random()*130;
+    const maxCrocs = Math.max(1, Math.round(hh/95));
+    waters.push({ y: -hh, hh, crocsSpawned:0, maxCrocs, ripplePhase: Math.random()*6.28 });
+  }
+
+  function spawnCrocIn(wtr, y){
+    const b = roadBounds();
+    const x = b.left + Math.random()*(b.right-b.left);
+    crocs.push({
+      x, y, r: 30+Math.random()*6,
+      state:'warning', warnT:0, spawnT:0,
+      wob: Math.random()*6.28,
     });
   }
 
@@ -342,10 +387,18 @@
   function drawDust(){
     for(const d of dust){
       ctx.globalAlpha = d.life/26 * 0.5;
-      ctx.fillStyle = d.color || '#fff4da';
-      ctx.beginPath();
-      ctx.arc(d.x, d.y, d.size, 0, Math.PI*2);
-      ctx.fill();
+      if(d.kind==='ripple'){
+        ctx.strokeStyle = d.color || 'rgba(200,235,240,0.85)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.size + (26-d.life)*0.7, 0.15*Math.PI, 0.85*Math.PI);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = d.color || '#fff4da';
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.size, 0, Math.PI*2);
+        ctx.fill();
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -557,6 +610,93 @@
     ctx.restore();
   }
 
+  function drawWater(wtr){
+    const b = roadBounds();
+    const x = b.left - 14, w = (b.right - b.left) + 28;
+    const y = wtr.y - wtr.hh, h = wtr.hh*2;
+    ctx.save();
+    const grad = ctx.createLinearGradient(0,y,0,y+h);
+    grad.addColorStop(0, 'rgba(55,120,148,0.88)');
+    grad.addColorStop(0.5, 'rgba(80,155,180,0.92)');
+    grad.addColorStop(1, 'rgba(55,120,148,0.88)');
+    ctx.fillStyle = grad;
+    roundRectPath(x, y, w, h, 16);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(30,80,100,0.55)'; ctx.lineWidth=4;
+    roundRectPath(x+2, y+2, w-4, h-4, 14);
+    ctx.stroke();
+    // wavy ripple lines running across the band
+    ctx.strokeStyle = 'rgba(210,240,245,0.4)'; ctx.lineWidth=2;
+    for(let i=0;i<3;i++){
+      const ry = y + h*(0.22+i*0.28);
+      ctx.beginPath();
+      for(let px=x+12; px<x+w-12; px+=16){
+        const py = ry + Math.sin(px*0.09 + t*0.06 + i*2 + wtr.ripplePhase)*5;
+        if(px===x+12) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawCroc(c){
+    if(c.state==='warning') return;
+    ctx.save();
+    const grow = c.state==='surge' ? Math.min(1, c.spawnT/14) : 1;
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(20,40,20,0.3)';
+    ctx.ellipse(c.x, c.y+c.r*0.3, c.r*grow, c.r*0.5*grow, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.translate(c.x, c.y);
+    ctx.scale(grow, grow);
+    const wob = Math.sin(t*0.15 + c.wob)*0.08;
+    ctx.rotate(wob);
+
+    // tail
+    ctx.fillStyle = '#4a6b3a';
+    ctx.beginPath();
+    ctx.moveTo(-c.r*0.15, c.r*0.5);
+    ctx.quadraticCurveTo(c.r*0.25, c.r*1.15, -c.r*0.05, c.r*1.5);
+    ctx.quadraticCurveTo(-c.r*0.3, c.r*1.15, -c.r*0.15, c.r*0.5);
+    ctx.fill();
+
+    // body
+    ctx.fillStyle = '#527a40';
+    ctx.beginPath();
+    ctx.ellipse(0, 0.1*c.r, c.r*0.5, c.r*0.85, 0, 0, Math.PI*2);
+    ctx.fill();
+    // back ridges
+    ctx.fillStyle = 'rgba(30,50,25,0.5)';
+    for(let i=-1;i<=1;i++){
+      ctx.beginPath(); ctx.ellipse(i*c.r*0.18, -c.r*0.1, c.r*0.08, c.r*0.16, 0, 0, Math.PI*2); ctx.fill();
+    }
+
+    // snout/jaws
+    ctx.fillStyle = '#3f5c30';
+    ctx.beginPath();
+    ctx.ellipse(0, -c.r*0.95, c.r*0.28, c.r*0.42, 0, 0, Math.PI*2);
+    ctx.fill();
+    // teeth
+    ctx.fillStyle = '#f4f0dc';
+    for(let i=-1;i<=1;i+=2){
+      ctx.beginPath();
+      ctx.moveTo(i*c.r*0.16, -c.r*0.75);
+      ctx.lineTo(i*c.r*0.22, -c.r*0.62);
+      ctx.lineTo(i*c.r*0.08, -c.r*0.65);
+      ctx.closePath(); ctx.fill();
+    }
+    // eyes (raised bumps, croc-in-water style)
+    ctx.fillStyle = '#3f5c30';
+    ctx.beginPath(); ctx.ellipse(-c.r*0.18,-c.r*1.15,c.r*0.1,c.r*0.08,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(c.r*0.18,-c.r*1.15,c.r*0.1,c.r*0.08,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#d9c94a';
+    ctx.beginPath(); ctx.arc(-c.r*0.18,-c.r*1.15,c.r*0.045,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(c.r*0.18,-c.r*1.15,c.r*0.045,0,Math.PI*2); ctx.fill();
+
+    ctx.restore();
+  }
+
   function drawParticles(){
     for(const p of particles){
       ctx.globalAlpha = Math.max(0,p.life/38);
@@ -617,6 +757,64 @@
     if(hogTimer<=0){
       spawnHog();
       hogTimer = 200 + Math.random()*140;
+    }
+    waterTimer -= diff;
+    if(waterTimer<=0){
+      spawnWater();
+      waterTimer = 340 + Math.random()*200;
+    }
+    crocTimer -= diff;
+    if(crocTimer<=0){
+      // a croc spends WARN_FRAMES+SURGE_FRAMES scrolling before it's truly dangerous,
+      // so spawn it far enough up that it reaches the player's row exactly when it emerges
+      const travelFrames = 52 + 14;
+      const targetY = player.y - travelFrames*curSpeed;
+      const candidate = waters.find(w => w.crocsSpawned < w.maxCrocs && targetY > w.y-w.hh && targetY < w.y+w.hh);
+      if(candidate){
+        candidate.crocsSpawned++;
+        spawnCrocIn(candidate, targetY);
+        crocTimer = 65 + Math.random()*45;
+      } else {
+        crocTimer = 20; // check again soon
+      }
+    }
+
+    for(let i=waters.length-1;i>=0;i--){
+      const wtr = waters[i];
+      wtr.y += curSpeed;
+      if(wtr.y - wtr.hh > H+30){ waters.splice(i,1); continue; }
+    }
+
+    for(let i=crocs.length-1;i>=0;i--){
+      const c = crocs[i];
+      c.y += curSpeed;
+      if(c.y - c.r > H+20){ crocs.splice(i,1); score += 1; continue; }
+
+      if(c.state==='warning'){
+        c.warnT++;
+        if(t%5===0){
+          const bx = c.x + (Math.random()-0.5)*24;
+          dust.push({x:bx, y:c.y, size:3+Math.random()*3, life:24, color:'rgba(225,245,240,0.8)'});
+        }
+        if(c.warnT>=52){ c.state='surge'; c.spawnT=0; burst(c.x, c.y, '#8fae6a', 14); }
+        continue; // not dangerous yet, just a telltale ripple of bubbles
+      }
+      if(c.state==='surge'){ c.spawnT++; if(c.spawnT>=14) c.state='active'; }
+
+      const hit = circleRectHit(c.x, c.y, c.r*0.7, player.x, player.y, player.w, player.h);
+      if(hit){
+        burst(player.x, player.y, '#3f5c30', 22);
+        shake = 16;
+        endGame();
+        return;
+      }
+    }
+
+    // ripples when running through an active water band
+    const inWater = waters.some(w => Math.abs(player.y-w.y) < w.hh*0.95);
+    if(inWater && t%4===0){
+      dust.push({x:player.x-26, y:player.y+18, size:5+Math.random()*3, life:22, color:'rgba(200,235,240,0.85)', kind:'ripple'});
+      dust.push({x:player.x+26, y:player.y+18, size:5+Math.random()*3, life:22, color:'rgba(200,235,240,0.85)', kind:'ripple'});
     }
 
     for(let i=rocks.length-1;i>=0;i--){
@@ -747,10 +945,12 @@
       ctx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
     }
     drawBackground(roadOffset||0);
+    for(const wtr of (waters||[])) drawWater(wtr);
     drawDust();
     for(const g of (grasses||[])) drawGrass(g);
     for(const rk of rocks) drawRock(rk);
     for(const h of (hogs||[])) drawHog(h);
+    for(const c of (crocs||[])) drawCroc(c);
     if(state!=='idle') drawRhino();
     drawParticles();
     ctx.restore();
