@@ -144,8 +144,7 @@
       <b>Dark boulders</b> must always be avoided: they never break.<br><br>
       <b>Warthogs</b> dash side to side — smash them and they go flying!<br><br>
       Watch for <b>water</b> — crocodiles can surge out at the last second.<br><br>
-      A rare <b>chili</b> sets you on fire for a very long time.<br><br>
-      Watch for <b>narrow passages</b> between black blocks — steer through the gap!
+      A rare <b>chili</b> sets you on fire for a very long time.
     </p>
     <button class="primary" id="startBtn">Play</button>
   </div>
@@ -192,7 +191,7 @@
   bestEl.textContent = 'Best: '+best;
 
   const ENERGY_GAIN = 17, ENERGY_DRAIN = 0.32, CHILI_ENERGY = 380;
-  let player, rocks, grasses, hogs, waters, crocs, chilis, narrows, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, chiliTimer, narrowTimer, boostActive, superMode, boostTimer, charge, energy, invuln, shake, roadOffset;
+  let player, rocks, grasses, hogs, waters, crocs, chilis, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, chiliTimer, boostActive, superMode, boostTimer, charge, energy, invuln, shake, roadOffset;
   let tiltX = 0;       // -1..1 target from gyroscope/touch
   let smoothX = 0;      // smoothed player position factor
 
@@ -204,7 +203,6 @@
     waters = [];
     crocs = [];
     chilis = [];
-    narrows = [];
     particles = [];
     dust = [];
     t = 0;
@@ -216,7 +214,6 @@
     waterTimer = 260;
     crocTimer = 60;
     chiliTimer = 700;
-    narrowTimer = 240;
     boostActive = false;
     superMode = false;
     boostTimer = 0;
@@ -242,9 +239,6 @@
     for(const h of hogs){ const hr = h.r + (h.state==='normal' ? h.amp*0.5 : 0); const d=r+hr+margin; if((x-h.cx)**2+(y-h.y)**2 < d*d) return false; }
     for(const wtr of (waters||[])){
       if(Math.abs(y-wtr.y) < (wtr.hh+r)) return false;
-    }
-    for(const nw of (narrows||[])){
-      if(Math.abs(y-nw.y) < (nw.hh+r)) return false;
     }
     return true;
   }
@@ -313,36 +307,6 @@
       if(attempt===7) return;
     }
     chilis.push({ x, y, r: size, wob: Math.random()*6.28 });
-  }
-
-  function buildBoulderChunks(width, height){
-    const arr = [];
-    const step = Math.max(50, width*0.8);
-    for(let yOff=-height/2; yOff<=height/2; yOff+=step){
-      const jag = [];
-      for(let i=0;i<7;i++) jag.push(0.72+Math.random()*0.4);
-      arr.push({ yOff, rot: Math.random()*6.28, jag });
-    }
-    return arr;
-  }
-
-  function spawnNarrow(){
-    const b = roadBounds();
-    const roadW2 = b.right - b.left;
-    const gapWidth = Math.max(120, Math.min(170, roadW2*0.5));
-    const hh = 160+Math.random()*90;
-    const wallMin = 18;
-    const usable = Math.max(0, roadW2 - gapWidth - wallMin*2);
-    const gapCenter = b.left + wallMin + gapWidth/2 + Math.random()*usable;
-    const leftEdge = gapCenter - gapWidth/2;
-    const rightEdge = gapCenter + gapWidth/2;
-    const leftW = leftEdge - (b.left-14);
-    const rightW = (b.right+14) - rightEdge;
-    narrows.push({
-      y: -hh, hh, gapCenter, gapWidth,
-      leftChunks: buildBoulderChunks(leftW, hh*2),
-      rightChunks: buildBoulderChunks(rightW, hh*2),
-    });
   }
 
   function spawnWater(){
@@ -781,44 +745,6 @@
     ctx.restore();
   }
 
-  function drawBoulder(cx, cy, w, h, rot, jag){
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(rot*0.15); // subtle rotation only, keep it filling its slot
-    const rx = w*0.62, ry = h*0.62;
-    const grad = ctx.createRadialGradient(-rx*0.25,-ry*0.25,rx*0.15, 0,0, Math.max(rx,ry));
-    grad.addColorStop(0, '#3a342f');
-    grad.addColorStop(1, '#151210');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    const n = jag.length;
-    for(let i=0;i<n;i++){
-      const a = (i/n)*Math.PI*2;
-      const px = Math.cos(a)*rx*jag[i], py = Math.sin(a)*ry*jag[i];
-      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.05)';
-    ctx.beginPath(); ctx.ellipse(-rx*0.2,-ry*0.25, rx*0.35, ry*0.22, -0.4, 0, Math.PI*2); ctx.fill();
-    ctx.restore();
-  }
-
-  function drawNarrow(nw){
-    const b = roadBounds();
-    const leftEdge = nw.gapCenter - nw.gapWidth/2;
-    const rightEdge = nw.gapCenter + nw.gapWidth/2;
-    const leftX0 = b.left-14, leftW = leftEdge - leftX0;
-    const rightX0 = rightEdge, rightW = (b.right+14) - rightEdge;
-
-    for(const c of nw.leftChunks){
-      drawBoulder(leftX0 + leftW/2, nw.y + c.yOff, leftW, Math.max(60, leftW*0.9), c.rot, c.jag);
-    }
-    for(const c of nw.rightChunks){
-      drawBoulder(rightX0 + rightW/2, nw.y + c.yOff, rightW, Math.max(60, rightW*0.9), c.rot, c.jag);
-    }
-  }
-
   function drawParticles(){
     for(const p of particles){
       ctx.globalAlpha = Math.max(0,p.life/38);
@@ -865,26 +791,24 @@
     const curSpeed = scrollSpeed * diff * (superMode ? 3.3 : (boostActive?2.0:1));
     roadOffset += curSpeed;
 
-    const noNarrow = narrows.length===0;
-
     spawnTimer -= diff;
     if(spawnTimer<=0){
-      if(noNarrow) spawnRock();
+      spawnRock();
       spawnTimer = Math.max(26, 62 - diff*4) - (boostActive?8:0);
     }
     grassTimer -= diff;
     if(grassTimer<=0){
-      if(noNarrow) spawnGrass();
+      spawnGrass();
       grassTimer = 130 + Math.random()*90;
     }
     hogTimer -= diff;
     if(hogTimer<=0){
-      if(noNarrow) spawnHog();
+      spawnHog();
       hogTimer = 200 + Math.random()*140;
     }
     waterTimer -= diff;
     if(waterTimer<=0){
-      if(noNarrow) spawnWater();
+      spawnWater();
       waterTimer = 340 + Math.random()*200;
     }
     crocTimer -= diff;
@@ -905,7 +829,7 @@
 
     chiliTimer -= diff;
     if(chiliTimer<=0){
-      if(noNarrow) spawnChili();
+      spawnChili();
       chiliTimer = 900 + Math.random()*600; // rare
     }
 
@@ -920,35 +844,6 @@
         superMode = true; boostActive = true;
         energy = Math.min(energy + CHILI_ENERGY, 500);
         shake = 18;
-      }
-    }
-
-    narrowTimer -= diff;
-    if(narrowTimer<=0){
-      const areaClear = rocks.length===0 && hogs.length===0 && waters.length===0 && crocs.length===0 && chilis.length===0 && narrows.length===0 && !superMode;
-      if(areaClear){
-        spawnNarrow();
-        narrowTimer = 260 + Math.random()*160;
-      } else {
-        narrowTimer = 30; // check again soon
-      }
-    }
-
-    for(let i=narrows.length-1;i>=0;i--){
-      const nw = narrows[i];
-      nw.y += curSpeed;
-      if(nw.y - nw.hh > H+30){ narrows.splice(i,1); continue; }
-      const inBandY = Math.abs(player.y - nw.y) < nw.hh;
-      if(inBandY && !superMode){
-        const leftEdge = nw.gapCenter - nw.gapWidth/2;
-        const rightEdge = nw.gapCenter + nw.gapWidth/2;
-        const hit = (player.x - player.w/2 < leftEdge) || (player.x + player.w/2 > rightEdge);
-        if(hit && invuln<=0){
-          burst(player.x, player.y, '#e0b020', 22);
-          shake = 24;
-          endGame();
-          return;
-        }
       }
     }
 
@@ -1074,7 +969,7 @@
       }
     }
 
-    const BOOST_MAX = 55, RECHARGE_RATE = 100/48;
+    const BOOST_MAX = 55, RECHARGE_RATE = 100/36;
     if(superMode){
       energy -= ENERGY_DRAIN * diff;
       if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:6+Math.random()*4, life:26, color:'#ff9a3d'});
@@ -1123,7 +1018,6 @@
       ctx.translate((Math.random()-0.5)*shake*1.5, (Math.random()-0.5)*shake*1.5);
     }
     drawBackground(roadOffset||0);
-    for(const nw of (narrows||[])) drawNarrow(nw);
     for(const wtr of (waters||[])) drawWater(wtr);
     drawDust();
     for(const g of (grasses||[])) drawGrass(g);
