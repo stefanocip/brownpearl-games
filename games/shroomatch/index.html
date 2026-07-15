@@ -7,10 +7,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-  <!-- UI HTML sopra al canvas Pixi -->
   <div id="ui">
-
     <div id="top-bar">
       <div id="score-wrap">
         <span class="label">Punteggio</span>
@@ -21,14 +18,8 @@
         <span id="spider-countdown">2</span>
       </div>
     </div>
-
-    <!-- Power bars 3x2 -->
     <div id="power-bars"></div>
-
-    <!-- Canvas Pixi verrà inserito qui -->
-    <div id="canvas-wrap"></div>
-
-    <!-- Controlli: riserva + coda + (vuoto) -->
+    <div id="grid"></div>
     <div id="controls">
       <div id="reserve-wrap">
         <div class="ctrl-label">Riserva</div>
@@ -46,20 +37,13 @@
         <button id="btn-new">↺</button>
       </div>
     </div>
-
     <div id="feedback"></div>
-
   </div>
-
-  <!-- Game Over overlay -->
   <div id="gameover">
     <h2>GAME OVER</h2>
     <p id="go-score"></p>
     <button id="go-btn">Rigioca</button>
   </div>
-
-  <!-- Pixi.js v7 CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
-  <script src="main.js" type="module"></script>
+  <script src="main.js"></script>
 </body>
 </html>
