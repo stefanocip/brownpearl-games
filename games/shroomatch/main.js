@@ -156,19 +156,18 @@ async function initPixi() {
 
   app = new Application({
     width: SIZE, height: SIZE,
-    background: 0x0d1b2a,
+    backgroundAlpha: 0,
     antialias: true,
     resolution: window.devicePixelRatio || 1,
     autoDensity: true,
   });
 
-  // Maschera bordi arrotondati
-  const mask = new Graphics();
-  mask.beginFill(0xffffff);
-  mask.drawRoundedRect(0,0,SIZE,SIZE,12);
-  mask.endFill();
-  app.stage.mask = mask;
-  app.stage.addChild(mask);
+  // Sfondo griglia disegnato a mano in Pixi
+  const gridBg = new Graphics();
+  gridBg.beginFill(0x1e2840, 1);
+  gridBg.drawRoundedRect(0, 0, SIZE, SIZE, 12);
+  gridBg.endFill();
+  app.stage.addChild(gridBg);
 
   document.getElementById('canvas-wrap').appendChild(app.view);
 
@@ -281,34 +280,30 @@ function renderCell(r, c, spawn=false) {
 
   const hasImgBomb = d.bomb && textures[ASSETS.bombs[d.bomb]];
 
-  // Fungo normale o scared
+  // Fungo sempre visibile (normale o scared)
   const hasSpider = d.spider || d.web;
   const scaredPath = hasSpider ? ASSETS.scared[d.color] : null;
   const mushroomPath = (scaredPath && textures[scaredPath]) ? scaredPath : ASSETS.mushrooms[d.color];
   if (mushroomPath && textures[mushroomPath] && !hasImgBomb) {
     spr.texture = textures[mushroomPath];
+    spr.width   = CELL;
+    spr.height  = CELL;
     spr.alpha   = 1;
-    // Scala il fungo per riempire la cella
-    spr.width  = CELL;
-    spr.height = CELL;
   }
 
-  // Overlay: bomba > ragnatela > ragno
+  // Overlay sopra al fungo: bomba > ragnatela > ragno (semi-trasparente per vedere il fungo)
   if (hasImgBomb) {
     overlay.texture = getTex(ASSETS.bombs[d.bomb]);
-    overlay.width   = CELL;
-    overlay.height  = CELL;
+    overlay.width   = CELL; overlay.height = CELL;
     overlay.alpha   = 1;
   } else if (d.web) {
     overlay.texture = getTex(ASSETS.specials.web);
-    overlay.width   = CELL;
-    overlay.height  = CELL;
-    overlay.alpha   = 1;
+    overlay.width   = CELL; overlay.height = CELL;
+    overlay.alpha   = 0.85;
     container.interactive = false;
   } else if (d.spider) {
     overlay.texture = getTex(ASSETS.spiders[d.spider]);
-    overlay.width   = CELL;
-    overlay.height  = CELL;
+    overlay.width   = CELL; overlay.height = CELL;
     overlay.alpha   = 1;
     container.interactive = false;
   }
