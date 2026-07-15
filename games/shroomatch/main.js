@@ -278,8 +278,8 @@ function renderCell(r, c, spawn=false) {
 
   const hasImgBomb = d.bomb && textures[ASSETS.bombs[d.bomb]];
 
-  // Sfondo cella: scuro neutro sempre, il colore viene dal PNG del fungo
-  bg.beginFill(hasImgBomb ? 0x1a1a2e : 0x2a2a3e, hasImgBomb ? 0.5 : 0.6);
+  // Sfondo cella sempre scuro
+  bg.beginFill(0x1e2840, 1);
   bg.drawRoundedRect(0,0,CELL,CELL,CORNER);
   bg.endFill();
 
@@ -290,18 +290,27 @@ function renderCell(r, c, spawn=false) {
   if (mushroomPath && textures[mushroomPath] && !hasImgBomb) {
     spr.texture = textures[mushroomPath];
     spr.alpha   = 1;
+    // Scala il fungo per riempire la cella
+    spr.width  = CELL;
+    spr.height = CELL;
   }
 
   // Overlay: bomba > ragnatela > ragno
   if (hasImgBomb) {
     overlay.texture = getTex(ASSETS.bombs[d.bomb]);
+    overlay.width   = CELL;
+    overlay.height  = CELL;
     overlay.alpha   = 1;
   } else if (d.web) {
     overlay.texture = getTex(ASSETS.specials.web);
+    overlay.width   = CELL;
+    overlay.height  = CELL;
     overlay.alpha   = 1;
     container.interactive = false;
   } else if (d.spider) {
     overlay.texture = getTex(ASSETS.spiders[d.spider]);
+    overlay.width   = CELL;
+    overlay.height  = CELL;
     overlay.alpha   = 1;
     container.interactive = false;
   }
