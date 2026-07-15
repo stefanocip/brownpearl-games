@@ -198,11 +198,13 @@ async function initPixi() {
       const spr = new Sprite(Texture.EMPTY);
       spr.name = 'mushroom';
       spr.width = CELL; spr.height = CELL;
+      spr.alpha = 0; // invisibile finché non ha texture reale
       container.addChild(spr);
 
       const overlay = new Sprite(Texture.EMPTY);
       overlay.name = 'overlay';
       overlay.width = CELL; overlay.height = CELL;
+      overlay.alpha = 0;
       container.addChild(overlay);
 
       gridContainer.addChild(container);
@@ -252,10 +254,9 @@ function renderCell(r, c, spawn=false) {
   const { container, bg, spr, overlay } = obj;
 
   bg.clear();
-  spr.texture     = Texture.EMPTY;
-  overlay.texture = Texture.EMPTY;
-  spr.skew.x      = 0;
-  spr.position.y  = 0;
+  spr.texture = Texture.EMPTY; spr.alpha = 0;
+  overlay.texture = Texture.EMPTY; overlay.alpha = 0;
+  spr.skew.x = 0; spr.position.y = 0;
   container.alpha = 1;
   container.interactive = !d.empty && !d.web && !d.black;
 
@@ -271,6 +272,7 @@ function renderCell(r, c, spawn=false) {
     bg.drawRoundedRect(0,0,CELL,CELL,CORNER);
     bg.endFill();
     overlay.texture = getTex(ASSETS.specials.petrified);
+    overlay.alpha   = 1;
     return;
   }
 
@@ -293,11 +295,14 @@ function renderCell(r, c, spawn=false) {
   // Overlay: bomba > ragnatela > ragno
   if (hasImgBomb) {
     overlay.texture = getTex(ASSETS.bombs[d.bomb]);
+    overlay.alpha   = 1;
   } else if (d.web) {
     overlay.texture = getTex(ASSETS.specials.web);
+    overlay.alpha   = 1;
     container.interactive = false;
   } else if (d.spider) {
     overlay.texture = getTex(ASSETS.spiders[d.spider]);
+    overlay.alpha   = 1;
     container.interactive = false;
   }
 
