@@ -275,8 +275,9 @@ function renderCell(r, c, spawn=false) {
   }
 
   const hasImgBomb = d.bomb && textures[ASSETS.bombs[d.bomb]];
-  const col = hasImgBomb ? 0x1a1a2e : COLORS[d.color];
-  bg.beginFill(col, hasImgBomb ? 0.5 : 1);
+
+  // Sfondo cella: scuro neutro sempre, il colore viene dal PNG del fungo
+  bg.beginFill(hasImgBomb ? 0x1a1a2e : 0x2a2a3e, hasImgBomb ? 0.5 : 0.6);
   bg.drawRoundedRect(0,0,CELL,CELL,CORNER);
   bg.endFill();
 
