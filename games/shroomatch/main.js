@@ -254,6 +254,9 @@ function renderCell(r, c, spawn=false) {
   const { container, bg, spr, overlay } = obj;
 
   bg.clear();
+  bg.beginFill(0x1e2840, 1);
+  bg.drawRoundedRect(0, 0, CELL, CELL, CORNER);
+  bg.endFill();
   spr.texture = Texture.EMPTY; spr.alpha = 0;
   overlay.texture = Texture.EMPTY; overlay.alpha = 0;
   spr.skew.x = 0; spr.position.y = 0;
@@ -277,11 +280,6 @@ function renderCell(r, c, spawn=false) {
   }
 
   const hasImgBomb = d.bomb && textures[ASSETS.bombs[d.bomb]];
-
-  // Sfondo cella sempre scuro
-  bg.beginFill(0x1e2840, 1);
-  bg.drawRoundedRect(0,0,CELL,CELL,CORNER);
-  bg.endFill();
 
   // Fungo normale o scared
   const hasSpider = d.spider || d.web;
