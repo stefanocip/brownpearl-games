@@ -120,6 +120,23 @@
     text-transform:uppercase; margin-top:6px;
   }
   button.primary:active{ transform:translateY(4px); box-shadow:0 2px 0 #a4501c; }
+
+  .btnRow{ display:flex; gap:12px; align-items:center; }
+  button.secondary{
+    font-family:inherit; font-size:16px; letter-spacing:1px; color:var(--bone);
+    background:transparent; border:2px solid rgba(244,232,200,0.5); padding:14px 24px; border-radius:8px;
+    text-transform:uppercase; margin-top:6px;
+  }
+  button.secondary:active{ background:rgba(244,232,200,0.15); }
+
+  .adBanner{
+    width:min(320px, 86vw); height:50px; margin-top:22px;
+    border:2px dashed rgba(244,232,200,0.4); border-radius:6px;
+    display:flex; align-items:center; justify-content:center;
+    color:rgba(244,232,200,0.5); font-size:11px; letter-spacing:1px;
+    font-family:Arial,sans-serif; text-transform:uppercase;
+    flex-shrink:0;
+  }
 </style>
 </head>
 <body>
@@ -147,12 +164,17 @@
       A rare <b>chili</b> sets you on fire for a very long time.
     </p>
     <button class="primary" id="startBtn">Play</button>
+    <div class="adBanner">Ad banner placeholder (320×50)</div>
   </div>
 
   <div class="screen hidden" id="overScreen">
     <h1 style="font-size:clamp(30px,9vw,46px)">SMASHED</h1>
     <p class="rules" id="finalScore" style="font-size:18px;"></p>
-    <button class="primary" id="retryBtn">Try again</button>
+    <div class="btnRow">
+      <button class="primary" id="retryBtn">Try again</button>
+      <button class="secondary" id="shareBtn">Share</button>
+    </div>
+    <div class="adBanner">Ad banner placeholder (320×50)</div>
   </div>
 </div>
 
@@ -164,6 +186,7 @@
   const overScreen = document.getElementById('overScreen');
   const startBtn = document.getElementById('startBtn');
   const retryBtn = document.getElementById('retryBtn');
+  const shareBtn = document.getElementById('shareBtn');
   const smashBtn = document.getElementById('smashBtn');
   const scoreEl = document.getElementById('score');
   const bestEl = document.getElementById('best');
@@ -187,11 +210,12 @@
 
   // ---------- state ----------
   let state = 'idle'; // idle | playing | over
+  let lastStats = null;
   let best = Math.floor(Number(localStorage.getItem('savannaBest')||0));
   bestEl.textContent = 'Best: '+best;
 
   const ENERGY_GAIN = 17, ENERGY_DRAIN = 0.32, CHILI_ENERGY = 380;
-  let player, rocks, grasses, hogs, waters, crocs, chilis, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, chiliTimer, boostActive, superMode, boostTimer, charge, energy, invuln, shake, roadOffset;
+  let player, rocks, grasses, hogs, waters, crocs, chilis, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, chiliTimer, boostActive, superMode, boostTimer, charge, energy, invuln, shake, roadOffset, stonesSmashed, hogsSquashed;
   let tiltX = 0;       // -1..1 target from gyroscope/touch
   let smoothX = 0;      // smoothed player position factor
 
@@ -207,6 +231,8 @@
     dust = [];
     t = 0;
     score = 0;
+    stonesSmashed = 0;
+    hogsSquashed = 0;
     scrollSpeed = 4.3;
     spawnTimer = 0;
     grassTimer = 90;
@@ -771,7 +797,11 @@
     resize();
     score = Math.floor(score);
     if(score>best){ best=score; localStorage.setItem('savannaBest', String(best)); }
-    finalScoreEl.innerHTML = 'Score: <b>'+score+'</b><br>Best: '+best;
+    const metersRun = Math.floor((roadOffset||0)/40);
+    lastStats = { score, best, stonesSmashed, hogsSquashed, metersRun };
+    finalScoreEl.innerHTML =
+      'Score: <b>'+score+'</b><br>Best: '+best+
+      '<br><br>🪨 '+stonesSmashed+' stones smashed<br>🐗 '+hogsSquashed+' warthogs squashed<br>📏 '+metersRun+' meters run';
     overScreen.classList.remove('hidden');
   }
 
@@ -870,7 +900,7 @@
       if(c.state==='surge'){ c.spawnT++; if(c.spawnT>=14) c.state='active'; }
 
       const hit = circleRectHit(c.x, c.y, c.r*0.7, player.x, player.y, player.w, player.h);
-      if(hit && invuln<=0){
+      if(hit && invuln<=0 && !superMode){
         burst(player.x, player.y, '#3f5c30', 22);
         shake = 24;
         endGame();
@@ -897,11 +927,13 @@
           burst(rk.x, rk.y, rk.weak ? '#cdb27f' : '#8a8378', 16);
           rocks.splice(i,1);
           score += rk.weak ? 8 : 16;
+          stonesSmashed++;
           shake = 19;
         } else if(rk.weak && boostActive){
           burst(rk.x, rk.y, '#cdb27f', 14);
           rocks.splice(i,1);
           score += 8;
+          stonesSmashed++;
           shake = 18;
         } else if(invuln>0){
           // brief grace period after Fire ends
@@ -940,6 +972,7 @@
           h.spin = (Math.random()-0.5)*0.6;
           h.life = 40;
           score += 10;
+          hogsSquashed++;
           shake = 18;
         } else if(invuln>0){
           // brief grace period after Fire ends
@@ -1108,6 +1141,44 @@
 
   startBtn.addEventListener('click', startGame);
   retryBtn.addEventListener('click', startGame);
+
+  function showShareFallback(text){
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:50;background:rgba(20,13,8,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;';
+    overlay.innerHTML = `
+      <div style="color:#f4e8c8;font-family:Arial,sans-serif;font-size:13px;letter-spacing:1px;margin-bottom:12px;text-transform:uppercase;opacity:0.8;">Copy this manually:</div>
+      <textarea readonly style="width:min(320px,86vw);height:150px;padding:14px;border-radius:8px;border:2px solid rgba(244,232,200,0.4);background:rgba(0,0,0,0.3);color:#f4e8c8;font-size:14px;font-family:Arial,sans-serif;resize:none;"></textarea>
+      <button style="margin-top:16px;font-family:inherit;font-size:16px;color:#2b1b12;background:#e2762f;border:none;padding:12px 28px;border-radius:8px;text-transform:uppercase;letter-spacing:1px;">Close</button>
+    `;
+    const ta = overlay.querySelector('textarea');
+    ta.value = text;
+    overlay.querySelector('button').addEventListener('click', ()=> overlay.remove());
+    document.body.appendChild(overlay);
+    ta.focus(); ta.select();
+  }
+
+  function shareResult(){
+    if(!lastStats) return;
+    const text = `Savannah Smash 🦏\nScore: ${lastStats.score} (best: ${lastStats.best})\n🪨 ${lastStats.stonesSmashed} stones smashed\n🐗 ${lastStats.hogsSquashed} warthogs squashed\n📏 ${lastStats.metersRun} meters run`;
+    if(navigator.share){
+      navigator.share({ text, title: 'Savannah Smash' }).catch(()=>{
+        if(navigator.clipboard){
+          navigator.clipboard.writeText(text).catch(()=> showShareFallback(text));
+        } else {
+          showShareFallback(text);
+        }
+      });
+    } else if(navigator.clipboard){
+      navigator.clipboard.writeText(text).then(()=>{
+        const old = shareBtn.textContent;
+        shareBtn.textContent = 'Copied!';
+        setTimeout(()=>{ shareBtn.textContent = old; }, 1500);
+      }).catch(()=> showShareFallback(text));
+    } else {
+      showShareFallback(text);
+    }
+  }
+  shareBtn.addEventListener('click', shareResult);
   smashBtn.addEventListener('touchstart', (e)=>{ e.preventDefault(); pressSmash(); });
   smashBtn.addEventListener('click', pressSmash);
 
