@@ -143,11 +143,19 @@
   .cell.fill-blue{ background: var(--blue); }
   .cell.fill-yellow{ background: var(--yellow); }
   .cell.fill-green{ background: var(--green); }
+  .cell.fill-rainbow, .preview-cell.fill-rainbow{
+    background: conic-gradient(from 0deg, var(--red), var(--yellow), var(--green), var(--blue), var(--red));
+  }
 
   .cell.ghost-red{ background: color-mix(in srgb, var(--red) 55%, transparent); box-shadow: inset 0 0 0 2px var(--red); }
   .cell.ghost-blue{ background: color-mix(in srgb, var(--blue) 55%, transparent); box-shadow: inset 0 0 0 2px var(--blue); }
   .cell.ghost-yellow{ background: color-mix(in srgb, var(--yellow) 55%, transparent); box-shadow: inset 0 0 0 2px var(--yellow); }
   .cell.ghost-green{ background: color-mix(in srgb, var(--green) 55%, transparent); box-shadow: inset 0 0 0 2px var(--green); }
+  .cell.ghost-rainbow{
+    background: conic-gradient(from 0deg, var(--red), var(--yellow), var(--green), var(--blue), var(--red));
+    opacity: 0.7;
+    box-shadow: inset 0 0 0 2px var(--ink);
+  }
   .cell.ghost-bad{ background: rgba(209,97,90,0.35); box-shadow: inset 0 0 0 2px var(--err); }
 
   .piece-panel{
@@ -186,6 +194,19 @@
     pointer-events: none;
     z-index: 100;
     filter: drop-shadow(0 8px 14px rgba(0,0,0,0.45));
+  }
+
+  .floating-piece::after{
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--ink);
+    transform: translate(-50%, 50%);
   }
 
   .piece-preview{
@@ -383,6 +404,12 @@
   };
   const PIECE_TYPES = Object.keys(SHAPES);
 
+  // A 1-cell "bomb" piece. Kept out of SHAPES/PIECE_TYPES' normal random pool above —
+  // it's only ever chosen explicitly by createPiece() once the board is half full.
+  const BOMB_SHAPE = [[[0,0]],[[0,0]],[[0,0]],[[0,0]]]; // same single cell in all 4 "rotations"
+  const BOMB_FILL_THRESHOLD = 0.5; // bombs can only appear once the board is at least this full
+  const BOMB_CHANCE = 0.15; // chance per new piece, once the threshold is met
+
   let colorsUnlocked = 2;
   let score = 0;
   let gameOver = false;
@@ -395,6 +422,7 @@
   let pieceType = 'O';
   let rotation = 0;
   let pieceColors = [];
+  let isBomb = false;
 
   function makeEmptyBoard(){
     const b = [];
@@ -406,13 +434,30 @@
     return COLOR_NAMES[Math.floor(Math.random() * colorsUnlocked)];
   }
 
+  function currentShapeTable(){
+    return isBomb ? BOMB_SHAPE : SHAPES[pieceType];
+  }
+
+  function boardFillRatio(){
+    let count = 0;
+    for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++) if(board[r][c] !== null) count++;
+    return count / (SIZE*SIZE);
+  }
+
   function createPiece(){
-    pieceType = PIECE_TYPES[Math.floor(Math.random() * PIECE_TYPES.length)];
     rotation = 0;
-    // A piece is composed from at most 2 colors (never all 4), so it always stays solvable.
-    const col1 = pickColor();
-    const col2 = pickColor();
-    pieceColors = [0,1,2,3].map(() => Math.random() < 0.5 ? col1 : col2);
+    if(boardFillRatio() >= BOMB_FILL_THRESHOLD && Math.random() < BOMB_CHANCE){
+      isBomb = true;
+      pieceType = null;
+      pieceColors = ['rainbow'];
+    } else {
+      isBomb = false;
+      pieceType = PIECE_TYPES[Math.floor(Math.random() * PIECE_TYPES.length)];
+      // A piece is composed from at most 2 colors (never all 4), so it always stays solvable.
+      const col1 = pickColor();
+      const col2 = pickColor();
+      pieceColors = [0,1,2,3].map(() => Math.random() < 0.5 ? col1 : col2);
+    }
     renderPiecePreview();
   }
 
@@ -423,7 +468,7 @@
   }
 
   function getPieceCells(pivotR, pivotC){
-    return SHAPES[pieceType][rotation].map(([dr,dc]) => ({ r: pivotR + dr, c: pivotC + dc }));
+    return currentShapeTable()[rotation].map(([dr,dc]) => ({ r: pivotR + dr, c: pivotC + dc }));
   }
 
   function isValidPlacement(cells){
@@ -432,8 +477,9 @@
 
   // True if the current piece fits somewhere on the board, in at least one of its 4 rotations.
   function hasAnyValidPlacement(){
+    const table = currentShapeTable();
     for(let rot=0; rot<4; rot++){
-      const shape = SHAPES[pieceType][rot];
+      const shape = table[rot];
       for(let r=0;r<SIZE;r++){
         for(let c=0;c<SIZE;c++){
           const cells = shape.map(([dr,dc]) => ({ r: r+dr, c: c+dc }));
@@ -527,6 +573,18 @@
     if(score > 100) colorsUnlocked = 4;
   }
 
+  // The bomb clears every occupied cell in the 3x3 area centered on where it lands (itself included).
+  function clearBombArea(centerR, centerC){
+    for(let r=centerR-1; r<=centerR+1; r++){
+      for(let c=centerC-1; c<=centerC+1; c++){
+        if(r>=0 && r<SIZE && c>=0 && c<SIZE && board[r][c] !== null){
+          board[r][c] = null;
+          score++;
+        }
+      }
+    }
+  }
+
   function checkGameOver(){
     if(hasAnyValidPlacement()) return;
     gameOver = true;
@@ -542,7 +600,9 @@
 
     cells.forEach((cell, i) => { board[cell.r][cell.c] = pieceColors[i]; });
 
-    if(checkFullBoardOfOneColor()){
+    if(isBomb){
+      clearBombArea(cells[0].r, cells[0].c);
+    } else if(checkFullBoardOfOneColor()){
       board = makeEmptyBoard();
     } else {
       runClearSequence();
@@ -601,7 +661,7 @@
   }
 
   function normalizedShape(){
-    const shape = SHAPES[pieceType][rotation];
+    const shape = currentShapeTable()[rotation];
     const rows = shape.map(([dr]) => dr);
     const cols = shape.map(([,dc]) => dc);
     const minR = Math.min(...rows), maxR = Math.max(...rows);
