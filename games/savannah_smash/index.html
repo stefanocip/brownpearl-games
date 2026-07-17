@@ -262,7 +262,12 @@
   function spotFree(x, y, r, margin){
     for(const rk of rocks){ const d=r+rk.r+margin; if((x-rk.x)**2+(y-rk.y)**2 < d*d) return false; }
     for(const g of grasses){ const d=r+g.r+margin; if((x-g.x)**2+(y-g.y)**2 < d*d) return false; }
-    for(const h of hogs){ const d=r+h.r+margin; if((x-h.cx)**2+(y-h.y)**2 < d*d) return false; }
+    for(const h of hogs){
+      const d=r+h.r+margin; if((x-h.cx)**2+(y-h.y)**2 < d*d) return false;
+      // hogs move slower than everything else, so anything spawning further back
+      // in its lane would eventually catch up and overlap it — block that lane above it
+      if(Math.abs(x-h.cx) < (r+h.r+margin) && y < h.y) return false;
+    }
     for(const wtr of (waters||[])){
       if(Math.abs(y-wtr.y) < (wtr.hh+r)) return false;
     }
@@ -277,7 +282,7 @@
     let x;
     for(let attempt=0; attempt<8; attempt++){
       x = b.left + Math.random()*(b.right-b.left);
-      if(spotFree(x, y, size, 16)) break;
+      if(spotFree(x, y, size, 95)) break;
       if(attempt===7) return; // too crowded right now, skip this spawn
     }
     rocks.push({
@@ -953,7 +958,7 @@
         if(h.life<=0 || h.y>H+80 || h.x<-80 || h.x>W+80){ hogs.splice(i,1); }
         continue;
       }
-      h.y += curSpeed * 0.42; // slow — moves parallel to the rhino, gets overtaken or smashed
+      h.y += (scrollSpeed*diff) * 0.42; // slow — based on base speed only, not the Fire/boost multiplier
       h.x = h.cx;
       if(h.y - h.r > H+20){ hogs.splice(i,1); score += 1; continue; }
 
