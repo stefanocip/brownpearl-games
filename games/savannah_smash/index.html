@@ -271,6 +271,10 @@
     for(const wtr of (waters||[])){
       if(Math.abs(y-wtr.y) < (wtr.hh+r)) return false;
     }
+    for(const c of crocs){
+      if(c.state==='warning') continue; // not really there yet, just bubbles
+      const d=r+c.r+margin; if((x-c.x)**2+(y-c.y)**2 < d*d) return false;
+    }
     return true;
   }
 
@@ -346,7 +350,14 @@
 
   function spawnCrocIn(wtr, y){
     const b = roadBounds();
-    const x = b.left + Math.random()*(b.right-b.left);
+    let x;
+    for(let attempt=0; attempt<8; attempt++){
+      x = b.left + Math.random()*(b.right-b.left);
+      const clear = !hogs.some(h => (x-h.cx)**2+(y-h.y)**2 < (34+h.r)**2)
+        && !crocs.some(c => (x-c.x)**2+(y-c.y)**2 < (34+c.r)**2);
+      if(clear) break;
+      if(attempt===7) return; // too crowded right now, skip this croc
+    }
     crocs.push({
       x, y, r: 30+Math.random()*6,
       state:'warning', warnT:0, spawnT:0,
@@ -961,6 +972,12 @@
       h.y += (scrollSpeed*diff) * 0.42; // slow — based on base speed only, not the Fire/boost multiplier
       h.x = h.cx;
       if(h.y - h.r > H+20){ hogs.splice(i,1); score += 1; continue; }
+
+      const hogInWater = waters.some(w => Math.abs(h.y-w.y) < w.hh*0.95);
+      if(hogInWater && t%5===0){
+        dust.push({x:h.x-h.r*0.7, y:h.y+h.r*0.5, size:4+Math.random()*2, life:20, color:'rgba(200,235,240,0.8)', kind:'ripple'});
+        dust.push({x:h.x+h.r*0.7, y:h.y+h.r*0.5, size:4+Math.random()*2, life:20, color:'rgba(200,235,240,0.8)', kind:'ripple'});
+      }
 
       const hit = circleRectHit(h.x, h.y, h.r*0.7, player.x, player.y, player.w, player.h);
       if(hit){
