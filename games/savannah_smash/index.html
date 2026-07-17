@@ -159,7 +159,7 @@
       Tilt your phone <b>left/right</b> to move the rhino.<br><br>
       <b>Light rocks</b> break if you hit them while pressing <b>SMASH</b> (which also gives you a burst of speed).<br><br>
       <b>Dark boulders</b> must always be avoided: they never break.<br><br>
-      <b>Warthogs</b> dash side to side — smash them and they go flying!<br><br>
+      <b>Warthogs</b> trot slowly down the road — smash them and they go flying!<br><br>
       Watch for <b>water</b> — crocodiles can surge out at the last second.<br><br>
       A rare <b>chili</b> sets you on fire for a very long time.
     </p>
@@ -262,7 +262,7 @@
   function spotFree(x, y, r, margin){
     for(const rk of rocks){ const d=r+rk.r+margin; if((x-rk.x)**2+(y-rk.y)**2 < d*d) return false; }
     for(const g of grasses){ const d=r+g.r+margin; if((x-g.x)**2+(y-g.y)**2 < d*d) return false; }
-    for(const h of hogs){ const hr = h.r + (h.state==='normal' ? h.amp*0.5 : 0); const d=r+hr+margin; if((x-h.cx)**2+(y-h.y)**2 < d*d) return false; }
+    for(const h of hogs){ const d=r+h.r+margin; if((x-h.cx)**2+(y-h.y)**2 < d*d) return false; }
     for(const wtr of (waters||[])){
       if(Math.abs(y-wtr.y) < (wtr.hh+r)) return false;
     }
@@ -305,19 +305,17 @@
     const size = 24+Math.random()*6;
     const b = roadBounds();
     const y = -size;
-    const amp = Math.min((b.right-b.left)*0.32, 60+Math.random()*30);
     let center;
     for(let attempt=0; attempt<8; attempt++){
       center = b.left + Math.random()*(b.right-b.left);
-      if(spotFree(center, y, size+amp*0.5, 16)) break;
+      if(spotFree(center, y, size, 16)) break;
       if(attempt===7) return;
     }
     hogs.push({
       state:'normal',
       cx: center, x: center,
       y, r: size,
-      amp, phase: Math.random()*6.28,
-      freq: 0.035 + Math.random()*0.02,
+      phase: Math.random()*6.28,
       rot:0, vx:0, vy:0, spin:0, scale:1, life:0,
     });
   }
@@ -955,10 +953,8 @@
         if(h.life<=0 || h.y>H+80 || h.x<-80 || h.x>W+80){ hogs.splice(i,1); }
         continue;
       }
-      h.y += curSpeed;
-      h.cx = Math.max(rb.left, Math.min(rb.right, h.cx));
-      h.x = h.cx + Math.sin((t)*h.freq + h.phase) * h.amp;
-      h.x = Math.max(rb.left, Math.min(rb.right, h.x));
+      h.y += curSpeed * 0.42; // slow — moves parallel to the rhino, gets overtaken or smashed
+      h.x = h.cx;
       if(h.y - h.r > H+20){ hogs.splice(i,1); score += 1; continue; }
 
       const hit = circleRectHit(h.x, h.y, h.r*0.7, player.x, player.y, player.w, player.h);
