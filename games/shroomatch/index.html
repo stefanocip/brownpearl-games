@@ -1,49 +1,1265 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Shroomatch</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Shroomatch — PixiJS 7</title>
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    background: #0d0d1a;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Segoe UI', sans-serif;
+  }
+  #app-container {
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 0 50px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.04);
+  }
+  canvas { display: block; }
+</style>
 </head>
 <body>
-  <div id="ui">
-    <div id="top-bar">
-      <div id="score-wrap">
-        <span class="label">Punteggio</span>
-        <span id="score">0</span>
-      </div>
-      <div id="spider-wrap">
-        <span class="label">Ragno tra</span>
-        <span id="spider-countdown">2</span>
-      </div>
-    </div>
-    <div id="power-bars"></div>
-    <div id="grid"></div>
-    <div id="controls">
-      <div id="reserve-wrap">
-        <div class="ctrl-label">Riserva</div>
-        <div id="reserve-slot"></div>
-      </div>
-      <div id="queue-wrap">
-        <div class="ctrl-label">Prossimi</div>
-        <div id="queue-slots">
-          <div class="q-slot" id="q0"></div>
-          <div class="q-slot" id="q1"></div>
-          <div class="q-slot" id="q2"></div>
-        </div>
-      </div>
-      <div id="btn-wrap">
-        <button id="btn-new">↺</button>
-      </div>
-    </div>
-    <div id="feedback"></div>
-  </div>
-  <div id="gameover">
-    <h2>GAME OVER</h2>
-    <p id="go-score"></p>
-    <button id="go-btn">Rigioca</button>
-  </div>
-  <script src="main.js"></script>
+<div id="app-container"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════
+   SHROOMATCH — versione PixiJS 7
+   Porting del motore di gioco originale (DOM/CSS) su un
+   canvas PixiJS: tutta la board, la coda, la riserva, le
+   power-bar e il game-over sono ora oggetti Pixi renderizzati
+   su un unico Application. La logica di match-3 / ragni /
+   bombe / power-up è la stessa del gioco originale.
+
+   Semplificazione volontaria rispetto all'originale: ragni,
+   bombe, strega e bombarolo sono resi con emoji/testo invece
+   che con sprite dedicate, per tenere il file leggero. Le
+   sprite dei funghi (l'elemento visivo centrale) sono invece
+   le stesse immagini dell'originale.
+   ═══════════════════════════════════════════════════════ */
+
+// ── COSTANTI ─────────────────────────────────────────────
+const ROWS = 6, COLS = 6;
+const CELL = 54, GAP = 5;
+const BOARD_W = COLS * CELL + (COLS - 1) * GAP;
+const BOARD_H = ROWS * CELL + (ROWS - 1) * GAP;
+
+const SPIDER_EVERY = 2;
+const ANIM_MS    = 200;
+const CASCADE_MS = 260;
+const POWER_MAX  = 20;
+
+const SPIDER_THRESHOLDS = [
+  { min: 2000, level: 4 },
+  { min: 1500, level: 3 },
+  { min: 500,  level: 2 },
+  { min: 0,    level: 1 },
+];
+
+const COLORS = {
+  red:    0xe74c3c,
+  yellow: 0xf1c40f,
+  blue:   0x3498db,
+  green:  0x2ecc71,
+  orange: 0xe67e22,
+  purple: 0x9b59b6,
+};
+const COLOR_NAMES  = Object.keys(COLORS);
+const COLOR_LABELS = { red: 'Rossi', yellow: 'Gialli', blue: 'Blu', green: 'Verdi', orange: 'Arancioni', purple: 'Viola' };
+
+// ── APPLICATION ──────────────────────────────────────────
+const APP_W = 380;
+const app = new PIXI.Application({
+  width: APP_W,
+  height: 10, // altezza vera calcolata dopo il layout, vedi sotto
+  backgroundColor: 0x1a1a2e,
+  antialias: true,
+  resolution: Math.min(window.devicePixelRatio || 1, 2),
+  autoDensity: true,
+});
+document.getElementById('app-container').appendChild(app.view);
+
+// ── HELPER GRAFICI ───────────────────────────────────────
+function darken(hex, f = 0.75) {
+  const r = (hex >> 16) & 0xff, g = (hex >> 8) & 0xff, b = hex & 0xff;
+  return (Math.max(0, Math.floor(r * f)) << 16) | (Math.max(0, Math.floor(g * f)) << 8) | Math.max(0, Math.floor(b * f));
+}
+
+// ═══════════════════════════════════════════════════════
+// ASSET — caricati da disco (non più procedurali/base64)
+//
+// Struttura cartelle attesa, relativa a questo file HTML:
+//   assets/mushrooms/{colore}.png            es. red.png, purple.png
+//   assets/mushrooms/{colore}_scared.png     es. red_scared.png
+//     colori: red, yellow, blue, green, orange, purple
+//   assets/spiders/1.png .. 4.png            livello ragno (1=normale,
+//                                             2=velenoso, 3=nero, 4=bruco)
+//   assets/bombs/h.png, v.png, cross.png     bomba riga/colonna/croce
+//   assets/specials/witch.png                power-up "maga"
+//   assets/specials/bomber.png               power-up "bombarolo"
+//   assets/specials/web.png                  ragnatela lasciata dal ragno
+//   assets/specials/petrified.png            fungo pietrificato (ragno nero)
+// ═══════════════════════════════════════════════════════
+let TEX = null;
+
+function buildAssetManifest() {
+  const manifest = {};
+  COLOR_NAMES.forEach(name => {
+    manifest['mushroom_' + name]           = 'assets/mushrooms/' + name + '.png';
+    manifest['mushroom_' + name + '_scared'] = 'assets/mushrooms/' + name + '_scared.png';
+  });
+  [1, 2, 3, 4].forEach(lvl => { manifest['spider_' + lvl] = 'assets/spiders/' + lvl + '.png'; });
+  ['h', 'v', 'cross'].forEach(bt => { manifest['bomb_' + bt] = 'assets/bombs/' + bt + '.png'; });
+  manifest.witch     = 'assets/specials/witch.png';
+  manifest.bomber    = 'assets/specials/bomber.png';
+  manifest.web       = 'assets/specials/web.png';
+  manifest.petrified = 'assets/specials/petrified.png';
+  return manifest;
+}
+
+async function loadAssets() {
+  const manifest = buildAssetManifest();
+  PIXI.Assets.addBundle('game', manifest);
+  const t = await PIXI.Assets.loadBundle('game');
+
+  TEX = { mushroom: {}, mushroomScared: {}, spider: {}, bomb: {} };
+  COLOR_NAMES.forEach(name => {
+    TEX.mushroom[name]       = t['mushroom_' + name];
+    TEX.mushroomScared[name] = t['mushroom_' + name + '_scared'];
+  });
+  [1, 2, 3, 4].forEach(lvl => { TEX.spider[lvl] = t['spider_' + lvl]; });
+  ['h', 'v', 'cross'].forEach(bt => { TEX.bomb[bt] = t['bomb_' + bt]; });
+  TEX.witch     = t.witch;
+  TEX.bomber    = t.bomber;
+  TEX.web       = t.web;
+  TEX.petrified = t.petrified;
+}
+
+function tweenValue(from, to, dur, onUpdate, onComplete, easing) {
+  easing = easing || (t => t);
+  const start = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - start) / dur);
+    onUpdate(from + (to - from) * easing(t));
+    if (t < 1) requestAnimationFrame(step);
+    else if (onComplete) onComplete();
+  }
+  requestAnimationFrame(step);
+}
+function easeOutBack(t) { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); }
+function easeOutQuad(t) { return 1 - (1 - t) * (1 - t); }
+
+function popIn(view) {
+  view.scale.set(0.15);
+  tweenValue(0.15, 1, 240, v => view.scale.set(v), null, easeOutBack);
+}
+function pulseOnce(view, peak, dur) {
+  peak = peak || 1.28; dur = dur || ANIM_MS;
+  tweenValue(1, peak, dur * 0.5, v => view.scale.set(v), () => {
+    tweenValue(peak, 1, dur * 0.5, v => view.scale.set(v));
+  }, easeOutQuad);
+}
+function flashTint(gfx, colorHex, ms) {
+  ms = ms || 380;
+  gfx.tint = colorHex;
+  setTimeout(() => { gfx.tint = 0xffffff; }, ms);
+}
+
+// ── CLASSI DI RENDERING ──────────────────────────────────
+class CellView extends PIXI.Container {
+  constructor(r, c) {
+    super();
+    this.r = r; this.c = c;
+
+    this.bg = new PIXI.Graphics();
+    this.addChild(this.bg);
+
+    // sprite del fungo (colore normale o "scared")
+    this.mush = new PIXI.Sprite(PIXI.Texture.EMPTY);
+    this.mush.anchor.set(0.5);
+    this.mush.x = CELL / 2; this.mush.y = CELL / 2;
+    this.mush.width = CELL * 0.82; this.mush.height = CELL * 0.82;
+    this.addChild(this.mush);
+
+    // sprite overlay: bomba OPPURE ragno OPPURE ragnatela OPPURE pietrificato
+    this.icon = new PIXI.Sprite(PIXI.Texture.EMPTY);
+    this.icon.anchor.set(0.5);
+    this.icon.x = CELL / 2; this.icon.y = CELL / 2;
+    this.icon.width = CELL * 0.86; this.icon.height = CELL * 0.86;
+    this.icon.visible = false;
+    this.addChild(this.icon);
+
+    this.pivot.set(CELL / 2, CELL / 2);
+    this.x = c * (CELL + GAP) + CELL / 2;
+    this.y = r * (CELL + GAP) + CELL / 2;
+
+    this.eventMode = 'static';
+    this.cursor = 'pointer';
+    this.on('pointertap', () => onCellClick(this.r, this.c));
+  }
+  drawBg(colorHex, borderHex, alpha) {
+    alpha = alpha === undefined ? 1 : alpha;
+    this.bg.clear();
+    this.bg.lineStyle(2, borderHex !== undefined ? borderHex : darken(colorHex), 1);
+    this.bg.beginFill(colorHex, alpha);
+    this.bg.drawRoundedRect(0, 0, CELL, CELL, 10);
+    this.bg.endFill();
+  }
+}
+
+class TokenView extends PIXI.Container {
+  constructor(size) {
+    super();
+    this.size = size;
+    this.bg = new PIXI.Graphics();
+    this.addChild(this.bg);
+    this.mush = new PIXI.Sprite(PIXI.Texture.EMPTY);
+    this.mush.anchor.set(0.5);
+    this.mush.x = size / 2; this.mush.y = size / 2;
+    this.mush.width = size * 0.82; this.mush.height = size * 0.82;
+    this.addChild(this.mush);
+    this.emptyLabel = new PIXI.Text('vuota', { fontFamily: 'Segoe UI, sans-serif', fontSize: 9, fill: 0x555555 });
+    this.emptyLabel.anchor.set(0.5);
+    this.emptyLabel.x = size / 2; this.emptyLabel.y = size / 2;
+    this.emptyLabel.visible = false;
+    this.addChild(this.emptyLabel);
+  }
+  drawBg(hex, borderHex) {
+    this.bg.clear();
+    this.bg.lineStyle(2, borderHex !== undefined ? borderHex : darken(hex));
+    this.bg.beginFill(hex);
+    this.bg.drawRoundedRect(0, 0, this.size, this.size, 8);
+    this.bg.endFill();
+  }
+}
+
+class PowerBar extends PIXI.Container {
+  constructor(colorName, hex, w, h) {
+    super();
+    this.w = w; this.h = h; this.hex = hex;
+    this.track = new PIXI.Graphics();
+    this.track.beginFill(0x222222);
+    this.track.drawRoundedRect(0, 0, w, h, 4);
+    this.track.endFill();
+    this.addChild(this.track);
+
+    this.fill = new PIXI.Graphics();
+    this.addChild(this.fill);
+
+    this.label = new PIXI.Text(COLOR_LABELS[colorName], { fontFamily: 'Segoe UI, sans-serif', fontSize: 9, fill: 0x666666, letterSpacing: 0.3 });
+    this.label.anchor.set(0.5, 0);
+    this.label.x = w / 2; this.label.y = h + 2;
+    this.addChild(this.label);
+  }
+  setPct(pct) {
+    this.fill.clear();
+    if (pct > 0) {
+      this.fill.beginFill(this.hex);
+      this.fill.drawRoundedRect(0, 0, Math.max(2, this.w * pct), this.h, 4);
+      this.fill.endFill();
+    }
+    this.label.style.fill = pct >= 1 ? 0xffffff : 0x666666;
+  }
+}
+
+function makeButton(label, w, h) {
+  const c = new PIXI.Container();
+  const g = new PIXI.Graphics();
+  g.lineStyle(1.5, 0x555555);
+  g.drawRoundedRect(0, 0, w, h, 8);
+  c.addChild(g);
+  const t = new PIXI.Text(label, { fontFamily: 'Segoe UI, sans-serif', fontSize: 12, fill: 0xaaaaaa, letterSpacing: 0.5 });
+  t.anchor.set(0.5);
+  t.x = w / 2; t.y = h / 2;
+  c.addChild(t);
+  c.eventMode = 'static'; c.cursor = 'pointer';
+  c.g = g; c.t = t; c.w = w; c.h = h;
+  c.on('pointerover', () => { g.clear(); g.lineStyle(1.5, 0x888888); g.drawRoundedRect(0, 0, w, h, 8); t.style.fill = 0xffffff; });
+  c.on('pointerout',  () => { g.clear(); g.lineStyle(1.5, 0x555555); g.drawRoundedRect(0, 0, w, h, 8); t.style.fill = 0xaaaaaa; });
+  return c;
+}
+
+// ── COSTRUZIONE UI ───────────────────────────────────────
+let cursorY = 16;
+
+const titleText = new PIXI.Text('🍄 SHROOMATCH', {
+  fontFamily: 'Segoe UI, sans-serif', fontSize: 22, fontWeight: '800', fill: 0xe0d7ff, letterSpacing: 2,
+});
+titleText.anchor.set(0.5, 0);
+titleText.x = APP_W / 2; titleText.y = cursorY;
+app.stage.addChild(titleText);
+cursorY += 30;
+
+const scoreText = new PIXI.Text('Punteggio: 0', { fontFamily: 'Segoe UI, sans-serif', fontSize: 14, fill: 0x999999 });
+scoreText.anchor.set(0.5, 0);
+scoreText.x = APP_W / 2; scoreText.y = cursorY;
+app.stage.addChild(scoreText);
+cursorY += 26;
+
+// Power bars: 3 colonne x 2 righe
+const PB_ORDER = ['red', 'yellow', 'blue', 'green', 'orange', 'purple'];
+const pbCols = 3, pbW = 108, pbH = 8, pbGapX = 8, pbGapY = 20;
+const pbAreaW = pbCols * pbW + (pbCols - 1) * pbGapX;
+const pbStartX = (APP_W - pbAreaW) / 2;
+const powerBarsLayer = new PIXI.Container();
+powerBarsLayer.y = cursorY;
+app.stage.addChild(powerBarsLayer);
+const powerBars = {};
+PB_ORDER.forEach((name, i) => {
+  const col = i % 3, row = Math.floor(i / 3);
+  const pb = new PowerBar(name, COLORS[name], pbW, pbH);
+  pb.x = pbStartX + col * (pbW + pbGapX);
+  pb.y = row * (pbH + pbGapY);
+  powerBarsLayer.addChild(pb);
+  powerBars[name] = pb;
+});
+cursorY += 2 * (pbH + pbGapY) + 8;
+
+// Griglia
+const gridLayer = new PIXI.Container();
+gridLayer.x = (APP_W - BOARD_W) / 2;
+gridLayer.y = cursorY;
+app.stage.addChild(gridLayer);
+
+const gridBg = new PIXI.Graphics();
+gridBg.beginFill(0x111122);
+gridBg.drawRoundedRect(-8, -8, BOARD_W + 16, BOARD_H + 16, 14);
+gridBg.endFill();
+gridLayer.addChild(gridBg);
+
+const cellViews = [];
+for (let r = 0; r < ROWS; r++) {
+  cellViews[r] = [];
+  for (let c = 0; c < COLS; c++) {
+    const cv = new CellView(r, c);
+    gridLayer.addChild(cv);
+    cellViews[r][c] = cv;
+  }
+}
+cursorY += BOARD_H + 16 + 18;
+
+// Controlli: riserva / coda / countdown ragno
+const controlsLayer = new PIXI.Container();
+controlsLayer.y = cursorY;
+app.stage.addChild(controlsLayer);
+
+const reserveLabel = new PIXI.Text('RISERVA', { fontFamily: 'Segoe UI, sans-serif', fontSize: 9, fill: 0x666666, letterSpacing: 1 });
+reserveLabel.x = 20; reserveLabel.y = 0;
+controlsLayer.addChild(reserveLabel);
+
+const reserveView = new TokenView(50);
+reserveView.x = 20; reserveView.y = 14;
+reserveView.eventMode = 'static'; reserveView.cursor = 'pointer';
+reserveView.on('pointertap', () => onReserveClick());
+controlsLayer.addChild(reserveView);
+
+const queueLabel = new PIXI.Text('PROSSIMI', { fontFamily: 'Segoe UI, sans-serif', fontSize: 9, fill: 0x666666, letterSpacing: 1 });
+queueLabel.x = 92; queueLabel.y = 0;
+controlsLayer.addChild(queueLabel);
+
+const queueViews = [new TokenView(50), new TokenView(38), new TokenView(30)];
+(function layoutQueue() {
+  let qx = 92;
+  queueViews.forEach((qv, i) => {
+    qv.x = qx; qv.y = 14 + (50 - qv.size) / 2;
+    qv.alpha = i === 0 ? 1 : (i === 1 ? 0.75 : 0.5);
+    controlsLayer.addChild(qv);
+    qx += qv.size + 8;
+  });
+})();
+
+const spiderLabel = new PIXI.Text('RAGNO TRA', { fontFamily: 'Segoe UI, sans-serif', fontSize: 9, fill: 0x666666, letterSpacing: 1 });
+spiderLabel.anchor.set(1, 0);
+spiderLabel.x = APP_W - 20; spiderLabel.y = 0;
+controlsLayer.addChild(spiderLabel);
+
+const spiderCountdownText = new PIXI.Text('2', { fontFamily: 'Segoe UI, sans-serif', fontSize: 26, fontWeight: '800', fill: 0xe74c3c });
+spiderCountdownText.anchor.set(1, 0);
+spiderCountdownText.x = APP_W - 20; spiderCountdownText.y = 14;
+controlsLayer.addChild(spiderCountdownText);
+
+cursorY += 68;
+
+const feedbackText = new PIXI.Text('', { fontFamily: 'Segoe UI, sans-serif', fontSize: 13, fill: 0x888888, align: 'center' });
+feedbackText.anchor.set(0.5, 0);
+feedbackText.x = APP_W / 2; feedbackText.y = cursorY;
+app.stage.addChild(feedbackText);
+cursorY += 22;
+
+const newGameBtn = makeButton('↺ NUOVA PARTITA', 170, 36);
+newGameBtn.x = APP_W / 2 - 85; newGameBtn.y = cursorY;
+newGameBtn.on('pointertap', () => newGame());
+app.stage.addChild(newGameBtn);
+cursorY += 36 + 16;
+
+const APP_H = cursorY;
+app.renderer.resize(APP_W, APP_H);
+
+// Game over overlay
+const gameOverLayer = new PIXI.Container();
+gameOverLayer.visible = false;
+app.stage.addChild(gameOverLayer);
+
+const goBg = new PIXI.Graphics();
+goBg.beginFill(0x000000, 0.82);
+goBg.drawRect(0, 0, APP_W, APP_H);
+goBg.endFill();
+goBg.eventMode = 'static';
+gameOverLayer.addChild(goBg);
+
+const goTitle = new PIXI.Text('GAME OVER', { fontFamily: 'Segoe UI, sans-serif', fontSize: 30, fill: 0xe74c3c, fontWeight: '800', letterSpacing: 3 });
+goTitle.anchor.set(0.5);
+goTitle.x = APP_W / 2; goTitle.y = APP_H / 2 - 50;
+gameOverLayer.addChild(goTitle);
+
+const goScoreText = new PIXI.Text('', { fontFamily: 'Segoe UI, sans-serif', fontSize: 16, fill: 0xcccccc });
+goScoreText.anchor.set(0.5);
+goScoreText.x = APP_W / 2; goScoreText.y = APP_H / 2;
+gameOverLayer.addChild(goScoreText);
+
+const goBtn = makeButton('RIGIOCA', 140, 44);
+goBtn.x = APP_W / 2 - 70; goBtn.y = APP_H / 2 + 40;
+goBtn.g.clear(); goBtn.g.beginFill(0xe74c3c); goBtn.g.drawRoundedRect(0, 0, 140, 44, 10); goBtn.g.endFill();
+goBtn.t.style.fill = 0xffffff; goBtn.t.style.fontSize = 14;
+goBtn.on('pointertap', () => newGame());
+gameOverLayer.addChild(goBtn);
+
+// ── FEEDBACK TESTO ───────────────────────────────────────
+let feedbackTimer = null;
+function feedback(msg, color, ms) {
+  clearTimeout(feedbackTimer);
+  feedbackText.text = msg;
+  feedbackText.style.fill = color === undefined ? 0x888888 : color;
+  if (ms) feedbackTimer = setTimeout(() => { feedbackText.text = ''; }, ms);
+}
+
+// ── STATO DI GIOCO ───────────────────────────────────────
+let grid, queue, reserve, score, tapCount, gameOver, busy, cascading;
+let needSpiderMove, needSpawn, spiderSeq, powerCharge;
+
+function mkEmptyCell() { return { color: null, bomb: null, spider: 0, spiderId: 0, web: false, black: false, empty: true }; }
+function mkCell(color) {
+  return { color: color || rndColor(), bomb: null, spider: 0, spiderId: 0, web: false, black: false, empty: false };
+}
+function rndColor() { return COLOR_NAMES[Math.floor(Math.random() * COLOR_NAMES.length)]; }
+function rndToken() {
+  const r = Math.random();
+  if (r < 1 / 7) return 'witch';
+  if (r < 2 / 7) return 'bomber';
+  return rndColor();
+}
+
+// ── RENDER CELLE / TOKEN ─────────────────────────────────
+function renderCell(r, c) {
+  const d = grid[r][c];
+  const view = cellViews[r][c];
+  view.scale.set(1);
+  view.alpha = 1;
+  view.mush.visible = false;
+  view.mush.tint = 0xffffff;
+  view.icon.visible = false;
+
+  if (d.empty) {
+    view.drawBg(0x14141f, 0x0a0a12, 1);
+    return;
+  }
+  if (d.black && !d.spider) {
+    view.drawBg(0x1c1c1c, 0x000000);
+    view.icon.texture = TEX.petrified;
+    view.icon.visible = true;
+    return;
+  }
+
+  const hex = COLORS[d.color];
+  view.drawBg(hex);
+  const scared = !!(d.spider || d.web);
+  view.mush.texture = scared ? TEX.mushroomScared[d.color] : TEX.mushroom[d.color];
+  view.mush.visible = true;
+
+  if (d.bomb) {
+    view.icon.texture = TEX.bomb[d.bomb];
+    view.icon.visible = true;
+  } else if (d.spider) {
+    view.icon.texture = TEX.spider[d.spider];
+    view.icon.visible = true;
+  } else if (d.web) {
+    view.icon.texture = TEX.web;
+    view.icon.visible = true;
+  }
+}
+function renderAllCells() {
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) renderCell(r, c);
+}
+
+function renderToken(view, token) {
+  view.mush.visible = true;
+  view.mush.tint = 0xffffff;
+  view.emptyLabel.visible = false;
+
+  if (!token) {
+    view.bg.clear();
+    view.bg.lineStyle(2, 0x444444);
+    view.bg.drawRoundedRect(0, 0, view.size, view.size, 8);
+    view.mush.visible = false;
+    view.emptyLabel.visible = true;
+    return;
+  }
+  if (token === 'witch') {
+    view.drawBg(0x2c2c54);
+    view.mush.texture = TEX.witch;
+    return;
+  }
+  if (token === 'bomber') {
+    view.drawBg(0x5c2c2c);
+    view.mush.texture = TEX.bomber;
+    return;
+  }
+  const hex = COLORS[token];
+  view.drawBg(hex);
+  view.mush.texture = TEX.mushroom[token];
+}
+function renderQueueUI() { queueViews.forEach((v, i) => renderToken(v, queue[i])); }
+function renderReserveUI() { renderToken(reserveView, reserve); }
+function renderCountdown() {
+  const remaining = SPIDER_EVERY - (tapCount % SPIDER_EVERY);
+  spiderCountdownText.text = String(remaining);
+  if (remaining === 1) pulseOnce(spiderCountdownText, 1.4, 300);
+}
+
+// ── MATCH DETECTION ──────────────────────────────────────
+function canMatch(r, c) {
+  const d = grid[r][c];
+  return !d.black && !d.bomb && !d.empty;
+}
+function findMatches() {
+  const runs = [];
+  for (let r = 0; r < ROWS; r++) {
+    let s = 0;
+    for (let c = 1; c <= COLS; c++) {
+      const cont = c < COLS && canMatch(r, c) && canMatch(r, c - 1) && grid[r][c].color === grid[r][c - 1].color;
+      if (!cont) {
+        if (c - s >= 3 && canMatch(r, s)) runs.push({ cells: Array.from({ length: c - s }, (_, i) => ({ r, c: s + i })), dir: 'h' });
+        s = c;
+      }
+    }
+  }
+  for (let c = 0; c < COLS; c++) {
+    let s = 0;
+    for (let r = 1; r <= ROWS; r++) {
+      const cont = r < ROWS && canMatch(r, c) && canMatch(r - 1, c) && grid[r][c].color === grid[r - 1][c].color;
+      if (!cont) {
+        if (r - s >= 3 && canMatch(s, c)) runs.push({ cells: Array.from({ length: r - s }, (_, i) => ({ r: s + i, c })), dir: 'v' });
+        s = r;
+      }
+    }
+  }
+  if (!runs.length) return [];
+
+  const cellToRun = {};
+  runs.forEach((run, idx) => run.cells.forEach(({ r, c }) => {
+    const k = r + ',' + c;
+    (cellToRun[k] = cellToRun[k] || []).push(idx);
+  }));
+
+  const used = new Set(), merged = [];
+  runs.forEach((run, idx) => {
+    if (used.has(idx)) return;
+    const group = new Set([idx]);
+    run.cells.forEach(({ r, c }) => (cellToRun[r + ',' + c] || []).forEach(j => group.add(j)));
+    group.forEach(j => used.add(j));
+
+    const allCells = new Map();
+    const dirs = new Set();
+    group.forEach(j => {
+      runs[j].cells.forEach(cell => allCells.set(cell.r + ',' + cell.c, cell));
+      dirs.add(runs[j].dir);
+    });
+
+    const cells = [...allCells.values()];
+    const type = dirs.size > 1 ? 'cross' : (cells.length > 3 ? runs[[...group][0]].dir : 'none');
+    merged.push({ cells, type });
+  });
+  return merged;
+}
+function bombType(match) {
+  if (match.type === 'cross') return 'cross';
+  if (match.type === 'h' && match.cells.length >= 4) return 'h';
+  if (match.type === 'v' && match.cells.length >= 4) return 'v';
+  return null;
+}
+
+// ── SPAWN / CASCATA ──────────────────────────────────────
+function spawnCells(keys, bombPlacements) {
+  const played = new Set();
+  keys.forEach(key => {
+    const [r, c] = key.split(',').map(Number);
+    if (grid[r][c].empty) return;
+    grid[r][c] = mkCell();
+    const color = grid[r][c].color;
+    renderCell(r, c);
+    popIn(cellViews[r][c]);
+    if (!played.has(color)) { playMatchSound(color); played.add(color); }
+  });
+  bombPlacements.forEach(({ r, c, type, color }) => {
+    grid[r][c] = mkCell(color);
+    grid[r][c].bomb = type;
+    renderCell(r, c);
+    popIn(cellViews[r][c]);
+  });
+}
+
+function resolveBoard() {
+  const matches = findMatches();
+  if (!matches.length) { tryMoveSpiders(); return; }
+
+  cascading++;
+  const toSpawn = new Set();
+  const bombs = [];
+
+  matches.forEach(match => {
+    const bt = bombType(match);
+    match.cells.forEach(({ r, c }) => {
+      toSpawn.add(r + ',' + c);
+      pulseOnce(cellViews[r][c], 1.25, ANIM_MS);
+    });
+    if (bt) {
+      const mid = match.cells[Math.floor(match.cells.length / 2)];
+      bombs.push({ r: mid.r, c: mid.c, type: bt, color: grid[mid.r][mid.c].color });
+    }
+  });
+
+  setTimeout(() => {
+    spawnCells(toSpawn, bombs);
+    cascading--;
+    setTimeout(resolveBoard, CASCADE_MS);
+  }, ANIM_MS);
+}
+
+function applyMatches(matches, tapR, tapC) {
+  if (!matches.length) return false;
+
+  const toSpawn = new Set();
+  const bombs = [];
+
+  matches.forEach(match => {
+    const bt = bombType(match);
+    match.cells.forEach(({ r, c }) => {
+      toSpawn.add(r + ',' + c);
+      pulseOnce(cellViews[r][c], 1.25, ANIM_MS);
+    });
+    if (bt) {
+      const inMatch = tapR !== undefined && match.cells.some(d => d.r === tapR && d.c === tapC);
+      const pos = inMatch ? { r: tapR, c: tapC } : match.cells[Math.floor(match.cells.length / 2)];
+      bombs.push({ r: pos.r, c: pos.c, type: bt, color: grid[pos.r][pos.c].color });
+    }
+  });
+
+  score += toSpawn.size * 10;
+  scoreText.text = 'Punteggio: ' + score;
+
+  const firstCell = matches[0].cells[0];
+  playMatchSound(grid[firstCell.r][firstCell.c].color);
+
+  if (bombs.length) {
+    feedback(bombs.map(b => b.type === 'cross' ? '✛ Croce!' : b.type === 'h' ? '↔ Riga!' : '↕ Col.!').join(' '), 0xffd700, 1500);
+  } else {
+    feedback('+' + toSpawn.size * 10, 0xaaaaaa, 1200);
+  }
+
+  cascading++;
+  setTimeout(() => {
+    spawnCells(toSpawn, bombs);
+    cascading--;
+    setTimeout(resolveBoard, CASCADE_MS);
+  }, ANIM_MS);
+
+  const hasGood = matches.some(m => m.type !== 'none');
+
+  matches.forEach(match => {
+    const colorCount = {};
+    match.cells.forEach(({ r, c }) => {
+      const col = grid[r] && grid[r][c] ? grid[r][c].color : null;
+      if (col) colorCount[col] = (colorCount[col] || 0) + 1;
+    });
+    Object.entries(colorCount).forEach(([col, amt]) => addPowerCharge(col, amt));
+  });
+
+  return hasGood ? 'good' : 'small';
+}
+
+// ── BOMBE ────────────────────────────────────────────────
+function explodeBomb(r, c, exploded) {
+  if (!exploded) exploded = new Set();
+  const key = r + ',' + c;
+  if (exploded.has(key)) return;
+  exploded.add(key);
+
+  const bt = grid[r][c].bomb;
+  if (!bt) return;
+
+  const hit = new Set();
+  if (bt === 'h' || bt === 'cross') for (let cc = 0; cc < COLS; cc++) { if (!grid[r][cc].empty) hit.add(r + ',' + cc); }
+  if (bt === 'v' || bt === 'cross') for (let rr = 0; rr < ROWS; rr++) { if (!grid[rr][c].empty) hit.add(rr + ',' + c); }
+
+  const chain = [];
+  hit.forEach(k => {
+    const [rr, cc] = k.split(',').map(Number);
+    if ((rr !== r || cc !== c) && grid[rr][cc].bomb && !exploded.has(k)) chain.push({ r: rr, c: cc });
+  });
+
+  hit.forEach(k => {
+    const [rr, cc] = k.split(',').map(Number);
+    const d = grid[rr][cc];
+    if (d.spider) { d.spider = 0; d.spiderId = 0; }
+    d.web = false; d.black = false;
+  });
+
+  hit.forEach(k => {
+    const [rr, cc] = k.split(',').map(Number);
+    pulseOnce(cellViews[rr][cc], 1.4, ANIM_MS);
+  });
+
+  score += hit.size * 10;
+  scoreText.text = 'Punteggio: ' + score;
+  playBombSound(bt);
+
+  const label = bt === 'cross' ? '✛ Croce' : bt === 'h' ? '↔ Riga' : '↕ Col.';
+  feedback(label + (chain.length ? ' 💥 Catena!' : '! +' + hit.size * 10), 0xffd700, 1500);
+
+  chain.forEach(({ r: rr, c: cc }) => explodeBomb(rr, cc, exploded));
+
+  cascading++;
+  setTimeout(() => {
+    hit.forEach(k => {
+      const [rr, cc] = k.split(',').map(Number);
+      const col = grid[rr][cc] ? grid[rr][cc].color : null;
+      if (col) addPowerCharge(col, 1);
+    });
+    spawnCells(hit, []);
+    cascading--;
+    setTimeout(resolveBoard, CASCADE_MS);
+  }, ANIM_MS);
+}
+
+// ── RAGNI ────────────────────────────────────────────────
+function currentSpiderLevel() {
+  for (const { min, level } of SPIDER_THRESHOLDS) if (score >= min) return level;
+  return 1;
+}
+function freeCells() {
+  const free = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const d = grid[r][c];
+    if (!d.spider && !d.web && !d.black && !d.bomb && !d.empty) free.push({ r, c });
+  }
+  return free;
+}
+function spawnSpider() {
+  const lvl = currentSpiderLevel();
+  const free = freeCells();
+  if (!free.length) { triggerGameOver(); return; }
+
+  const pos = free[Math.floor(Math.random() * free.length)];
+  spiderSeq++;
+  grid[pos.r][pos.c].spider = lvl;
+  grid[pos.r][pos.c].spiderId = spiderSeq;
+  renderCell(pos.r, pos.c);
+  popIn(cellViews[pos.r][pos.c]);
+
+  const msg = lvl === 3 ? '💀 Ragno nero!' : lvl === 2 ? '🕷 Ragno velenoso!' : lvl === 4 ? '🐛 Bruco!' : '🕷 Ragno!';
+  feedback(msg, 0xe74c3c, 1800);
+
+  checkStalemate();
+  if (freeCells().length === 0) triggerGameOver();
+}
+
+function scheduleMoveSpiders() { needSpiderMove = true; tryMoveSpiders(); }
+function tryMoveSpiders() {
+  if (cascading > 0 || !needSpiderMove) return;
+  needSpiderMove = false;
+  moveSpiders();
+  if (needSpawn) { needSpawn = false; spawnSpider(); }
+  busy = false;
+}
+
+function moveSpiders() {
+  const spiders = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++)
+    if (grid[r][c].spider) spiders.push({ r, c, lvl: grid[r][c].spider, sid: grid[r][c].spiderId });
+  if (!spiders.length) return;
+
+  spiders.forEach(({ r, c, lvl }) => {
+    grid[r][c].spider = 0; grid[r][c].spiderId = 0;
+    if (lvl === 2) grid[r][c].web = true;
+    if (lvl === 3) grid[r][c].black = true;
+    if (lvl === 4) grid[r][c] = mkEmptyCell();
+  });
+
+  const taken = new Set();
+  spiders.forEach(({ r, c, lvl, sid }) => {
+    if (lvl === 4) return;
+    const free = [];
+    for (let rr = 0; rr < ROWS; rr++) for (let cc = 0; cc < COLS; cc++) {
+      const k = rr + ',' + cc;
+      const d = grid[rr][cc];
+      if (!d.web && !d.black && !d.bomb && !d.spider && !d.empty && !taken.has(k)) free.push({ r: rr, c: cc });
+    }
+    if (!free.length) return;
+    const dest = free[Math.floor(Math.random() * free.length)];
+    taken.add(dest.r + ',' + dest.c);
+    grid[dest.r][dest.c].spider = lvl;
+    grid[dest.r][dest.c].spiderId = sid;
+  });
+
+  renderAllCells();
+  if (freeCells().length === 0) triggerGameOver();
+}
+
+function checkStalemate() {
+  const nextColor = queue[0];
+  const reserveColor = reserve;
+  if (nextColor === 'witch' || nextColor === 'bomber') return;
+
+  const available = new Set([nextColor]);
+  if (reserveColor && reserveColor !== 'witch' && reserveColor !== 'bomber') available.add(reserveColor);
+
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const d = grid[r][c];
+    if (!d.spider && !d.web && !d.black && !d.bomb && !d.empty) {
+      if (!available.has(d.color)) return;
+    }
+  }
+  triggerGameOver();
+}
+
+function triggerGameOver() {
+  gameOver = true;
+  goScoreText.text = 'Punteggio finale: ' + score;
+  gameOverLayer.visible = true;
+}
+
+// ── POWER-UP ─────────────────────────────────────────────
+function addPowerCharge(color, amount) {
+  if (!(color in powerCharge)) return;
+  if (powerCharge[color] >= POWER_MAX) return;
+  powerCharge[color] = Math.min(POWER_MAX, powerCharge[color] + amount);
+  powerBars[color].setPct(powerCharge[color] / POWER_MAX);
+  if (powerCharge[color] >= POWER_MAX) setTimeout(() => activatePower(color), 300);
+}
+function activatePower(color) {
+  powerCharge[color] = 0;
+  powerBars[color].setPct(0);
+  feedback('⚡ ' + COLOR_LABELS[color].toUpperCase() + ' POWER!', COLORS[color], 2000);
+  switch (color) {
+    case 'red':    powerRed();    break;
+    case 'yellow': powerYellow(); break;
+    case 'blue':   powerBlue();   break;
+    case 'green':  powerGreen();  break;
+    case 'orange': powerOrange(); break;
+    case 'purple': powerPurple(); break;
+  }
+}
+
+function flashCellsPixi(cellSet, colorHex, callback) {
+  cellSet.forEach(k => {
+    const [r, c] = k.split(',').map(Number);
+    const view = cellViews[r][c];
+    if (!view) return;
+    flashTint(view.bg, colorHex, 380);
+    pulseOnce(view, 1.15, 380);
+  });
+  setTimeout(callback, 400);
+}
+
+function clearCellsSimple(cellSet) {
+  cascading++;
+  setTimeout(() => {
+    cellSet.forEach(k => {
+      const [r, c] = k.split(',').map(Number);
+      grid[r][c].spider = 0; grid[r][c].spiderId = 0;
+      grid[r][c].web = false; grid[r][c].black = false;
+      if (!grid[r][c].empty) { grid[r][c] = mkCell(); renderCell(r, c); popIn(cellViews[r][c]); }
+      else renderCell(r, c);
+    });
+    cascading--;
+    setTimeout(resolveBoard, CASCADE_MS);
+  }, ANIM_MS);
+}
+
+function powerRed() {
+  const free = [];
+  for (let r = 1; r < ROWS - 1; r++) for (let c = 1; c < COLS - 1; c++) free.push({ r, c });
+  for (let i = 0; i < 2; i++) {
+    if (!free.length) break;
+    const idx = Math.floor(Math.random() * free.length);
+    const { r, c } = free.splice(idx, 1)[0];
+    const cells = new Set();
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      const r2 = r + dr, c2 = c + dc;
+      if (r2 >= 0 && r2 < ROWS && c2 >= 0 && c2 < COLS && !grid[r2][c2].empty) cells.add(r2 + ',' + c2);
+    }
+    flashCellsPixi(cells, 0xe74c3c, () => {
+      cells.forEach(k => {
+        const [r2, c2] = k.split(',').map(Number);
+        const col = grid[r2][c2].color;
+        if (col) addPowerCharge(col, 1);
+      });
+      clearCellsSimple(cells);
+    });
+  }
+}
+function powerYellow() {
+  const set = Math.random() < 0.5 ? [0, 2, 4] : [1, 3, 5];
+  const cells = new Set();
+  set.forEach(r => { for (let c = 0; c < COLS; c++) { if (!grid[r][c].empty) cells.add(r + ',' + c); } });
+  flashCellsPixi(cells, 0xf1c40f, () => clearCellsSimple(cells));
+}
+function powerBlue() {
+  const cells = new Set();
+  for (let c = 0; c < COLS; c++) { cells.add('0,' + c); cells.add((ROWS - 1) + ',' + c); }
+  for (let r = 1; r < ROWS - 1; r++) { cells.add(r + ',0'); cells.add(r + ',' + (COLS - 1)); }
+  const cr = Math.floor(ROWS / 2), cc = Math.floor(COLS / 2);
+  [[cr - 1, cc - 1], [cr - 1, cc], [cr, cc - 1], [cr, cc]].forEach(([r, c]) => cells.add(r + ',' + c));
+  flashCellsPixi(cells, 0x3498db, () => clearCellsSimple(cells));
+}
+function powerOrange() {
+  const set = Math.random() < 0.5 ? [0, 2, 4] : [1, 3, 5];
+  const cells = new Set();
+  set.forEach(c => { for (let r = 0; r < ROWS; r++) { if (!grid[r][c].empty) cells.add(r + ',' + c); } });
+  flashCellsPixi(cells, 0xe67e22, () => clearCellsSimple(cells));
+}
+function powerGreen() {
+  const free = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++)
+    if (!grid[r][c].bomb && !grid[r][c].spider && !grid[r][c].web && !grid[r][c].black && !grid[r][c].empty) free.push({ r, c });
+  const chosen = new Set();
+  for (let i = 0; i < 3; i++) {
+    if (!free.length) break;
+    const idx = Math.floor(Math.random() * free.length);
+    const { r, c } = free.splice(idx, 1)[0];
+    chosen.add(r + ',' + c);
+  }
+  flashCellsPixi(chosen, 0x2ecc71, () => {
+    chosen.forEach(k => {
+      const [r, c] = k.split(',').map(Number);
+      grid[r][c].bomb = 'cross';
+      renderCell(r, c);
+      popIn(cellViews[r][c]);
+    });
+  });
+}
+function powerPurple() {
+  const cells = new Set();
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++)
+    if (grid[r][c].spider || grid[r][c].web) cells.add(r + ',' + c);
+  if (!cells.size) return;
+  flashCellsPixi(cells, 0x9b59b6, () => {
+    cells.forEach(k => {
+      const [r, c] = k.split(',').map(Number);
+      grid[r][c].spider = 0; grid[r][c].spiderId = 0; grid[r][c].web = false;
+      renderCell(r, c);
+      pulseOnce(cellViews[r][c], 1.2, ANIM_MS);
+    });
+  });
+}
+
+// ── INPUT ────────────────────────────────────────────────
+function onCellClick(r, c) {
+  if (gameOver || busy) return;
+  const d = grid[r][c];
+  if (d.spider || d.web || d.black || d.empty) return;
+
+  busy = true;
+
+  if (d.bomb) {
+    tapCount++;
+    if (tapCount % SPIDER_EVERY === 0) needSpawn = true;
+    renderCountdown();
+    explodeBomb(r, c);
+    scheduleMoveSpiders();
+    return;
+  }
+
+  const token = queue[0];
+  if (token !== 'witch' && token !== 'bomber' && d.color === token) { busy = false; return; }
+
+  if (token === 'witch' || token === 'bomber') {
+    tapCount++;
+    if (tapCount % SPIDER_EVERY === 0) needSpawn = true;
+    renderCountdown();
+  }
+
+  if (token === 'witch') {
+    const targetColor = d.color;
+    queue.shift(); queue.push(rndToken());
+    renderQueueUI();
+
+    const view = cellViews[r][c];
+    view.icon.visible = false;
+    view.mush.visible = true;
+    view.mush.tint = 0xffffff;
+    view.mush.texture = TEX.witch;
+    view.drawBg(0x2c2c54);
+
+    const toMatch = new Set();
+    for (let r2 = 0; r2 < ROWS; r2++) for (let c2 = 0; c2 < COLS; c2++)
+      if (grid[r2][c2].color === targetColor && !grid[r2][c2].black && !grid[r2][c2].bomb && !grid[r2][c2].empty) toMatch.add(r2 + ',' + c2);
+
+    toMatch.forEach(k => {
+      const [r2, c2] = k.split(',').map(Number);
+      flashTint(cellViews[r2][c2].bg, 0xffffff, 900);
+      pulseOnce(cellViews[r2][c2], 1.2, 900);
+    });
+
+    score += toMatch.size * 10;
+    scoreText.text = 'Punteggio: ' + score;
+    feedback('✨ Magia! +' + toMatch.size * 10, 0xffd700, 2000);
+
+    cascading++;
+    setTimeout(() => {
+      toMatch.forEach(k => {
+        const [r2, c2] = k.split(',').map(Number);
+        addPowerCharge(targetColor, 1);
+        grid[r2][c2].spider = 0; grid[r2][c2].spiderId = 0; grid[r2][c2].web = false;
+        grid[r2][c2] = mkCell();
+        renderCell(r2, c2); popIn(cellViews[r2][c2]);
+      });
+      renderCell(r, c);
+      cascading--;
+      scheduleMoveSpiders();
+      setTimeout(resolveBoard, CASCADE_MS);
+    }, 950);
+
+    renderCountdown();
+    return;
+  }
+
+  if (token === 'bomber') {
+    queue.shift(); queue.push(rndToken());
+    renderQueueUI();
+
+    const view = cellViews[r][c];
+    view.icon.visible = false;
+    view.mush.visible = true;
+    view.mush.tint = 0xffffff;
+    view.mush.texture = TEX.bomber;
+    view.drawBg(0x5c2c2c);
+
+    const toExplode = new Set();
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      const r2 = r + dr, c2 = c + dc;
+      if (r2 >= 0 && r2 < ROWS && c2 >= 0 && c2 < COLS && !grid[r2][c2].empty) toExplode.add(r2 + ',' + c2);
+    }
+
+    toExplode.forEach(k => {
+      const [r2, c2] = k.split(',').map(Number);
+      flashTint(cellViews[r2][c2].bg, 0xff6b00, 900);
+      pulseOnce(cellViews[r2][c2], 1.2, 900);
+    });
+
+    feedback('💥 Boom! +' + toExplode.size * 10, 0xff6b00, 1500);
+
+    setTimeout(() => {
+      const chainBombs = [];
+      toExplode.forEach(k => {
+        const [r2, c2] = k.split(',').map(Number);
+        if (grid[r2][c2].bomb) chainBombs.push({ r: r2, c: c2, bomb: grid[r2][c2].bomb });
+      });
+
+      score += toExplode.size * 10;
+      scoreText.text = 'Punteggio: ' + score;
+      if (chainBombs.length) feedback('💥 Catena!', 0xff6b00, 1500);
+
+      cascading++;
+      setTimeout(() => {
+        toExplode.forEach(k => {
+          const [r2, c2] = k.split(',').map(Number);
+          const elimColor = grid[r2][c2].color;
+          if (elimColor) addPowerCharge(elimColor, 1);
+          grid[r2][c2].spider = 0; grid[r2][c2].spiderId = 0; grid[r2][c2].web = false; grid[r2][c2].black = false;
+          grid[r2][c2] = mkCell();
+          renderCell(r2, c2); popIn(cellViews[r2][c2]);
+        });
+        chainBombs.forEach(({ r: r2, c: c2, bomb }) => {
+          grid[r2][c2].bomb = bomb;
+          explodeBomb(r2, c2);
+        });
+        cascading--;
+        scheduleMoveSpiders();
+        setTimeout(resolveBoard, CASCADE_MS);
+      }, ANIM_MS);
+    }, 950);
+
+    renderCountdown();
+    return;
+  }
+
+  // Piazza colore
+  grid[r][c] = mkCell(token);
+  queue.shift(); queue.push(rndToken());
+  renderCell(r, c);
+  popIn(cellViews[r][c]);
+  renderQueueUI();
+
+  tapCount++;
+  if (tapCount % SPIDER_EVERY === 0) needSpawn = true;
+  renderCountdown();
+
+  const matches = findMatches();
+  const result = applyMatches(matches, r, c);
+
+  checkStalemate();
+
+  if (result === false) {
+    moveSpiders();
+    if (needSpawn) { needSpawn = false; spawnSpider(); }
+    busy = false;
+  } else {
+    scheduleMoveSpiders();
+  }
+}
+
+function onReserveClick() {
+  if (gameOver || busy) return;
+  const cur = queue[0];
+  if (!reserve) {
+    reserve = cur;
+    queue.shift();
+    queue.push(rndToken());
+  } else {
+    const tmp = reserve;
+    reserve = queue[0];
+    queue[0] = tmp;
+  }
+  renderReserveUI();
+  renderQueueUI();
+}
+
+// ── AUDIO (Web Audio, invariato) ─────────────────────────
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playTone(opts) {
+  opts = opts || {};
+  const freq = opts.freq !== undefined ? opts.freq : 440;
+  const freq2 = opts.freq2 !== undefined ? opts.freq2 : null;
+  const type = opts.type || 'sine';
+  const attack = opts.attack !== undefined ? opts.attack : 0.01;
+  const decay = opts.decay !== undefined ? opts.decay : 0.15;
+  const vol = opts.vol !== undefined ? opts.vol : 0.3;
+  const vibrato = opts.vibrato || 0;
+  try {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    if (freq2) osc.frequency.linearRampToValueAtTime(freq2, ctx.currentTime + decay);
+    if (vibrato > 0) {
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+      lfo.frequency.setValueAtTime(vibrato, ctx.currentTime);
+      lfoGain.gain.setValueAtTime(15, ctx.currentTime);
+      lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+      lfo.start(); lfo.stop(ctx.currentTime + decay + 0.1);
+    }
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + attack);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + attack + decay);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + attack + decay + 0.05);
+  } catch (e) {}
+}
+function playMatchSound(color) {
+  switch (color) {
+    case 'red':
+      playTone({ freq: 523, freq2: 784, type: 'square', decay: 0.12, vol: 0.25 });
+      setTimeout(() => playTone({ freq: 784, freq2: 1047, type: 'square', decay: 0.1, vol: 0.2 }), 80);
+      break;
+    case 'yellow':
+      playTone({ freq: 1047, type: 'sine', attack: 0.05, decay: 0.2, vol: 0.15, vibrato: 6 });
+      break;
+    case 'blue':
+      playTone({ freq: 130, freq2: 98, type: 'sawtooth', decay: 0.2, vol: 0.3 });
+      setTimeout(() => playTone({ freq: 110, type: 'square', decay: 0.1, vol: 0.15 }), 60);
+      break;
+    case 'green':
+      playTone({ freq: 330, freq2: 880, type: 'sine', attack: 0.005, decay: 0.18, vol: 0.25 });
+      break;
+    case 'orange':
+      playTone({ freq: 880, type: 'triangle', decay: 0.08, vol: 0.2 });
+      setTimeout(() => playTone({ freq: 698, type: 'triangle', decay: 0.08, vol: 0.2 }), 70);
+      setTimeout(() => playTone({ freq: 587, type: 'triangle', decay: 0.1, vol: 0.2 }), 140);
+      break;
+    case 'purple':
+      playTone({ freq: 659, type: 'sine', attack: 0.08, decay: 0.5, vol: 0.2, vibrato: 5 });
+      setTimeout(() => playTone({ freq: 523, type: 'sine', attack: 0.05, decay: 0.4, vol: 0.12, vibrato: 4 }), 150);
+      break;
+  }
+}
+function playBombSound() {
+  playTone({ freq: 200, freq2: 50, type: 'sawtooth', decay: 0.3, vol: 0.4 });
+  setTimeout(() => playTone({ freq: 150, freq2: 40, type: 'square', decay: 0.25, vol: 0.3 }), 60);
+}
+
+// ── NUOVA PARTITA ────────────────────────────────────────
+function newGame() {
+  gameOver = false; busy = false; cascading = 0;
+  needSpiderMove = false; needSpawn = false; spiderSeq = 0;
+  score = 0; tapCount = 0; reserve = null;
+
+  scoreText.text = 'Punteggio: 0';
+  feedback('');
+  gameOverLayer.visible = false;
+
+  grid = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => mkCell()));
+  queue = [rndToken(), rndToken(), rndToken()];
+
+  powerCharge = { red: 0, yellow: 0, blue: 0, green: 0, orange: 0, purple: 0 };
+  Object.keys(powerBars).forEach(name => powerBars[name].setPct(0));
+
+  renderAllCells();
+  renderQueueUI();
+  renderReserveUI();
+  renderCountdown();
+
+  setTimeout(resolveBoard, 150);
+}
+
+// ── AVVIO: carica gli asset da disco, poi avvia la partita ─
+const loadingText = new PIXI.Text('Caricamento asset…', {
+  fontFamily: 'Segoe UI, sans-serif', fontSize: 15, fill: 0xaaaaaa, align: 'center',
+});
+loadingText.anchor.set(0.5);
+loadingText.x = APP_W / 2; loadingText.y = APP_H / 2;
+app.stage.addChild(loadingText);
+
+loadAssets()
+  .then(() => {
+    app.stage.removeChild(loadingText);
+    newGame();
+  })
+  .catch(err => {
+    console.error('Errore nel caricamento degli asset:', err);
+    loadingText.style.fill = 0xe74c3c;
+    loadingText.text =
+      'Impossibile caricare gli asset.\n' +
+      'Verifica che esistano, relative a questo file:\n' +
+      'assets/mushrooms/{colore}.png e {colore}_scared.png\n' +
+      'assets/spiders/1.png…4.png\n' +
+      'assets/bombs/h.png, v.png, cross.png\n' +
+      'assets/specials/witch.png, bomber.png, web.png, petrified.png';
+    loadingText.style.fontSize = 12;
+  });
+</script>
 </body>
 </html>
