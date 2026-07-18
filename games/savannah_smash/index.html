@@ -969,7 +969,7 @@
         if(h.life<=0 || h.y>H+80 || h.x<-80 || h.x>W+80){ hogs.splice(i,1); }
         continue;
       }
-      h.y += (scrollSpeed*diff) * 0.42; // slow — based on base speed only, not the Fire/boost multiplier
+      h.y += curSpeed * 0.35; // tracks the world's speed-ups (smash/fire) but at a fraction of the rate
       h.x = h.cx;
       if(h.y - h.r > H+20){ hogs.splice(i,1); score += 1; continue; }
 
