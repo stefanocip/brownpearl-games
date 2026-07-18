@@ -511,6 +511,26 @@
     ctx.fillStyle = '#241708';
     ctx.beginPath(); ctx.arc(-7,-30,1.8,0,Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.arc(7,-30,1.8,0,Math.PI*2); ctx.fill();
+    if(boostActive){
+      // angry eyebrows while smashing (inner corners pulled down toward the eyes)
+      ctx.strokeStyle = '#241708'; ctx.lineWidth = 2.2; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(-10,-24); ctx.lineTo(-4,-28); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(10,-24); ctx.lineTo(4,-28); ctx.stroke();
+    }
+
+    // nose puffs while smashing
+    if(boostActive && t%9<3){
+      const pf = (t%9)/3;
+      ctx.globalAlpha = 0.85*(1-pf);
+      ctx.fillStyle = '#fffaf0';
+      ctx.beginPath(); ctx.ellipse(-7,-42-pf*16, 4.5+pf*7, 3.5+pf*5, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(7,-42-pf*16, 4.5+pf*7, 3.5+pf*5, 0, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 0.4*(1-pf);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.ellipse(-7,-42-pf*16, 2.5+pf*4, 2+pf*3, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(7,-42-pf*16, 2.5+pf*4, 2+pf*3, 0, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
 
     if(superMode){
       for(let i=0;i<6;i++){
@@ -977,6 +997,8 @@
       if(hogInWater && t%5===0){
         dust.push({x:h.x-h.r*0.7, y:h.y+h.r*0.5, size:4+Math.random()*2, life:20, color:'rgba(200,235,240,0.8)', kind:'ripple'});
         dust.push({x:h.x+h.r*0.7, y:h.y+h.r*0.5, size:4+Math.random()*2, life:20, color:'rgba(200,235,240,0.8)', kind:'ripple'});
+      } else if(!hogInWater && t%6===0){
+        dust.push({x:h.x+(Math.random()-0.5)*h.r*0.6, y:h.y+h.r*1.5, size:4.5+Math.random()*2.5, life:22, color:'#f0dcae'});
       }
 
       const hit = circleRectHit(h.x, h.y, h.r*0.7, player.x, player.y, player.w, player.h);
@@ -1023,16 +1045,23 @@
     const BOOST_MAX = 55, RECHARGE_RATE = 100/36;
     if(superMode){
       energy -= ENERGY_DRAIN * diff;
-      if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:6+Math.random()*4, life:26, color:'#ff9a3d'});
+      if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:7+Math.random()*5, life:26, color:'#ff9a3d'});
+      if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*30, y:player.y+44, size:5+Math.random()*4, life:22, color:'#ff9a3d'});
       if(energy<=0){ energy=0; superMode=false; boostActive=false; invuln=48; }
     } else if(boostActive){
       boostTimer--;
-      if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:6+Math.random()*4, life:26, color:'#fff4da'});
+      if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:7+Math.random()*5, life:26, color:'#fff4da'});
+      if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*30, y:player.y+44, size:5+Math.random()*4, life:22, color:'#fff4da'});
       if(boostTimer<=0){ boostActive=false; }
     } else if(charge<100){
       charge = Math.min(charge + RECHARGE_RATE*diff, 100);
     }
     if(invuln>0) invuln--;
+
+    // ambient dust trail behind the rhino at all times, not just while smashing
+    if(!boostActive && t%5===0){
+      dust.push({x:player.x+(Math.random()-0.5)*16, y:player.y+36, size:5+Math.random()*3, life:24, color:'#f0dcae'});
+    }
 
     for(let i=dust.length-1;i>=0;i--){ const d=dust[i]; d.y += curSpeed*0.4; d.life--; if(d.life<=0) dust.splice(i,1); }
     for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.25; p.life--; if(p.life<=0) particles.splice(i,1); }
