@@ -159,6 +159,7 @@
   <div class="screen" id="startScreen">
     <h1>SAVANNAH<br>SMASH</h1>
     <div class="sub">one very nervous rhino</div>
+    <div class="sub" id="homeBest" style="font-size:12px; margin-top:-14px; opacity:0.85;"></div>
     <p class="rules">
       Tilt your phone <b>left/right</b> to move the rhino.<br><br>
       <b>Light rocks</b> break if you hit them while pressing <b>SMASH</b> (which also gives you a burst of speed).<br><br>
@@ -194,6 +195,7 @@
   const smashBtn = document.getElementById('smashBtn');
   const scoreEl = document.getElementById('score');
   const bestEl = document.getElementById('best');
+  const homeBestEl = document.getElementById('homeBest');
   const finalScoreEl = document.getElementById('finalScore');
   const tiltBadge = document.getElementById('tiltBadge');
   const chargeWrap = document.getElementById('chargeWrap');
@@ -217,6 +219,7 @@
   let lastStats = null;
   let best = Math.floor(Number(localStorage.getItem('savannaBest')||0));
   bestEl.textContent = 'Best: '+best;
+  homeBestEl.textContent = best>0 ? ('Best: '+best) : '';
 
   const ENERGY_GAIN = 17, ENERGY_DRAIN = 0.32, CHILI_ENERGY = 380;
   let player, rocks, grasses, hogs, waters, crocs, chilis, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, chiliTimer, boostActive, superMode, boostTimer, charge, energy, invuln, shake, roadOffset, stonesSmashed, hogsSquashed;
@@ -834,7 +837,7 @@
     energyWrap.classList.add('hidden');
     resize();
     score = Math.floor(score);
-    if(score>best){ best=score; localStorage.setItem('savannaBest', String(best)); }
+    if(score>best){ best=score; localStorage.setItem('savannaBest', String(best)); homeBestEl.textContent = 'Best: '+best; }
     const metersRun = Math.floor((roadOffset||0)/40);
     lastStats = { score, best, stonesSmashed, hogsSquashed, metersRun };
     finalScoreEl.innerHTML =
