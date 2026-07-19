@@ -98,9 +98,13 @@ function darken(hex, f = 0.75) {
 //   assets/mushrooms/{colore}.png            es. red.png, purple.png
 //   assets/mushrooms/{colore}_scared.png     es. red_scared.png
 //     colori: red, yellow, blue, green, orange, purple
-//   assets/spiders/1.png .. 4.png            livello ragno (1=normale,
-//                                             2=velenoso, 3=nero, 4=bruco)
-//   assets/bombs/h.png, v.png, cross.png     bomba riga/colonna/croce
+//   assets/spiders/spider1.png               ragno livello 1 (normale)
+//   assets/spiders/spider2.png               ragno livello 2 (velenoso → ragnatela)
+//   assets/spiders/spider3.png               ragno livello 3 (nero → pietrifica)
+//   assets/spiders/caterpillar.png           ragno livello 4 (bruco → mangia la cella)
+//   assets/bombs/bomb_h.png                  bomba riga
+//   assets/bombs/bomb_v.png                  bomba colonna
+//   assets/bombs/bomb_cross.png              bomba croce
 //   assets/specials/witch.png                power-up "maga"
 //   assets/specials/bomber.png               power-up "bombarolo"
 //   assets/specials/web.png                  ragnatela lasciata dal ragno
@@ -108,14 +112,19 @@ function darken(hex, f = 0.75) {
 // ═══════════════════════════════════════════════════════
 let TEX = null;
 
+// Mappa livello interno del ragno (1-4) → nome file in assets/spiders/
+const SPIDER_FILES = { 1: 'spider1.png', 2: 'spider2.png', 3: 'spider3.png', 4: 'caterpillar.png' };
+// Mappa tipo interno della bomba → nome file in assets/bombs/
+const BOMB_FILES = { h: 'bomb_h.png', v: 'bomb_v.png', cross: 'bomb_cross.png' };
+
 function buildAssetManifest() {
   const manifest = {};
   COLOR_NAMES.forEach(name => {
     manifest['mushroom_' + name]           = 'assets/mushrooms/' + name + '.png';
     manifest['mushroom_' + name + '_scared'] = 'assets/mushrooms/' + name + '_scared.png';
   });
-  [1, 2, 3, 4].forEach(lvl => { manifest['spider_' + lvl] = 'assets/spiders/' + lvl + '.png'; });
-  ['h', 'v', 'cross'].forEach(bt => { manifest['bomb_' + bt] = 'assets/bombs/' + bt + '.png'; });
+  Object.keys(SPIDER_FILES).forEach(lvl => { manifest['spider_' + lvl] = 'assets/spiders/' + SPIDER_FILES[lvl]; });
+  Object.keys(BOMB_FILES).forEach(bt => { manifest['bomb_' + bt] = 'assets/bombs/' + BOMB_FILES[bt]; });
   manifest.witch     = 'assets/specials/witch.png';
   manifest.bomber    = 'assets/specials/bomber.png';
   manifest.web       = 'assets/specials/web.png';
@@ -133,8 +142,8 @@ async function loadAssets() {
     TEX.mushroom[name]       = t['mushroom_' + name];
     TEX.mushroomScared[name] = t['mushroom_' + name + '_scared'];
   });
-  [1, 2, 3, 4].forEach(lvl => { TEX.spider[lvl] = t['spider_' + lvl]; });
-  ['h', 'v', 'cross'].forEach(bt => { TEX.bomb[bt] = t['bomb_' + bt]; });
+  Object.keys(SPIDER_FILES).forEach(lvl => { TEX.spider[lvl] = t['spider_' + lvl]; });
+  Object.keys(BOMB_FILES).forEach(bt => { TEX.bomb[bt] = t['bomb_' + bt]; });
   TEX.witch     = t.witch;
   TEX.bomber    = t.bomber;
   TEX.web       = t.web;
@@ -1255,8 +1264,8 @@ loadAssets()
       'Impossibile caricare gli asset.\n' +
       'Verifica che esistano, relative a questo file:\n' +
       'assets/mushrooms/{colore}.png e {colore}_scared.png\n' +
-      'assets/spiders/1.png…4.png\n' +
-      'assets/bombs/h.png, v.png, cross.png\n' +
+      'assets/spiders/spider1.png, spider2.png, spider3.png, caterpillar.png\n' +
+      'assets/bombs/bomb_h.png, bomb_v.png, bomb_cross.png\n' +
       'assets/specials/witch.png, bomber.png, web.png, petrified.png';
     loadingText.style.fontSize = 12;
   });
