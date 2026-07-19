@@ -73,6 +73,10 @@ const COLORS = {
 const COLOR_NAMES  = Object.keys(COLORS);
 const COLOR_LABELS = { red: 'Rossi', yellow: 'Gialli', blue: 'Blu', green: 'Verdi', orange: 'Arancioni', purple: 'Viola' };
 
+// Sfondo neutro delle celle/token con un fungo: niente più tinta a
+// tema colore, così si vede solo l'immagine del fungo (trasparente).
+const CELL_BG = 0x20202f, CELL_BORDER = 0x14141f;
+
 // ── APPLICATION ──────────────────────────────────────────
 const APP_W = 380;
 const app = new PIXI.Application({
@@ -132,22 +136,80 @@ function buildAssetManifest() {
   return manifest;
 }
 
+function loadImageEl(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Impossibile caricare: ' + url));
+    img.src = url;
+  });
+}
+
+// Rende trasparente lo sfondo di un'immagine PNG con sfondo pieno
+// (bianco o altra tinta chiara), rilevando automaticamente il colore
+// di sfondo dai 4 angoli dell'immagine. A differenza di un filtro
+// shader applicato in tempo reale, questo lavora una sola volta sui
+// pixel reali dell'immagine: risultato nitido (niente sgranatura da
+// mismatch di risoluzione) e niente bordo rettangolare residuo.
+function keyOutBackground(img, tolerance) {
+  tolerance = tolerance === undefined ? 40 : tolerance;
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+
+  let imgData;
+  try {
+    imgData = ctx.getImageData(0, 0, w, h);
+  } catch (e) {
+    console.warn('Impossibile leggere i pixel (CORS?), sfondo non rimosso per', img.src);
+    return PIXI.Texture.from(img);
+  }
+  const data = imgData.data;
+
+  const px = (x, y) => (y * w + x) * 4;
+  const corners = [px(0, 0), px(w - 1, 0), px(0, h - 1), px(w - 1, h - 1)];
+  let br = 0, bgc = 0, bb = 0;
+  corners.forEach(i => { br += data[i]; bgc += data[i + 1]; bb += data[i + 2]; });
+  br /= 4; bgc /= 4; bb /= 4;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const dr = data[i] - br, dg = data[i + 1] - bgc, db = data[i + 2] - bb;
+    const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+    if (dist < tolerance) {
+      data[i + 3] = Math.round(data[i + 3] * (dist / tolerance));
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return PIXI.Texture.from(canvas);
+}
+
+async function loadKeyedTexture(url) {
+  const img = await loadImageEl(url);
+  return keyOutBackground(img);
+}
+
 async function loadAssets() {
   const manifest = buildAssetManifest();
-  PIXI.Assets.addBundle('game', manifest);
-  const t = await PIXI.Assets.loadBundle('game');
+  const entries = Object.entries(manifest);
+  const loaded = {};
+  await Promise.all(entries.map(async ([key, url]) => {
+    loaded[key] = await loadKeyedTexture(url);
+  }));
 
   TEX = { mushroom: {}, mushroomScared: {}, spider: {}, bomb: {} };
   COLOR_NAMES.forEach(name => {
-    TEX.mushroom[name]       = t['mushroom_' + name];
-    TEX.mushroomScared[name] = t['mushroom_' + name + '_scared'];
+    TEX.mushroom[name]       = loaded['mushroom_' + name];
+    TEX.mushroomScared[name] = loaded['mushroom_' + name + '_scared'];
   });
-  Object.keys(SPIDER_FILES).forEach(lvl => { TEX.spider[lvl] = t['spider_' + lvl]; });
-  Object.keys(BOMB_FILES).forEach(bt => { TEX.bomb[bt] = t['bomb_' + bt]; });
-  TEX.witch     = t.witch;
-  TEX.bomber    = t.bomber;
-  TEX.web       = t.web;
-  TEX.petrified = t.petrified;
+  Object.keys(SPIDER_FILES).forEach(lvl => { TEX.spider[lvl] = loaded['spider_' + lvl]; });
+  Object.keys(BOMB_FILES).forEach(bt => { TEX.bomb[bt] = loaded['bomb_' + bt]; });
+  TEX.witch     = loaded.witch;
+  TEX.bomber    = loaded.bomber;
+  TEX.web       = loaded.web;
+  TEX.petrified = loaded.petrified;
 }
 
 function tweenValue(from, to, dur, onUpdate, onComplete, easing) {
@@ -180,20 +242,8 @@ function flashTint(gfx, colorHex, ms) {
   setTimeout(() => { gfx.tint = 0xffffff; }, ms);
 }
 
-// Filtro "chroma-key": rende trasparenti i pixel quasi-bianchi delle PNG
-// (utile quando gli asset sono stati esportati con sfondo bianco pieno
-// invece che con canale alpha trasparente).
-const whiteKeyFilter = new PIXI.Filter(undefined, `
-  precision mediump float;
-  varying vec2 vTextureCoord;
-  uniform sampler2D uSampler;
-  void main(void) {
-    vec4 c = texture2D(uSampler, vTextureCoord);
-    float whiteness = min(c.r, min(c.g, c.b));
-    float a = c.a * (1.0 - smoothstep(0.78, 0.95, whiteness));
-    gl_FragColor = vec4(c.rgb * a, a);
-  }
-`);
+// (La rimozione dello sfondo bianco/chiaro dalle PNG è ora fatta una
+// sola volta sui pixel reali in loadAssets(), vedi keyOutBackground().)
 
 // Dimensiona una sprite in modo sicuro dentro un box "size x size",
 // mantenendo le proporzioni. Va richiamata DOPO aver assegnato la
@@ -220,14 +270,12 @@ class CellView extends PIXI.Container {
     this.mush = new PIXI.Sprite(PIXI.Texture.EMPTY);
     this.mush.anchor.set(0.5);
     this.mush.x = CELL / 2; this.mush.y = CELL / 2;
-    this.mush.filters = [whiteKeyFilter];
     this.addChild(this.mush);
 
     // sprite overlay: bomba OPPURE ragno OPPURE ragnatela OPPURE pietrificato
     this.icon = new PIXI.Sprite(PIXI.Texture.EMPTY);
     this.icon.anchor.set(0.5);
     this.icon.x = CELL / 2; this.icon.y = CELL / 2;
-    this.icon.filters = [whiteKeyFilter];
     this.icon.visible = false;
     this.addChild(this.icon);
 
@@ -261,7 +309,6 @@ class TokenView extends PIXI.Container {
     this.mush = new PIXI.Sprite(PIXI.Texture.EMPTY);
     this.mush.anchor.set(0.5);
     this.mush.x = size / 2; this.mush.y = size / 2;
-    this.mush.filters = [whiteKeyFilter];
     this.addChild(this.mush);
     this.emptyLabel = new PIXI.Text('vuota', { fontFamily: 'Segoe UI, sans-serif', fontSize: 9, fill: 0x555555 });
     this.emptyLabel.anchor.set(0.5);
@@ -524,8 +571,7 @@ function renderCell(r, c) {
     return;
   }
 
-  const hex = COLORS[d.color];
-  view.drawBg(hex);
+  view.drawBg(CELL_BG, CELL_BORDER);
   const scared = !!(d.spider || d.web);
   view.mush.texture = scared ? TEX.mushroomScared[d.color] : TEX.mushroom[d.color];
   fitSprite(view.mush, MUSH_FIT);
@@ -574,8 +620,7 @@ function renderToken(view, token) {
     fitSprite(view.mush, view.size * 0.82);
     return;
   }
-  const hex = COLORS[token];
-  view.drawBg(hex);
+  view.drawBg(CELL_BG, CELL_BORDER);
   view.mush.texture = TEX.mushroom[token];
   fitSprite(view.mush, view.size * 0.82);
 }
