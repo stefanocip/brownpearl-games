@@ -3,53 +3,144 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Shroomatch — PixiJS 7</title>
+<title>Shroomatch</title>
 <style>
+  :root { --cell: 54px; --gap: 5px; }
+  * { box-sizing: border-box; }
   html, body {
-    margin: 0; padding: 0;
-    background: #0d0d1a;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Segoe UI', sans-serif;
+    margin: 0; padding: 0; background: #0d0d1a; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Segoe UI', sans-serif; color: #ccc;
   }
-  #app-container {
-    border-radius: 14px;
-    overflow: hidden;
+  #app {
+    width: 380px; padding: 16px; background: #1a1a2e; border-radius: 14px;
     box-shadow: 0 0 50px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.04);
+    position: relative; overflow: hidden;
   }
-  canvas { display: block; }
+  h1 { text-align: center; font-size: 22px; letter-spacing: 2px; color: #e0d7ff; margin: 0 0 6px; }
+  #score { text-align: center; font-size: 14px; color: #999; margin-bottom: 14px; }
+
+  #powerbars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 8px; margin-bottom: 16px; }
+  .pb { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .pb-track { width: 100%; height: 8px; background: #222; border-radius: 4px; overflow: hidden; }
+  .pb-fill { height: 100%; width: 0%; border-radius: 4px; transition: width .25s ease; }
+  .pb-label { font-size: 9px; letter-spacing: .3px; color: #666; transition: color .2s ease; }
+  .pb-label.full { color: #fff; }
+
+  #board {
+    display: grid; grid-template-columns: repeat(6, var(--cell)); grid-template-rows: repeat(6, var(--cell));
+    gap: var(--gap); justify-content: center;
+    background: #111122; border-radius: 14px; padding: 8px; margin: 0 auto 18px; width: max-content;
+  }
+  .cell {
+    position: relative; width: var(--cell); height: var(--cell);
+    border-radius: 10px; background: #20202f; border: 2px solid #14141f; cursor: pointer;
+  }
+  .cell.empty { background: #14141f; border-color: #0a0a12; cursor: default; }
+  .cell.black { background: #1c1c1c; border-color: #000; }
+  .cell img {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    object-fit: contain; pointer-events: none;
+  }
+  .cell img.mush { width: 80%; height: 80%; }
+  .cell img.icon { width: 58%; height: 58%; }
+  .cell img.icon.big { width: 82%; height: 82%; }
+
+  #controls { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 10px; }
+  .col-label { font-size: 9px; letter-spacing: 1px; color: #666; margin-bottom: 4px; display: block; }
+  #reserveWrap, #queueWrap { display: flex; flex-direction: column; align-items: flex-start; }
+  #queue { display: flex; align-items: flex-end; gap: 8px; }
+
+  .token {
+    position: relative; border-radius: 8px; background: #20202f; border: 2px solid #14141f;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .token img {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 82%; height: 82%; object-fit: contain; pointer-events: none;
+  }
+  .token span { font-size: 9px; color: #555; }
+  .token.reserve { width: 50px; height: 50px; cursor: pointer; }
+  .q0 { width: 50px; height: 50px; opacity: 1; }
+  .q1 { width: 38px; height: 38px; opacity: .75; }
+  .q2 { width: 30px; height: 30px; opacity: .5; }
+  .token.witch { background: #2c2c54; }
+  .token.bomber { background: #5c2c2c; }
+
+  #spiderWrap { text-align: right; }
+  #spiderCountdown { font-size: 26px; font-weight: 800; color: #e74c3c; display: block; }
+
+  #feedback { text-align: center; font-size: 13px; color: #888; min-height: 18px; margin-bottom: 10px; }
+
+  .btn {
+    display: block; margin: 0 auto; padding: 9px 18px; border-radius: 8px;
+    background: transparent; border: 1.5px solid #555; color: #aaa; font-size: 12px;
+    letter-spacing: .5px; cursor: pointer; font-family: inherit;
+  }
+  .btn:hover { border-color: #888; color: #fff; }
+
+  #gameOver {
+    position: absolute; inset: 0; background: rgba(0,0,0,.85);
+    display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    border-radius: 14px;
+  }
+  #gameOver.show { display: flex; }
+  #gameOver h2 { color: #e74c3c; font-size: 28px; letter-spacing: 3px; margin: 0; }
+  #gameOver p { color: #ccc; font-size: 16px; margin: 0; }
+  #gameOver .btn { background: #e74c3c; border-color: #e74c3c; color: #fff; padding: 12px 28px; font-size: 14px; }
+
+  #loading {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: #1a1a2e; color: #aaa; font-size: 13px; text-align: center; padding: 24px;
+    border-radius: 14px; white-space: pre-line; line-height: 1.5;
+  }
+  #loading.hide { display: none; }
 </style>
 </head>
 <body>
-<div id="app-container"></div>
+<div id="app">
+  <h1>🍄 SHROOMATCH</h1>
+  <div id="score">Punteggio: 0</div>
+  <div id="powerbars"></div>
+  <div id="board"></div>
+  <div id="controls">
+    <div id="reserveWrap">
+      <span class="col-label">RISERVA</span>
+      <div class="token reserve" id="reserveToken"><img></div>
+    </div>
+    <div id="queueWrap">
+      <span class="col-label">PROSSIMI</span>
+      <div id="queue"></div>
+    </div>
+    <div id="spiderWrap">
+      <span class="col-label">RAGNO TRA</span>
+      <span id="spiderCountdown">2</span>
+    </div>
+  </div>
+  <div id="feedback"></div>
+  <button class="btn" id="newGameBtn">↺ NUOVA PARTITA</button>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
+  <div id="gameOver">
+    <h2>GAME OVER</h2>
+    <p id="finalScore"></p>
+    <button class="btn" id="retryBtn">RIGIOCA</button>
+  </div>
+
+  <div id="loading">Caricamento asset…</div>
+</div>
+
 <script>
 'use strict';
 
 /* ═══════════════════════════════════════════════════════
-   SHROOMATCH — versione PixiJS 7
-   Porting del motore di gioco originale (DOM/CSS) su un
-   canvas PixiJS: tutta la board, la coda, la riserva, le
-   power-bar e il game-over sono ora oggetti Pixi renderizzati
-   su un unico Application. La logica di match-3 / ragni /
-   bombe / power-up è la stessa del gioco originale.
-
-   Semplificazione volontaria rispetto all'originale: ragni,
-   bombe, strega e bombarolo sono resi con emoji/testo invece
-   che con sprite dedicate, per tenere il file leggero. Le
-   sprite dei funghi (l'elemento visivo centrale) sono invece
-   le stesse immagini dell'originale.
+   SHROOMATCH — versione HTML/CSS/JS puro (niente canvas/WebGL)
+   Stessa logica di gioco già validata nella versione PixiJS,
+   qui applicata a un rendering DOM nativo: più semplice e
+   robusto per una griglia 2D con PNG statici.
    ═══════════════════════════════════════════════════════ */
 
 // ── COSTANTI ─────────────────────────────────────────────
 const ROWS = 6, COLS = 6;
-const CELL = 54, GAP = 5;
-const BOARD_W = COLS * CELL + (COLS - 1) * GAP;
-const BOARD_H = ROWS * CELL + (ROWS - 1) * GAP;
-
 const SPIDER_EVERY = 2;
 const ANIM_MS    = 200;
 const CASCADE_MS = 260;
@@ -63,68 +154,27 @@ const SPIDER_THRESHOLDS = [
 ];
 
 const COLORS = {
-  red:    0xe74c3c,
-  yellow: 0xf1c40f,
-  blue:   0x3498db,
-  green:  0x2ecc71,
-  orange: 0xe67e22,
-  purple: 0x9b59b6,
+  red: 0xe74c3c, yellow: 0xf1c40f, blue: 0x3498db,
+  green: 0x2ecc71, orange: 0xe67e22, purple: 0x9b59b6,
 };
 const COLOR_NAMES  = Object.keys(COLORS);
 const COLOR_LABELS = { red: 'Rossi', yellow: 'Gialli', blue: 'Blu', green: 'Verdi', orange: 'Arancioni', purple: 'Viola' };
-
-// Sfondo neutro delle celle/token con un fungo: niente più tinta a
-// tema colore, così si vede solo l'immagine del fungo (trasparente).
-const CELL_BG = 0x20202f, CELL_BORDER = 0x14141f;
-
-// ── APPLICATION ──────────────────────────────────────────
-const APP_W = 380;
-const app = new PIXI.Application({
-  width: APP_W,
-  height: 10, // altezza vera calcolata dopo il layout, vedi sotto
-  backgroundColor: 0x1a1a2e,
-  antialias: true,
-  resolution: Math.min(window.devicePixelRatio || 1, 2),
-  autoDensity: true,
-});
-document.getElementById('app-container').appendChild(app.view);
-
-// ── HELPER GRAFICI ───────────────────────────────────────
-function darken(hex, f = 0.75) {
-  const r = (hex >> 16) & 0xff, g = (hex >> 8) & 0xff, b = hex & 0xff;
-  return (Math.max(0, Math.floor(r * f)) << 16) | (Math.max(0, Math.floor(g * f)) << 8) | Math.max(0, Math.floor(b * f));
-}
+function cssColor(hex) { return '#' + hex.toString(16).padStart(6, '0'); }
 
 // ═══════════════════════════════════════════════════════
-// ASSET — caricati da disco (non più procedurali/base64)
-//
-// Struttura cartelle attesa, relativa a questo file HTML:
-//   assets/mushrooms/{colore}.png            es. red.png, purple.png
-//   assets/mushrooms/{colore}_scared.png     es. red_scared.png
-//     colori: red, yellow, blue, green, orange, purple
-//   assets/spiders/spider1.png               ragno livello 1 (normale)
-//   assets/spiders/spider2.png               ragno livello 2 (velenoso → ragnatela)
-//   assets/spiders/spider3.png               ragno livello 3 (nero → pietrifica)
-//   assets/spiders/caterpillar.png           ragno livello 4 (bruco → mangia la cella)
-//   assets/bombs/bomb_h.png                  bomba riga
-//   assets/bombs/bomb_v.png                  bomba colonna
-//   assets/bombs/bomb_cross.png              bomba croce
-//   assets/specials/witch.png                power-up "maga"
-//   assets/specials/bomber.png               power-up "bombarolo"
-//   assets/specials/web.png                  ragnatela lasciata dal ragno
-//   assets/specials/petrified.png            fungo pietrificato (ragno nero)
+// ASSET — stessa struttura di cartelle già in uso
+//   assets/mushrooms/{colore}.png / {colore}_scared.png
+//   assets/spiders/spider1.png, spider2.png, spider3.png, caterpillar.png
+//   assets/bombs/bomb_h.png, bomb_v.png, bomb_cross.png
+//   assets/specials/witch.png, bomber.png, web.png, petrified.png
 // ═══════════════════════════════════════════════════════
-let TEX = null;
-
-// Mappa livello interno del ragno (1-4) → nome file in assets/spiders/
 const SPIDER_FILES = { 1: 'spider1.png', 2: 'spider2.png', 3: 'spider3.png', 4: 'caterpillar.png' };
-// Mappa tipo interno della bomba → nome file in assets/bombs/
-const BOMB_FILES = { h: 'bomb_h.png', v: 'bomb_v.png', cross: 'bomb_cross.png' };
+const BOMB_FILES   = { h: 'bomb_h.png', v: 'bomb_v.png', cross: 'bomb_cross.png' };
 
 function buildAssetManifest() {
   const manifest = {};
   COLOR_NAMES.forEach(name => {
-    manifest['mushroom_' + name]           = 'assets/mushrooms/' + name + '.png';
+    manifest['mushroom_' + name]             = 'assets/mushrooms/' + name + '.png';
     manifest['mushroom_' + name + '_scared'] = 'assets/mushrooms/' + name + '_scared.png';
   });
   Object.keys(SPIDER_FILES).forEach(lvl => { manifest['spider_' + lvl] = 'assets/spiders/' + SPIDER_FILES[lvl]; });
@@ -145,12 +195,10 @@ function loadImageEl(url) {
   });
 }
 
-// Rende trasparente lo sfondo di un'immagine PNG con sfondo pieno
-// (bianco o altra tinta chiara), rilevando automaticamente il colore
-// di sfondo dai 4 angoli dell'immagine. A differenza di un filtro
-// shader applicato in tempo reale, questo lavora una sola volta sui
-// pixel reali dell'immagine: risultato nitido (niente sgranatura da
-// mismatch di risoluzione) e niente bordo rettangolare residuo.
+// Rende trasparente lo sfondo pieno (bianco o altra tinta chiara) di una
+// PNG, rilevando automaticamente il colore di sfondo dai 4 angoli
+// dell'immagine. Elaborazione una tantum su canvas, poi si usa il
+// risultato (data URL) come src di un normale <img>.
 function keyOutBackground(img, tolerance) {
   tolerance = tolerance === undefined ? 40 : tolerance;
   const w = img.naturalWidth || img.width;
@@ -165,39 +213,35 @@ function keyOutBackground(img, tolerance) {
     imgData = ctx.getImageData(0, 0, w, h);
   } catch (e) {
     console.warn('Impossibile leggere i pixel (CORS?), sfondo non rimosso per', img.src);
-    return PIXI.Texture.from(img);
+    return img.src;
   }
   const data = imgData.data;
-
   const px = (x, y) => (y * w + x) * 4;
   const corners = [px(0, 0), px(w - 1, 0), px(0, h - 1), px(w - 1, h - 1)];
-  let br = 0, bgc = 0, bb = 0;
-  corners.forEach(i => { br += data[i]; bgc += data[i + 1]; bb += data[i + 2]; });
-  br /= 4; bgc /= 4; bb /= 4;
+  let br = 0, bg = 0, bb = 0;
+  corners.forEach(i => { br += data[i]; bg += data[i + 1]; bb += data[i + 2]; });
+  br /= 4; bg /= 4; bb /= 4;
 
   for (let i = 0; i < data.length; i += 4) {
-    const dr = data[i] - br, dg = data[i + 1] - bgc, db = data[i + 2] - bb;
+    const dr = data[i] - br, dg = data[i + 1] - bg, db = data[i + 2] - bb;
     const dist = Math.sqrt(dr * dr + dg * dg + db * db);
-    if (dist < tolerance) {
-      data[i + 3] = Math.round(data[i + 3] * (dist / tolerance));
-    }
+    if (dist < tolerance) data[i + 3] = Math.round(data[i + 3] * (dist / tolerance));
   }
   ctx.putImageData(imgData, 0, 0);
-  return PIXI.Texture.from(canvas);
+  return canvas.toDataURL('image/png');
 }
 
-async function loadKeyedTexture(url) {
+async function loadKeyedDataUrl(url) {
   const img = await loadImageEl(url);
   return keyOutBackground(img);
 }
 
+let TEX = null;
 async function loadAssets() {
   const manifest = buildAssetManifest();
   const entries = Object.entries(manifest);
   const loaded = {};
-  await Promise.all(entries.map(async ([key, url]) => {
-    loaded[key] = await loadKeyedTexture(url);
-  }));
+  await Promise.all(entries.map(async ([key, url]) => { loaded[key] = await loadKeyedDataUrl(url); }));
 
   TEX = { mushroom: {}, mushroomScared: {}, spider: {}, bomb: {} };
   COLOR_NAMES.forEach(name => {
@@ -206,336 +250,102 @@ async function loadAssets() {
   });
   Object.keys(SPIDER_FILES).forEach(lvl => { TEX.spider[lvl] = loaded['spider_' + lvl]; });
   Object.keys(BOMB_FILES).forEach(bt => { TEX.bomb[bt] = loaded['bomb_' + bt]; });
-  TEX.witch     = loaded.witch;
-  TEX.bomber    = loaded.bomber;
-  TEX.web       = loaded.web;
-  TEX.petrified = loaded.petrified;
+  TEX.witch = loaded.witch; TEX.bomber = loaded.bomber;
+  TEX.web = loaded.web; TEX.petrified = loaded.petrified;
 }
 
-function tweenValue(from, to, dur, onUpdate, onComplete, easing) {
-  easing = easing || (t => t);
-  const start = performance.now();
-  function step(now) {
-    const t = Math.min(1, (now - start) / dur);
-    onUpdate(from + (to - from) * easing(t));
-    if (t < 1) requestAnimationFrame(step);
-    else if (onComplete) onComplete();
-  }
-  requestAnimationFrame(step);
+// ── ANIMAZIONI (Web Animations API) ──────────────────────
+function popIn(el) {
+  el.animate([{ transform: 'scale(0.15)' }, { transform: 'scale(1)' }],
+    { duration: 240, easing: 'cubic-bezier(.34,1.56,.64,1)' });
 }
-function easeOutBack(t) { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); }
-function easeOutQuad(t) { return 1 - (1 - t) * (1 - t); }
-
-function popIn(view) {
-  view.scale.set(0.15);
-  tweenValue(0.15, 1, 240, v => view.scale.set(v), null, easeOutBack);
-}
-function pulseOnce(view, peak, dur) {
+function pulseOnce(el, peak, dur) {
   peak = peak || 1.28; dur = dur || ANIM_MS;
-  tweenValue(1, peak, dur * 0.5, v => view.scale.set(v), () => {
-    tweenValue(peak, 1, dur * 0.5, v => view.scale.set(v));
-  }, easeOutQuad);
+  el.animate([{ transform: 'scale(1)' }, { transform: 'scale(' + peak + ')' }, { transform: 'scale(1)' }],
+    { duration: dur, easing: 'ease-out' });
 }
-function flashTint(gfx, colorHex, ms) {
+function flashTint(el, colorHex, ms) {
   ms = ms || 380;
-  gfx.tint = colorHex;
-  setTimeout(() => { gfx.tint = 0xffffff; }, ms);
+  const css = cssColor(colorHex);
+  el.style.boxShadow = `0 0 0 3px ${css}aa, 0 0 14px 3px ${css}66`;
+  setTimeout(() => { el.style.boxShadow = ''; }, ms);
 }
 
-// (La rimozione dello sfondo bianco/chiaro dalle PNG è ora fatta una
-// sola volta sui pixel reali in loadAssets(), vedi keyOutBackground().)
+// ── ELEMENTI DOM ──────────────────────────────────────────
+const scoreEl = document.getElementById('score');
+const boardEl = document.getElementById('board');
+const feedbackEl = document.getElementById('feedback');
+const spiderCountdownEl = document.getElementById('spiderCountdown');
+const reserveEl = document.getElementById('reserveToken');
+const queueContainerEl = document.getElementById('queue');
+const powerBarsEl = document.getElementById('powerbars');
+const gameOverEl = document.getElementById('gameOver');
+const finalScoreEl = document.getElementById('finalScore');
+const loadingEl = document.getElementById('loading');
 
-// Dimensiona una sprite in modo sicuro dentro un box "size x size",
-// mantenendo le proporzioni. Va richiamata DOPO aver assegnato la
-// texture reale (evita il classico bug di Pixi: impostare .width/.height
-// su una texture PIXI.Texture.EMPTY, la cui larghezza è 0, produce una
-// scala infinita/NaN che rompe sia il rendering sia l'hit-test dei click).
-function fitSprite(sprite, size) {
-  const tex = sprite.texture;
-  if (!tex || !tex.valid || !tex.width || !tex.height) { sprite.scale.set(0); return; }
-  const s = size / Math.max(tex.width, tex.height);
-  sprite.scale.set(s);
-}
-
-// ── CLASSI DI RENDERING ──────────────────────────────────
-class CellView extends PIXI.Container {
-  constructor(r, c) {
-    super();
-    this.r = r; this.c = c;
-
-    this.bg = new PIXI.Graphics();
-    this.addChild(this.bg);
-
-    // sprite del fungo (colore normale o "scared")
-    this.mush = new PIXI.Sprite(PIXI.Texture.EMPTY);
-    this.mush.anchor.set(0.5);
-    this.mush.x = CELL / 2; this.mush.y = CELL / 2;
-    this.addChild(this.mush);
-
-    // sprite overlay: bomba OPPURE ragno OPPURE ragnatela OPPURE pietrificato
-    this.icon = new PIXI.Sprite(PIXI.Texture.EMPTY);
-    this.icon.anchor.set(0.5);
-    this.icon.x = CELL / 2; this.icon.y = CELL / 2;
-    this.icon.visible = false;
-    this.addChild(this.icon);
-
-    this.pivot.set(CELL / 2, CELL / 2);
-    this.x = c * (CELL + GAP) + CELL / 2;
-    this.y = r * (CELL + GAP) + CELL / 2;
-
-    // hitArea esplicita: garantisce che il tap funzioni sempre,
-    // indipendentemente dalle texture caricate nelle sprite figlie
-    this.hitArea = new PIXI.Rectangle(0, 0, CELL, CELL);
-    this.eventMode = 'static';
-    this.cursor = 'pointer';
-    this.on('pointertap', () => onCellClick(this.r, this.c));
-  }
-  drawBg(colorHex, borderHex, alpha) {
-    alpha = alpha === undefined ? 1 : alpha;
-    this.bg.clear();
-    this.bg.lineStyle(2, borderHex !== undefined ? borderHex : darken(colorHex), 1);
-    this.bg.beginFill(colorHex, alpha);
-    this.bg.drawRoundedRect(0, 0, CELL, CELL, 10);
-    this.bg.endFill();
-  }
-}
-
-class TokenView extends PIXI.Container {
-  constructor(size) {
-    super();
-    this.size = size;
-    this.bg = new PIXI.Graphics();
-    this.addChild(this.bg);
-    this.mush = new PIXI.Sprite(PIXI.Texture.EMPTY);
-    this.mush.anchor.set(0.5);
-    this.mush.x = size / 2; this.mush.y = size / 2;
-    this.addChild(this.mush);
-    this.emptyLabel = new PIXI.Text('vuota', { fontFamily: 'Segoe UI, sans-serif', fontSize: 9, fill: 0x555555 });
-    this.emptyLabel.anchor.set(0.5);
-    this.emptyLabel.x = size / 2; this.emptyLabel.y = size / 2;
-    this.emptyLabel.visible = false;
-    this.addChild(this.emptyLabel);
-
-    // hitArea esplicita: garantisce che il tap funzioni sempre
-    this.hitArea = new PIXI.Rectangle(0, 0, size, size);
-  }
-  drawBg(hex, borderHex) {
-    this.bg.clear();
-    this.bg.lineStyle(2, borderHex !== undefined ? borderHex : darken(hex));
-    this.bg.beginFill(hex);
-    this.bg.drawRoundedRect(0, 0, this.size, this.size, 8);
-    this.bg.endFill();
-  }
-}
-
-class PowerBar extends PIXI.Container {
-  constructor(colorName, hex, w, h) {
-    super();
-    this.w = w; this.h = h; this.hex = hex;
-    this.track = new PIXI.Graphics();
-    this.track.beginFill(0x222222);
-    this.track.drawRoundedRect(0, 0, w, h, 4);
-    this.track.endFill();
-    this.addChild(this.track);
-
-    this.fill = new PIXI.Graphics();
-    this.addChild(this.fill);
-
-    this.label = new PIXI.Text(COLOR_LABELS[colorName], { fontFamily: 'Segoe UI, sans-serif', fontSize: 9, fill: 0x666666, letterSpacing: 0.3 });
-    this.label.anchor.set(0.5, 0);
-    this.label.x = w / 2; this.label.y = h + 2;
-    this.addChild(this.label);
-  }
-  setPct(pct) {
-    this.fill.clear();
-    if (pct > 0) {
-      this.fill.beginFill(this.hex);
-      this.fill.drawRoundedRect(0, 0, Math.max(2, this.w * pct), this.h, 4);
-      this.fill.endFill();
-    }
-    this.label.style.fill = pct >= 1 ? 0xffffff : 0x666666;
-  }
-}
-
-function makeButton(label, w, h) {
-  const c = new PIXI.Container();
-  const g = new PIXI.Graphics();
-  g.lineStyle(1.5, 0x555555);
-  g.drawRoundedRect(0, 0, w, h, 8);
-  c.addChild(g);
-  const t = new PIXI.Text(label, { fontFamily: 'Segoe UI, sans-serif', fontSize: 12, fill: 0xaaaaaa, letterSpacing: 0.5 });
-  t.anchor.set(0.5);
-  t.x = w / 2; t.y = h / 2;
-  c.addChild(t);
-  c.eventMode = 'static'; c.cursor = 'pointer';
-  c.g = g; c.t = t; c.w = w; c.h = h;
-  c.on('pointerover', () => { g.clear(); g.lineStyle(1.5, 0x888888); g.drawRoundedRect(0, 0, w, h, 8); t.style.fill = 0xffffff; });
-  c.on('pointerout',  () => { g.clear(); g.lineStyle(1.5, 0x555555); g.drawRoundedRect(0, 0, w, h, 8); t.style.fill = 0xaaaaaa; });
-  return c;
-}
-
-// ── COSTRUZIONE UI ───────────────────────────────────────
-let cursorY = 16;
-
-const titleText = new PIXI.Text('🍄 SHROOMATCH', {
-  fontFamily: 'Segoe UI, sans-serif', fontSize: 22, fontWeight: '800', fill: 0xe0d7ff, letterSpacing: 2,
-});
-titleText.anchor.set(0.5, 0);
-titleText.x = APP_W / 2; titleText.y = cursorY;
-app.stage.addChild(titleText);
-cursorY += 30;
-
-const scoreText = new PIXI.Text('Punteggio: 0', { fontFamily: 'Segoe UI, sans-serif', fontSize: 14, fill: 0x999999 });
-scoreText.anchor.set(0.5, 0);
-scoreText.x = APP_W / 2; scoreText.y = cursorY;
-app.stage.addChild(scoreText);
-cursorY += 26;
-
-// Power bars: 3 colonne x 2 righe
-const PB_ORDER = ['red', 'yellow', 'blue', 'green', 'orange', 'purple'];
-const pbCols = 3, pbW = 108, pbH = 8, pbGapX = 8, pbGapY = 20;
-const pbAreaW = pbCols * pbW + (pbCols - 1) * pbGapX;
-const pbStartX = (APP_W - pbAreaW) / 2;
-const powerBarsLayer = new PIXI.Container();
-powerBarsLayer.y = cursorY;
-app.stage.addChild(powerBarsLayer);
-const powerBars = {};
-PB_ORDER.forEach((name, i) => {
-  const col = i % 3, row = Math.floor(i / 3);
-  const pb = new PowerBar(name, COLORS[name], pbW, pbH);
-  pb.x = pbStartX + col * (pbW + pbGapX);
-  pb.y = row * (pbH + pbGapY);
-  powerBarsLayer.addChild(pb);
-  powerBars[name] = pb;
-});
-cursorY += 2 * (pbH + pbGapY) + 8;
-
-// Griglia
-const gridLayer = new PIXI.Container();
-gridLayer.x = (APP_W - BOARD_W) / 2;
-gridLayer.y = cursorY;
-app.stage.addChild(gridLayer);
-
-const gridBg = new PIXI.Graphics();
-gridBg.beginFill(0x111122);
-gridBg.drawRoundedRect(-8, -8, BOARD_W + 16, BOARD_H + 16, 14);
-gridBg.endFill();
-gridLayer.addChild(gridBg);
-
-const cellViews = [];
+const cellEls = [];
 for (let r = 0; r < ROWS; r++) {
-  cellViews[r] = [];
+  cellEls[r] = [];
   for (let c = 0; c < COLS; c++) {
-    const cv = new CellView(r, c);
-    gridLayer.addChild(cv);
-    cellViews[r][c] = cv;
+    const el = document.createElement('div');
+    el.className = 'cell';
+    el.innerHTML = '<img class="mush"><img class="icon">';
+    el.addEventListener('click', () => onCellClick(r, c));
+    boardEl.appendChild(el);
+    cellEls[r][c] = el;
   }
 }
-cursorY += BOARD_H + 16 + 18;
 
-// Controlli: riserva / coda / countdown ragno
-const controlsLayer = new PIXI.Container();
-controlsLayer.y = cursorY;
-app.stage.addChild(controlsLayer);
+const queueEls = [0, 1, 2].map(i => {
+  const el = document.createElement('div');
+  el.className = 'token q' + i;
+  el.innerHTML = '<img>';
+  queueContainerEl.appendChild(el);
+  return el;
+});
+reserveEl.addEventListener('click', () => onReserveClick());
 
-const reserveLabel = new PIXI.Text('RISERVA', { fontFamily: 'Segoe UI, sans-serif', fontSize: 9, fill: 0x666666, letterSpacing: 1 });
-reserveLabel.x = 20; reserveLabel.y = 0;
-controlsLayer.addChild(reserveLabel);
-
-const reserveView = new TokenView(50);
-reserveView.x = 20; reserveView.y = 14;
-reserveView.eventMode = 'static'; reserveView.cursor = 'pointer';
-reserveView.on('pointertap', () => onReserveClick());
-controlsLayer.addChild(reserveView);
-
-const queueLabel = new PIXI.Text('PROSSIMI', { fontFamily: 'Segoe UI, sans-serif', fontSize: 9, fill: 0x666666, letterSpacing: 1 });
-queueLabel.x = 92; queueLabel.y = 0;
-controlsLayer.addChild(queueLabel);
-
-const queueViews = [new TokenView(50), new TokenView(38), new TokenView(30)];
-(function layoutQueue() {
-  let qx = 92;
-  queueViews.forEach((qv, i) => {
-    qv.x = qx; qv.y = 14 + (50 - qv.size) / 2;
-    qv.alpha = i === 0 ? 1 : (i === 1 ? 0.75 : 0.5);
-    controlsLayer.addChild(qv);
-    qx += qv.size + 8;
-  });
-})();
-
-const spiderLabel = new PIXI.Text('RAGNO TRA', { fontFamily: 'Segoe UI, sans-serif', fontSize: 9, fill: 0x666666, letterSpacing: 1 });
-spiderLabel.anchor.set(1, 0);
-spiderLabel.x = APP_W - 20; spiderLabel.y = 0;
-controlsLayer.addChild(spiderLabel);
-
-const spiderCountdownText = new PIXI.Text('2', { fontFamily: 'Segoe UI, sans-serif', fontSize: 26, fontWeight: '800', fill: 0xe74c3c });
-spiderCountdownText.anchor.set(1, 0);
-spiderCountdownText.x = APP_W - 20; spiderCountdownText.y = 14;
-controlsLayer.addChild(spiderCountdownText);
-
-cursorY += 68;
-
-const feedbackText = new PIXI.Text('', { fontFamily: 'Segoe UI, sans-serif', fontSize: 13, fill: 0x888888, align: 'center' });
-feedbackText.anchor.set(0.5, 0);
-feedbackText.x = APP_W / 2; feedbackText.y = cursorY;
-app.stage.addChild(feedbackText);
-cursorY += 22;
-
-const newGameBtn = makeButton('↺ NUOVA PARTITA', 170, 36);
-newGameBtn.x = APP_W / 2 - 85; newGameBtn.y = cursorY;
-newGameBtn.on('pointertap', () => newGame());
-app.stage.addChild(newGameBtn);
-cursorY += 36 + 16;
-
-const APP_H = cursorY;
-app.renderer.resize(APP_W, APP_H);
-
-// Game over overlay
-const gameOverLayer = new PIXI.Container();
-gameOverLayer.visible = false;
-app.stage.addChild(gameOverLayer);
-
-const goBg = new PIXI.Graphics();
-goBg.beginFill(0x000000, 0.82);
-goBg.drawRect(0, 0, APP_W, APP_H);
-goBg.endFill();
-goBg.eventMode = 'static';
-gameOverLayer.addChild(goBg);
-
-const goTitle = new PIXI.Text('GAME OVER', { fontFamily: 'Segoe UI, sans-serif', fontSize: 30, fill: 0xe74c3c, fontWeight: '800', letterSpacing: 3 });
-goTitle.anchor.set(0.5);
-goTitle.x = APP_W / 2; goTitle.y = APP_H / 2 - 50;
-gameOverLayer.addChild(goTitle);
-
-const goScoreText = new PIXI.Text('', { fontFamily: 'Segoe UI, sans-serif', fontSize: 16, fill: 0xcccccc });
-goScoreText.anchor.set(0.5);
-goScoreText.x = APP_W / 2; goScoreText.y = APP_H / 2;
-gameOverLayer.addChild(goScoreText);
-
-const goBtn = makeButton('RIGIOCA', 140, 44);
-goBtn.x = APP_W / 2 - 70; goBtn.y = APP_H / 2 + 40;
-goBtn.g.clear(); goBtn.g.beginFill(0xe74c3c); goBtn.g.drawRoundedRect(0, 0, 140, 44, 10); goBtn.g.endFill();
-goBtn.t.style.fill = 0xffffff; goBtn.t.style.fontSize = 14;
-goBtn.on('pointertap', () => newGame());
-gameOverLayer.addChild(goBtn);
-
-// ── FEEDBACK TESTO ───────────────────────────────────────
-let feedbackTimer = null;
-function feedback(msg, color, ms) {
-  clearTimeout(feedbackTimer);
-  feedbackText.text = msg;
-  feedbackText.style.fill = color === undefined ? 0x888888 : color;
-  if (ms) feedbackTimer = setTimeout(() => { feedbackText.text = ''; }, ms);
+const PB_ORDER = ['red', 'yellow', 'blue', 'green', 'orange', 'purple'];
+const powerBarEls = {};
+PB_ORDER.forEach(name => {
+  const wrap = document.createElement('div');
+  wrap.className = 'pb';
+  const track = document.createElement('div');
+  track.className = 'pb-track';
+  const fill = document.createElement('div');
+  fill.className = 'pb-fill';
+  fill.style.background = cssColor(COLORS[name]);
+  track.appendChild(fill);
+  const label = document.createElement('div');
+  label.className = 'pb-label';
+  label.textContent = COLOR_LABELS[name];
+  wrap.appendChild(track); wrap.appendChild(label);
+  powerBarsEl.appendChild(wrap);
+  powerBarEls[name] = { fill, label };
+});
+function setPowerBar(name, pct) {
+  powerBarEls[name].fill.style.width = Math.max(0, Math.min(1, pct)) * 100 + '%';
+  powerBarEls[name].label.classList.toggle('full', pct >= 1);
 }
 
-// ── STATO DI GIOCO ───────────────────────────────────────
+document.getElementById('newGameBtn').addEventListener('click', () => newGame());
+document.getElementById('retryBtn').addEventListener('click', () => newGame());
+
+// ── FEEDBACK ──────────────────────────────────────────────
+let feedbackTimer = null;
+function feedback(msg, colorHex, ms) {
+  clearTimeout(feedbackTimer);
+  feedbackEl.textContent = msg;
+  feedbackEl.style.color = colorHex === undefined ? '#888' : cssColor(colorHex);
+  if (ms) feedbackTimer = setTimeout(() => { feedbackEl.textContent = ''; }, ms);
+}
+
+// ── STATO DI GIOCO ────────────────────────────────────────
 let grid, queue, reserve, score, tapCount, gameOver, busy, cascading;
 let needSpiderMove, needSpawn, spiderSeq, powerCharge;
 
 function mkEmptyCell() { return { color: null, bomb: null, spider: 0, spiderId: 0, web: false, black: false, empty: true }; }
-function mkCell(color) {
-  return { color: color || rndColor(), bomb: null, spider: 0, spiderId: 0, web: false, black: false, empty: false };
-}
+function mkCell(color) { return { color: color || rndColor(), bomb: null, spider: 0, spiderId: 0, web: false, black: false, empty: false }; }
 function rndColor() { return COLOR_NAMES[Math.floor(Math.random() * COLOR_NAMES.length)]; }
 function rndToken() {
   const r = Math.random();
@@ -544,95 +354,64 @@ function rndToken() {
   return rndColor();
 }
 
-// ── RENDER CELLE / TOKEN ─────────────────────────────────
-const MUSH_FIT = CELL * 0.80; // dimensione del fungo dentro la cella
-const ICON_FIT = CELL * 0.60; // dimensione di ragno/bomba/web: più piccola
-                               // del fungo apposta, così il fungo resta
-                               // visibile sotto/attorno (non lo sostituisce)
-
+// ── RENDER CELLE / TOKEN ──────────────────────────────────
 function renderCell(r, c) {
   const d = grid[r][c];
-  const view = cellViews[r][c];
-  view.scale.set(1);
-  view.alpha = 1;
-  view.mush.visible = false;
-  view.mush.tint = 0xffffff;
-  view.icon.visible = false;
+  const el = cellEls[r][c];
+  el.className = 'cell';
+  el.style.transform = '';
+  const mush = el.querySelector('.mush');
+  const icon = el.querySelector('.icon');
+  mush.style.display = 'none';
+  icon.style.display = 'none';
+  icon.classList.remove('big');
 
-  if (d.empty) {
-    view.drawBg(0x14141f, 0x0a0a12, 1);
-    return;
-  }
+  if (d.empty) { el.classList.add('empty'); return; }
   if (d.black && !d.spider) {
-    view.drawBg(0x1c1c1c, 0x000000);
-    view.icon.texture = TEX.petrified;
-    fitSprite(view.icon, CELL * 0.82);
-    view.icon.visible = true;
+    el.classList.add('black');
+    icon.src = TEX.petrified;
+    icon.classList.add('big');
+    icon.style.display = 'block';
     return;
   }
 
-  view.drawBg(CELL_BG, CELL_BORDER);
   const scared = !!(d.spider || d.web);
-  view.mush.texture = scared ? TEX.mushroomScared[d.color] : TEX.mushroom[d.color];
-  fitSprite(view.mush, MUSH_FIT);
-  view.mush.visible = true;
+  mush.src = scared ? TEX.mushroomScared[d.color] : TEX.mushroom[d.color];
+  mush.style.display = 'block';
 
-  if (d.bomb) {
-    view.icon.texture = TEX.bomb[d.bomb];
-    fitSprite(view.icon, ICON_FIT);
-    view.icon.visible = true;
-  } else if (d.spider) {
-    view.icon.texture = TEX.spider[d.spider];
-    fitSprite(view.icon, ICON_FIT);
-    view.icon.visible = true;
-  } else if (d.web) {
-    view.icon.texture = TEX.web;
-    fitSprite(view.icon, ICON_FIT);
-    view.icon.visible = true;
-  }
+  if (d.bomb) { icon.src = TEX.bomb[d.bomb]; icon.style.display = 'block'; }
+  else if (d.spider) { icon.src = TEX.spider[d.spider]; icon.style.display = 'block'; }
+  else if (d.web) { icon.src = TEX.web; icon.style.display = 'block'; }
 }
-function renderAllCells() {
-  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) renderCell(r, c);
-}
+function renderAllCells() { for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) renderCell(r, c); }
 
-function renderToken(view, token) {
-  view.mush.visible = true;
-  view.mush.tint = 0xffffff;
-  view.emptyLabel.visible = false;
+function renderToken(el, token) {
+  el.classList.remove('witch', 'bomber');
+  const img = el.querySelector('img');
+  let span = el.querySelector('span');
 
   if (!token) {
-    view.bg.clear();
-    view.bg.lineStyle(2, 0x444444);
-    view.bg.drawRoundedRect(0, 0, view.size, view.size, 8);
-    view.mush.visible = false;
-    view.emptyLabel.visible = true;
+    img.style.display = 'none';
+    if (!span) { span = document.createElement('span'); span.textContent = 'vuota'; el.appendChild(span); }
+    span.style.display = 'block';
     return;
   }
-  if (token === 'witch') {
-    view.drawBg(0x2c2c54);
-    view.mush.texture = TEX.witch;
-    fitSprite(view.mush, view.size * 0.82);
-    return;
-  }
-  if (token === 'bomber') {
-    view.drawBg(0x5c2c2c);
-    view.mush.texture = TEX.bomber;
-    fitSprite(view.mush, view.size * 0.82);
-    return;
-  }
-  view.drawBg(CELL_BG, CELL_BORDER);
-  view.mush.texture = TEX.mushroom[token];
-  fitSprite(view.mush, view.size * 0.82);
+  if (span) span.style.display = 'none';
+  img.style.display = 'block';
+
+  if (token === 'witch') { el.classList.add('witch'); img.src = TEX.witch; return; }
+  if (token === 'bomber') { el.classList.add('bomber'); img.src = TEX.bomber; return; }
+  img.src = TEX.mushroom[token];
 }
-function renderQueueUI() { queueViews.forEach((v, i) => renderToken(v, queue[i])); }
-function renderReserveUI() { renderToken(reserveView, reserve); }
+function renderQueueUI() { queueEls.forEach((el, i) => renderToken(el, queue[i])); }
+function renderReserveUI() { renderToken(reserveEl, reserve); }
 function renderCountdown() {
   const remaining = SPIDER_EVERY - (tapCount % SPIDER_EVERY);
-  spiderCountdownText.text = String(remaining);
-  if (remaining === 1) pulseOnce(spiderCountdownText, 1.4, 300);
+  spiderCountdownEl.textContent = String(remaining);
+  if (remaining === 1) pulseOnce(spiderCountdownEl, 1.4, 300);
 }
 
-// ── MATCH DETECTION ──────────────────────────────────────
+// ── MATCH DETECTION ───────────────────────────────────────
 function canMatch(r, c) {
   const d = grid[r][c];
   return !d.black && !d.bomb && !d.empty;
@@ -694,7 +473,7 @@ function bombType(match) {
   return null;
 }
 
-// ── SPAWN / CASCATA ──────────────────────────────────────
+// ── SPAWN / CASCATA ───────────────────────────────────────
 function spawnCells(keys, bombPlacements) {
   const played = new Set();
   keys.forEach(key => {
@@ -703,14 +482,14 @@ function spawnCells(keys, bombPlacements) {
     grid[r][c] = mkCell();
     const color = grid[r][c].color;
     renderCell(r, c);
-    popIn(cellViews[r][c]);
+    popIn(cellEls[r][c]);
     if (!played.has(color)) { playMatchSound(color); played.add(color); }
   });
   bombPlacements.forEach(({ r, c, type, color }) => {
     grid[r][c] = mkCell(color);
     grid[r][c].bomb = type;
     renderCell(r, c);
-    popIn(cellViews[r][c]);
+    popIn(cellEls[r][c]);
   });
 }
 
@@ -726,7 +505,7 @@ function resolveBoard() {
     const bt = bombType(match);
     match.cells.forEach(({ r, c }) => {
       toSpawn.add(r + ',' + c);
-      pulseOnce(cellViews[r][c], 1.25, ANIM_MS);
+      pulseOnce(cellEls[r][c], 1.25, ANIM_MS);
     });
     if (bt) {
       const mid = match.cells[Math.floor(match.cells.length / 2)];
@@ -751,7 +530,7 @@ function applyMatches(matches, tapR, tapC) {
     const bt = bombType(match);
     match.cells.forEach(({ r, c }) => {
       toSpawn.add(r + ',' + c);
-      pulseOnce(cellViews[r][c], 1.25, ANIM_MS);
+      pulseOnce(cellEls[r][c], 1.25, ANIM_MS);
     });
     if (bt) {
       const inMatch = tapR !== undefined && match.cells.some(d => d.r === tapR && d.c === tapC);
@@ -761,7 +540,7 @@ function applyMatches(matches, tapR, tapC) {
   });
 
   score += toSpawn.size * 10;
-  scoreText.text = 'Punteggio: ' + score;
+  scoreEl.textContent = 'Punteggio: ' + score;
 
   const firstCell = matches[0].cells[0];
   playMatchSound(grid[firstCell.r][firstCell.c].color);
@@ -793,7 +572,7 @@ function applyMatches(matches, tapR, tapC) {
   return hasGood ? 'good' : 'small';
 }
 
-// ── BOMBE ────────────────────────────────────────────────
+// ── BOMBE ─────────────────────────────────────────────────
 function explodeBomb(r, c, exploded) {
   if (!exploded) exploded = new Set();
   const key = r + ',' + c;
@@ -822,11 +601,11 @@ function explodeBomb(r, c, exploded) {
 
   hit.forEach(k => {
     const [rr, cc] = k.split(',').map(Number);
-    pulseOnce(cellViews[rr][cc], 1.4, ANIM_MS);
+    pulseOnce(cellEls[rr][cc], 1.4, ANIM_MS);
   });
 
   score += hit.size * 10;
-  scoreText.text = 'Punteggio: ' + score;
+  scoreEl.textContent = 'Punteggio: ' + score;
   playBombSound(bt);
 
   const label = bt === 'cross' ? '✛ Croce' : bt === 'h' ? '↔ Riga' : '↕ Col.';
@@ -847,7 +626,7 @@ function explodeBomb(r, c, exploded) {
   }, ANIM_MS);
 }
 
-// ── RAGNI ────────────────────────────────────────────────
+// ── RAGNI ─────────────────────────────────────────────────
 function currentSpiderLevel() {
   for (const { min, level } of SPIDER_THRESHOLDS) if (score >= min) return level;
   return 1;
@@ -870,9 +649,9 @@ function spawnSpider() {
   grid[pos.r][pos.c].spider = lvl;
   grid[pos.r][pos.c].spiderId = spiderSeq;
   renderCell(pos.r, pos.c);
-  popIn(cellViews[pos.r][pos.c]);
+  popIn(cellEls[pos.r][pos.c]);
 
-  const msg = lvl === 3 ? '💀 Ragno nero!' : lvl === 2 ? '🕷 Ragno velenoso!' : lvl === 4 ? '🐛 Bruco!' : '🕷 Ragno!';
+  const msg = lvl === 3 ? '💀 Ragno nero!' : lvl === 2 ? '🕷 Ragno velenoso!' : '🕷 Ragno!';
   feedback(msg, 0xe74c3c, 1800);
 
   checkStalemate();
@@ -940,21 +719,21 @@ function checkStalemate() {
 
 function triggerGameOver() {
   gameOver = true;
-  goScoreText.text = 'Punteggio finale: ' + score;
-  gameOverLayer.visible = true;
+  finalScoreEl.textContent = 'Punteggio finale: ' + score;
+  gameOverEl.classList.add('show');
 }
 
-// ── POWER-UP ─────────────────────────────────────────────
+// ── POWER-UP ──────────────────────────────────────────────
 function addPowerCharge(color, amount) {
   if (!(color in powerCharge)) return;
   if (powerCharge[color] >= POWER_MAX) return;
   powerCharge[color] = Math.min(POWER_MAX, powerCharge[color] + amount);
-  powerBars[color].setPct(powerCharge[color] / POWER_MAX);
+  setPowerBar(color, powerCharge[color] / POWER_MAX);
   if (powerCharge[color] >= POWER_MAX) setTimeout(() => activatePower(color), 300);
 }
 function activatePower(color) {
   powerCharge[color] = 0;
-  powerBars[color].setPct(0);
+  setPowerBar(color, 0);
   feedback('⚡ ' + COLOR_LABELS[color].toUpperCase() + ' POWER!', COLORS[color], 2000);
   switch (color) {
     case 'red':    powerRed();    break;
@@ -966,17 +745,17 @@ function activatePower(color) {
   }
 }
 
-function flashCellsPixi(cellSet, colorHex, callback) {
+function flashCellsAndClear(cellSet, colorHex, mutateAfter) {
   cellSet.forEach(k => {
     const [r, c] = k.split(',').map(Number);
-    const view = cellViews[r][c];
-    if (!view) return;
-    flashTint(view.bg, colorHex, 380);
-    pulseOnce(view, 1.15, 380);
+    flashTint(cellEls[r][c], colorHex, 380);
+    pulseOnce(cellEls[r][c], 1.15, 380);
   });
-  setTimeout(callback, 400);
+  setTimeout(() => {
+    if (mutateAfter) mutateAfter();
+    clearCellsSimple(cellSet);
+  }, 400);
 }
-
 function clearCellsSimple(cellSet) {
   cascading++;
   setTimeout(() => {
@@ -984,7 +763,7 @@ function clearCellsSimple(cellSet) {
       const [r, c] = k.split(',').map(Number);
       grid[r][c].spider = 0; grid[r][c].spiderId = 0;
       grid[r][c].web = false; grid[r][c].black = false;
-      if (!grid[r][c].empty) { grid[r][c] = mkCell(); renderCell(r, c); popIn(cellViews[r][c]); }
+      if (!grid[r][c].empty) { grid[r][c] = mkCell(); renderCell(r, c); popIn(cellEls[r][c]); }
       else renderCell(r, c);
     });
     cascading--;
@@ -1004,13 +783,12 @@ function powerRed() {
       const r2 = r + dr, c2 = c + dc;
       if (r2 >= 0 && r2 < ROWS && c2 >= 0 && c2 < COLS && !grid[r2][c2].empty) cells.add(r2 + ',' + c2);
     }
-    flashCellsPixi(cells, 0xe74c3c, () => {
+    flashCellsAndClear(cells, 0xe74c3c, () => {
       cells.forEach(k => {
         const [r2, c2] = k.split(',').map(Number);
         const col = grid[r2][c2].color;
         if (col) addPowerCharge(col, 1);
       });
-      clearCellsSimple(cells);
     });
   }
 }
@@ -1018,7 +796,7 @@ function powerYellow() {
   const set = Math.random() < 0.5 ? [0, 2, 4] : [1, 3, 5];
   const cells = new Set();
   set.forEach(r => { for (let c = 0; c < COLS; c++) { if (!grid[r][c].empty) cells.add(r + ',' + c); } });
-  flashCellsPixi(cells, 0xf1c40f, () => clearCellsSimple(cells));
+  flashCellsAndClear(cells, 0xf1c40f);
 }
 function powerBlue() {
   const cells = new Set();
@@ -1026,13 +804,13 @@ function powerBlue() {
   for (let r = 1; r < ROWS - 1; r++) { cells.add(r + ',0'); cells.add(r + ',' + (COLS - 1)); }
   const cr = Math.floor(ROWS / 2), cc = Math.floor(COLS / 2);
   [[cr - 1, cc - 1], [cr - 1, cc], [cr, cc - 1], [cr, cc]].forEach(([r, c]) => cells.add(r + ',' + c));
-  flashCellsPixi(cells, 0x3498db, () => clearCellsSimple(cells));
+  flashCellsAndClear(cells, 0x3498db);
 }
 function powerOrange() {
   const set = Math.random() < 0.5 ? [0, 2, 4] : [1, 3, 5];
   const cells = new Set();
   set.forEach(c => { for (let r = 0; r < ROWS; r++) { if (!grid[r][c].empty) cells.add(r + ',' + c); } });
-  flashCellsPixi(cells, 0xe67e22, () => clearCellsSimple(cells));
+  flashCellsAndClear(cells, 0xe67e22);
 }
 function powerGreen() {
   const free = [];
@@ -1045,31 +823,41 @@ function powerGreen() {
     const { r, c } = free.splice(idx, 1)[0];
     chosen.add(r + ',' + c);
   }
-  flashCellsPixi(chosen, 0x2ecc71, () => {
+  chosen.forEach(k => {
+    const [r, c] = k.split(',').map(Number);
+    flashTint(cellEls[r][c], 0x2ecc71, 380);
+    pulseOnce(cellEls[r][c], 1.15, 380);
+  });
+  setTimeout(() => {
     chosen.forEach(k => {
       const [r, c] = k.split(',').map(Number);
       grid[r][c].bomb = 'cross';
       renderCell(r, c);
-      popIn(cellViews[r][c]);
+      popIn(cellEls[r][c]);
     });
-  });
+  }, 400);
 }
 function powerPurple() {
   const cells = new Set();
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++)
     if (grid[r][c].spider || grid[r][c].web) cells.add(r + ',' + c);
   if (!cells.size) return;
-  flashCellsPixi(cells, 0x9b59b6, () => {
+  cells.forEach(k => {
+    const [r, c] = k.split(',').map(Number);
+    flashTint(cellEls[r][c], 0x9b59b6, 380);
+    pulseOnce(cellEls[r][c], 1.15, 380);
+  });
+  setTimeout(() => {
     cells.forEach(k => {
       const [r, c] = k.split(',').map(Number);
       grid[r][c].spider = 0; grid[r][c].spiderId = 0; grid[r][c].web = false;
       renderCell(r, c);
-      pulseOnce(cellViews[r][c], 1.2, ANIM_MS);
+      pulseOnce(cellEls[r][c], 1.2, ANIM_MS);
     });
-  });
+  }, 400);
 }
 
-// ── INPUT ────────────────────────────────────────────────
+// ── INPUT ─────────────────────────────────────────────────
 function onCellClick(r, c) {
   if (gameOver || busy) return;
   const d = grid[r][c];
@@ -1100,13 +888,13 @@ function onCellClick(r, c) {
     queue.shift(); queue.push(rndToken());
     renderQueueUI();
 
-    const view = cellViews[r][c];
-    view.icon.visible = false;
-    view.mush.visible = true;
-    view.mush.tint = 0xffffff;
-    view.mush.texture = TEX.witch;
-    fitSprite(view.mush, CELL * 0.82);
-    view.drawBg(0x2c2c54);
+    const el = cellEls[r][c];
+    el.className = 'cell';
+    el.style.background = '#2c2c54';
+    const mush = el.querySelector('.mush'), icon = el.querySelector('.icon');
+    icon.style.display = 'none';
+    mush.src = TEX.witch;
+    mush.style.display = 'block';
 
     const toMatch = new Set();
     for (let r2 = 0; r2 < ROWS; r2++) for (let c2 = 0; c2 < COLS; c2++)
@@ -1114,12 +902,12 @@ function onCellClick(r, c) {
 
     toMatch.forEach(k => {
       const [r2, c2] = k.split(',').map(Number);
-      flashTint(cellViews[r2][c2].bg, 0xffffff, 900);
-      pulseOnce(cellViews[r2][c2], 1.2, 900);
+      flashTint(cellEls[r2][c2], 0xffffff, 900);
+      pulseOnce(cellEls[r2][c2], 1.2, 900);
     });
 
     score += toMatch.size * 10;
-    scoreText.text = 'Punteggio: ' + score;
+    scoreEl.textContent = 'Punteggio: ' + score;
     feedback('✨ Magia! +' + toMatch.size * 10, 0xffd700, 2000);
 
     cascading++;
@@ -1129,8 +917,9 @@ function onCellClick(r, c) {
         addPowerCharge(targetColor, 1);
         grid[r2][c2].spider = 0; grid[r2][c2].spiderId = 0; grid[r2][c2].web = false;
         grid[r2][c2] = mkCell();
-        renderCell(r2, c2); popIn(cellViews[r2][c2]);
+        renderCell(r2, c2); popIn(cellEls[r2][c2]);
       });
+      el.style.background = '';
       renderCell(r, c);
       cascading--;
       scheduleMoveSpiders();
@@ -1145,13 +934,13 @@ function onCellClick(r, c) {
     queue.shift(); queue.push(rndToken());
     renderQueueUI();
 
-    const view = cellViews[r][c];
-    view.icon.visible = false;
-    view.mush.visible = true;
-    view.mush.tint = 0xffffff;
-    view.mush.texture = TEX.bomber;
-    fitSprite(view.mush, CELL * 0.82);
-    view.drawBg(0x5c2c2c);
+    const el = cellEls[r][c];
+    el.className = 'cell';
+    el.style.background = '#5c2c2c';
+    const mush = el.querySelector('.mush'), icon = el.querySelector('.icon');
+    icon.style.display = 'none';
+    mush.src = TEX.bomber;
+    mush.style.display = 'block';
 
     const toExplode = new Set();
     for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
@@ -1161,8 +950,8 @@ function onCellClick(r, c) {
 
     toExplode.forEach(k => {
       const [r2, c2] = k.split(',').map(Number);
-      flashTint(cellViews[r2][c2].bg, 0xff6b00, 900);
-      pulseOnce(cellViews[r2][c2], 1.2, 900);
+      flashTint(cellEls[r2][c2], 0xff6b00, 900);
+      pulseOnce(cellEls[r2][c2], 1.2, 900);
     });
 
     feedback('💥 Boom! +' + toExplode.size * 10, 0xff6b00, 1500);
@@ -1175,7 +964,7 @@ function onCellClick(r, c) {
       });
 
       score += toExplode.size * 10;
-      scoreText.text = 'Punteggio: ' + score;
+      scoreEl.textContent = 'Punteggio: ' + score;
       if (chainBombs.length) feedback('💥 Catena!', 0xff6b00, 1500);
 
       cascading++;
@@ -1186,8 +975,9 @@ function onCellClick(r, c) {
           if (elimColor) addPowerCharge(elimColor, 1);
           grid[r2][c2].spider = 0; grid[r2][c2].spiderId = 0; grid[r2][c2].web = false; grid[r2][c2].black = false;
           grid[r2][c2] = mkCell();
-          renderCell(r2, c2); popIn(cellViews[r2][c2]);
+          renderCell(r2, c2); popIn(cellEls[r2][c2]);
         });
+        el.style.background = '';
         chainBombs.forEach(({ r: r2, c: c2, bomb }) => {
           grid[r2][c2].bomb = bomb;
           explodeBomb(r2, c2);
@@ -1206,7 +996,7 @@ function onCellClick(r, c) {
   grid[r][c] = mkCell(token);
   queue.shift(); queue.push(rndToken());
   renderCell(r, c);
-  popIn(cellViews[r][c]);
+  popIn(cellEls[r][c]);
   renderQueueUI();
 
   tapCount++;
@@ -1243,7 +1033,7 @@ function onReserveClick() {
   renderQueueUI();
 }
 
-// ── AUDIO (Web Audio, invariato) ─────────────────────────
+// ── AUDIO (Web Audio, invariato) ──────────────────────────
 let audioCtx = null;
 function getAudioCtx() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1313,21 +1103,21 @@ function playBombSound() {
   setTimeout(() => playTone({ freq: 150, freq2: 40, type: 'square', decay: 0.25, vol: 0.3 }), 60);
 }
 
-// ── NUOVA PARTITA ────────────────────────────────────────
+// ── NUOVA PARTITA ─────────────────────────────────────────
 function newGame() {
   gameOver = false; busy = false; cascading = 0;
   needSpiderMove = false; needSpawn = false; spiderSeq = 0;
   score = 0; tapCount = 0; reserve = null;
 
-  scoreText.text = 'Punteggio: 0';
+  scoreEl.textContent = 'Punteggio: 0';
   feedback('');
-  gameOverLayer.visible = false;
+  gameOverEl.classList.remove('show');
 
   grid = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => mkCell()));
   queue = [rndToken(), rndToken(), rndToken()];
 
   powerCharge = { red: 0, yellow: 0, blue: 0, green: 0, orange: 0, purple: 0 };
-  Object.keys(powerBars).forEach(name => powerBars[name].setPct(0));
+  PB_ORDER.forEach(name => setPowerBar(name, 0));
 
   renderAllCells();
   renderQueueUI();
@@ -1337,30 +1127,18 @@ function newGame() {
   setTimeout(resolveBoard, 150);
 }
 
-// ── AVVIO: carica gli asset da disco, poi avvia la partita ─
-const loadingText = new PIXI.Text('Caricamento asset…', {
-  fontFamily: 'Segoe UI, sans-serif', fontSize: 15, fill: 0xaaaaaa, align: 'center',
-});
-loadingText.anchor.set(0.5);
-loadingText.x = APP_W / 2; loadingText.y = APP_H / 2;
-app.stage.addChild(loadingText);
-
+// ── AVVIO ─────────────────────────────────────────────────
 loadAssets()
-  .then(() => {
-    app.stage.removeChild(loadingText);
-    newGame();
-  })
+  .then(() => { loadingEl.classList.add('hide'); newGame(); })
   .catch(err => {
     console.error('Errore nel caricamento degli asset:', err);
-    loadingText.style.fill = 0xe74c3c;
-    loadingText.text =
+    loadingEl.textContent =
       'Impossibile caricare gli asset.\n' +
       'Verifica che esistano, relative a questo file:\n' +
       'assets/mushrooms/{colore}.png e {colore}_scared.png\n' +
       'assets/spiders/spider1.png, spider2.png, spider3.png, caterpillar.png\n' +
       'assets/bombs/bomb_h.png, bomb_v.png, bomb_cross.png\n' +
       'assets/specials/witch.png, bomber.png, web.png, petrified.png';
-    loadingText.style.fontSize = 12;
   });
 </script>
 </body>
