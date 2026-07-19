@@ -180,6 +180,33 @@ function flashTint(gfx, colorHex, ms) {
   setTimeout(() => { gfx.tint = 0xffffff; }, ms);
 }
 
+// Filtro "chroma-key": rende trasparenti i pixel quasi-bianchi delle PNG
+// (utile quando gli asset sono stati esportati con sfondo bianco pieno
+// invece che con canale alpha trasparente).
+const whiteKeyFilter = new PIXI.Filter(undefined, `
+  precision mediump float;
+  varying vec2 vTextureCoord;
+  uniform sampler2D uSampler;
+  void main(void) {
+    vec4 c = texture2D(uSampler, vTextureCoord);
+    float whiteness = min(c.r, min(c.g, c.b));
+    float a = c.a * (1.0 - smoothstep(0.78, 0.95, whiteness));
+    gl_FragColor = vec4(c.rgb * a, a);
+  }
+`);
+
+// Dimensiona una sprite in modo sicuro dentro un box "size x size",
+// mantenendo le proporzioni. Va richiamata DOPO aver assegnato la
+// texture reale (evita il classico bug di Pixi: impostare .width/.height
+// su una texture PIXI.Texture.EMPTY, la cui larghezza è 0, produce una
+// scala infinita/NaN che rompe sia il rendering sia l'hit-test dei click).
+function fitSprite(sprite, size) {
+  const tex = sprite.texture;
+  if (!tex || !tex.valid || !tex.width || !tex.height) { sprite.scale.set(0); return; }
+  const s = size / Math.max(tex.width, tex.height);
+  sprite.scale.set(s);
+}
+
 // ── CLASSI DI RENDERING ──────────────────────────────────
 class CellView extends PIXI.Container {
   constructor(r, c) {
@@ -193,14 +220,14 @@ class CellView extends PIXI.Container {
     this.mush = new PIXI.Sprite(PIXI.Texture.EMPTY);
     this.mush.anchor.set(0.5);
     this.mush.x = CELL / 2; this.mush.y = CELL / 2;
-    this.mush.width = CELL * 0.82; this.mush.height = CELL * 0.82;
+    this.mush.filters = [whiteKeyFilter];
     this.addChild(this.mush);
 
     // sprite overlay: bomba OPPURE ragno OPPURE ragnatela OPPURE pietrificato
     this.icon = new PIXI.Sprite(PIXI.Texture.EMPTY);
     this.icon.anchor.set(0.5);
     this.icon.x = CELL / 2; this.icon.y = CELL / 2;
-    this.icon.width = CELL * 0.86; this.icon.height = CELL * 0.86;
+    this.icon.filters = [whiteKeyFilter];
     this.icon.visible = false;
     this.addChild(this.icon);
 
@@ -208,6 +235,9 @@ class CellView extends PIXI.Container {
     this.x = c * (CELL + GAP) + CELL / 2;
     this.y = r * (CELL + GAP) + CELL / 2;
 
+    // hitArea esplicita: garantisce che il tap funzioni sempre,
+    // indipendentemente dalle texture caricate nelle sprite figlie
+    this.hitArea = new PIXI.Rectangle(0, 0, CELL, CELL);
     this.eventMode = 'static';
     this.cursor = 'pointer';
     this.on('pointertap', () => onCellClick(this.r, this.c));
@@ -231,13 +261,16 @@ class TokenView extends PIXI.Container {
     this.mush = new PIXI.Sprite(PIXI.Texture.EMPTY);
     this.mush.anchor.set(0.5);
     this.mush.x = size / 2; this.mush.y = size / 2;
-    this.mush.width = size * 0.82; this.mush.height = size * 0.82;
+    this.mush.filters = [whiteKeyFilter];
     this.addChild(this.mush);
     this.emptyLabel = new PIXI.Text('vuota', { fontFamily: 'Segoe UI, sans-serif', fontSize: 9, fill: 0x555555 });
     this.emptyLabel.anchor.set(0.5);
     this.emptyLabel.x = size / 2; this.emptyLabel.y = size / 2;
     this.emptyLabel.visible = false;
     this.addChild(this.emptyLabel);
+
+    // hitArea esplicita: garantisce che il tap funzioni sempre
+    this.hitArea = new PIXI.Rectangle(0, 0, size, size);
   }
   drawBg(hex, borderHex) {
     this.bg.clear();
@@ -465,6 +498,11 @@ function rndToken() {
 }
 
 // ── RENDER CELLE / TOKEN ─────────────────────────────────
+const MUSH_FIT = CELL * 0.80; // dimensione del fungo dentro la cella
+const ICON_FIT = CELL * 0.60; // dimensione di ragno/bomba/web: più piccola
+                               // del fungo apposta, così il fungo resta
+                               // visibile sotto/attorno (non lo sostituisce)
+
 function renderCell(r, c) {
   const d = grid[r][c];
   const view = cellViews[r][c];
@@ -481,6 +519,7 @@ function renderCell(r, c) {
   if (d.black && !d.spider) {
     view.drawBg(0x1c1c1c, 0x000000);
     view.icon.texture = TEX.petrified;
+    fitSprite(view.icon, CELL * 0.82);
     view.icon.visible = true;
     return;
   }
@@ -489,16 +528,20 @@ function renderCell(r, c) {
   view.drawBg(hex);
   const scared = !!(d.spider || d.web);
   view.mush.texture = scared ? TEX.mushroomScared[d.color] : TEX.mushroom[d.color];
+  fitSprite(view.mush, MUSH_FIT);
   view.mush.visible = true;
 
   if (d.bomb) {
     view.icon.texture = TEX.bomb[d.bomb];
+    fitSprite(view.icon, ICON_FIT);
     view.icon.visible = true;
   } else if (d.spider) {
     view.icon.texture = TEX.spider[d.spider];
+    fitSprite(view.icon, ICON_FIT);
     view.icon.visible = true;
   } else if (d.web) {
     view.icon.texture = TEX.web;
+    fitSprite(view.icon, ICON_FIT);
     view.icon.visible = true;
   }
 }
@@ -522,16 +565,19 @@ function renderToken(view, token) {
   if (token === 'witch') {
     view.drawBg(0x2c2c54);
     view.mush.texture = TEX.witch;
+    fitSprite(view.mush, view.size * 0.82);
     return;
   }
   if (token === 'bomber') {
     view.drawBg(0x5c2c2c);
     view.mush.texture = TEX.bomber;
+    fitSprite(view.mush, view.size * 0.82);
     return;
   }
   const hex = COLORS[token];
   view.drawBg(hex);
   view.mush.texture = TEX.mushroom[token];
+  fitSprite(view.mush, view.size * 0.82);
 }
 function renderQueueUI() { queueViews.forEach((v, i) => renderToken(v, queue[i])); }
 function renderReserveUI() { renderToken(reserveView, reserve); }
@@ -1014,6 +1060,7 @@ function onCellClick(r, c) {
     view.mush.visible = true;
     view.mush.tint = 0xffffff;
     view.mush.texture = TEX.witch;
+    fitSprite(view.mush, CELL * 0.82);
     view.drawBg(0x2c2c54);
 
     const toMatch = new Set();
@@ -1058,6 +1105,7 @@ function onCellClick(r, c) {
     view.mush.visible = true;
     view.mush.tint = 0xffffff;
     view.mush.texture = TEX.bomber;
+    fitSprite(view.mush, CELL * 0.82);
     view.drawBg(0x5c2c2c);
 
     const toExplode = new Set();
