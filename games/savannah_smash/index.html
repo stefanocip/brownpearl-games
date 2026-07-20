@@ -318,7 +318,7 @@
   }
 
   function spawnHog(){
-    const size = 24+Math.random()*6;
+    const size = 18+Math.random()*4;
     const b = roadBounds();
     const y = -size;
     let center;
@@ -355,18 +355,38 @@
     waters.push({ y: -hh, hh, crocsSpawned:0, maxCrocs, ripplePhase: Math.random()*6.28 });
   }
 
+  // checks that placing a croc of radius r at x still leaves a gap wide enough
+  // for the rhino to pass through, given every other croc currently in play
+  function crocLeavesEscapeGap(x, r){
+    const b = roadBounds();
+    const needed = 74 + 46; // player width plus a safe maneuvering margin
+    const blockers = crocs
+      .map(c => ({ x:c.x, r:c.r }))
+      .concat([{ x, r }])
+      .sort((a,z) => a.x - z.x);
+    let prevEdge = b.left;
+    for(const blk of blockers){
+      if(blk.x - blk.r - prevEdge >= needed) return true;
+      prevEdge = Math.max(prevEdge, blk.x + blk.r);
+    }
+    if(b.right - prevEdge >= needed) return true;
+    return false;
+  }
+
   function spawnCrocIn(wtr, y){
     const b = roadBounds();
-    let x;
-    for(let attempt=0; attempt<8; attempt++){
+    let x, r;
+    for(let attempt=0; attempt<10; attempt++){
       x = b.left + Math.random()*(b.right-b.left);
+      r = 40+Math.random()*8;
       const clear = !hogs.some(h => (x-h.cx)**2+(y-h.y)**2 < (34+h.r)**2)
-        && !crocs.some(c => (x-c.x)**2+(y-c.y)**2 < (34+c.r)**2);
+        && !crocs.some(c => (x-c.x)**2+(y-c.y)**2 < (34+c.r)**2)
+        && crocLeavesEscapeGap(x, r);
       if(clear) break;
-      if(attempt===7) return; // too crowded right now, skip this croc
+      if(attempt===9) return; // no safe spot right now, skip this croc
     }
     crocs.push({
-      x, y, r: 30+Math.random()*6,
+      x, y, r,
       state:'warning', warnT:0, spawnT:0,
       wob: Math.random()*6.28,
     });
@@ -652,12 +672,15 @@
     ctx.ellipse(0, 0, h.r*0.62, h.r*0.9, 0, 0, Math.PI*2);
     ctx.fill();
 
-    // mane bristles
-    ctx.strokeStyle = '#4a3d2a'; ctx.lineWidth = h.r*0.12; ctx.lineCap='round';
-    for(let i=-2;i<=2;i++){
+    // crest running the length of the back
+    ctx.strokeStyle = '#4a3d2a'; ctx.lineWidth = h.r*0.09; ctx.lineCap='round';
+    for(let i=0;i<7;i++){
+      const yy = -h.r*0.82 + i*(h.r*1.5/6);
+      const spread = h.r*0.05;
       ctx.beginPath();
-      ctx.moveTo(i*h.r*0.12, -h.r*0.5);
-      ctx.lineTo(i*h.r*0.12, -h.r*0.85);
+      ctx.moveTo(-spread, yy+h.r*0.08);
+      ctx.lineTo(0, yy-h.r*0.1);
+      ctx.lineTo(spread, yy+h.r*0.08);
       ctx.stroke();
     }
 
@@ -671,20 +694,28 @@
     ctx.ellipse(0, -h.r*1.18, h.r*0.28, h.r*0.2, 0, 0, Math.PI*2);
     ctx.fill();
 
-    // tusks
+    // nostrils
+    ctx.fillStyle = '#3a2c1e';
+    ctx.beginPath(); ctx.ellipse(-h.r*0.1,-h.r*1.2, h.r*0.045, h.r*0.06, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(h.r*0.1,-h.r*1.2, h.r*0.045, h.r*0.06, 0, 0, Math.PI*2); ctx.fill();
+
+    // tusks, curving outward and up away from the face
     ctx.strokeStyle = '#f4e8c8'; ctx.lineWidth = h.r*0.1; ctx.lineCap='round';
-    ctx.beginPath(); ctx.moveTo(-h.r*0.22,-h.r*1.05); ctx.quadraticCurveTo(-h.r*0.4,-h.r*0.85, -h.r*0.32,-h.r*0.7); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(h.r*0.22,-h.r*1.05); ctx.quadraticCurveTo(h.r*0.4,-h.r*0.85, h.r*0.32,-h.r*0.7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-h.r*0.3,-h.r*1.0); ctx.quadraticCurveTo(-h.r*0.62,-h.r*0.92, -h.r*0.58,-h.r*0.68); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(h.r*0.3,-h.r*1.0); ctx.quadraticCurveTo(h.r*0.62,-h.r*0.92, h.r*0.58,-h.r*0.68); ctx.stroke();
 
     // ears
     ctx.fillStyle = '#6b5a42';
     ctx.beginPath(); ctx.ellipse(-h.r*0.32,-h.r*1.15,h.r*0.14,h.r*0.2,0.5,0,Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.ellipse(h.r*0.32,-h.r*1.15,h.r*0.14,h.r*0.2,-0.5,0,Math.PI*2); ctx.fill();
 
-    // eyes
+    // cute round eyes with a little highlight
     ctx.fillStyle = '#241708';
-    ctx.beginPath(); ctx.arc(-h.r*0.16,-h.r*1.0,h.r*0.06,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(h.r*0.16,-h.r*1.0,h.r*0.06,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-h.r*0.17,-h.r*1.0,h.r*0.08,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(h.r*0.17,-h.r*1.0,h.r*0.08,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-h.r*0.15,-h.r*1.03,h.r*0.025,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(h.r*0.19,-h.r*1.03,h.r*0.025,0,Math.PI*2); ctx.fill();
 
     // tail
     ctx.strokeStyle = '#3f3226'; ctx.lineWidth = h.r*0.08; ctx.lineCap='round';
@@ -737,6 +768,13 @@
     const wob = Math.sin(t*0.15 + c.wob)*0.08;
     ctx.rotate(wob);
 
+    // legs, peeking out from the sides
+    ctx.fillStyle = '#3f5c30';
+    ctx.beginPath(); ctx.ellipse(-c.r*0.52, c.r*0.15, c.r*0.14, c.r*0.24, 0.3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(c.r*0.52, c.r*0.15, c.r*0.14, c.r*0.24, -0.3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-c.r*0.48, -c.r*0.55, c.r*0.12, c.r*0.2, 0.3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(c.r*0.48, -c.r*0.55, c.r*0.12, c.r*0.2, -0.3, 0, Math.PI*2); ctx.fill();
+
     // tail
     ctx.fillStyle = '#4a6b3a';
     ctx.beginPath();
@@ -746,37 +784,52 @@
     ctx.fill();
 
     // body
-    ctx.fillStyle = '#527a40';
+    const bgrad = ctx.createLinearGradient(-c.r*0.5,0,c.r*0.5,0);
+    bgrad.addColorStop(0,'#456b34'); bgrad.addColorStop(0.5,'#5c8548'); bgrad.addColorStop(1,'#456b34');
+    ctx.fillStyle = bgrad;
     ctx.beginPath();
     ctx.ellipse(0, 0.1*c.r, c.r*0.5, c.r*0.85, 0, 0, Math.PI*2);
     ctx.fill();
-    // back ridges
-    ctx.fillStyle = 'rgba(30,50,25,0.5)';
-    for(let i=-1;i<=1;i++){
-      ctx.beginPath(); ctx.ellipse(i*c.r*0.18, -c.r*0.1, c.r*0.08, c.r*0.16, 0, 0, Math.PI*2); ctx.fill();
+
+    // dorsal ridge of bumpy scutes running from head to tail-tip
+    ctx.fillStyle = 'rgba(30,50,25,0.55)';
+    for(let i=0;i<8;i++){
+      const yy = -c.r*0.85 + i*(c.r*2.15/7);
+      const sc = 1 - Math.abs(i-3.5)/5;
+      ctx.beginPath(); ctx.ellipse(0, yy, c.r*(0.1+sc*0.05), c.r*0.15, 0, 0, Math.PI*2); ctx.fill();
     }
 
-    // snout/jaws
+    // snout/jaws — long, extending forward well past the eyes
     ctx.fillStyle = '#3f5c30';
     ctx.beginPath();
-    ctx.ellipse(0, -c.r*0.95, c.r*0.28, c.r*0.42, 0, 0, Math.PI*2);
+    ctx.ellipse(0, -c.r*1.15, c.r*0.26, c.r*0.5, 0, 0, Math.PI*2);
     ctx.fill();
-    // teeth
+    // nostrils, right at the far tip
+    ctx.fillStyle = '#213018';
+    ctx.beginPath(); ctx.ellipse(-c.r*0.08,-c.r*1.58, c.r*0.035, c.r*0.05, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(c.r*0.08,-c.r*1.58, c.r*0.035, c.r*0.05, 0, 0, Math.PI*2); ctx.fill();
+    // teeth, a jagged row peeking along both sides of the long jaw
     ctx.fillStyle = '#f4f0dc';
-    for(let i=-1;i<=1;i+=2){
-      ctx.beginPath();
-      ctx.moveTo(i*c.r*0.16, -c.r*0.75);
-      ctx.lineTo(i*c.r*0.22, -c.r*0.62);
-      ctx.lineTo(i*c.r*0.08, -c.r*0.65);
-      ctx.closePath(); ctx.fill();
+    for(let side=-1; side<=1; side+=2){
+      for(let i=0;i<3;i++){
+        const yy = -c.r*1.18 - i*c.r*0.14;
+        ctx.beginPath();
+        ctx.moveTo(side*c.r*0.13, yy);
+        ctx.lineTo(side*c.r*0.23, yy-c.r*0.02);
+        ctx.lineTo(side*c.r*0.14, yy-c.r*0.09);
+        ctx.closePath(); ctx.fill();
+      }
     }
-    // eyes (raised bumps, croc-in-water style)
+    // eyes: raised bumps close to the body, at the back of the head
     ctx.fillStyle = '#3f5c30';
-    ctx.beginPath(); ctx.ellipse(-c.r*0.18,-c.r*1.15,c.r*0.1,c.r*0.08,0,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(c.r*0.18,-c.r*1.15,c.r*0.1,c.r*0.08,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-c.r*0.2,-c.r*0.82,c.r*0.1,c.r*0.08,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(c.r*0.2,-c.r*0.82,c.r*0.1,c.r*0.08,0,0,Math.PI*2); ctx.fill();
     ctx.fillStyle = '#d9c94a';
-    ctx.beginPath(); ctx.arc(-c.r*0.18,-c.r*1.15,c.r*0.045,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(c.r*0.18,-c.r*1.15,c.r*0.045,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-c.r*0.2,-c.r*0.82,c.r*0.045,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(c.r*0.2,-c.r*0.82,c.r*0.045,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#161208';
+    ctx.beginPath(); ctx.ellipse(-c.r*0.2,-c.r*0.82,c.r*0.014,c.r*0.04,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(c.r*0.2,-c.r*0.82,c.r*0.014,c.r*0.04,0,0,Math.PI*2); ctx.fill();
 
     ctx.restore();
   }
