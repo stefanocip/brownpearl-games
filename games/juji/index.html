@@ -25,7 +25,11 @@
     --shadow: 0 6px 18px rgba(0,0,0,0.35);
   }
 
-  *{ box-sizing: border-box; }
+  *{
+    box-sizing: border-box;
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+  }
 
   button{
     user-select: none;
@@ -1031,6 +1035,9 @@
   // Belt-and-braces against double-tap-to-zoom: some mobile browsers (Safari in
   // particular) don't fully honor the viewport meta restrictions for this gesture.
   document.addEventListener('dblclick', (e) => e.preventDefault());
+  // Suppress the long-press context menu / magnifying-glass loupe some mobile
+  // browsers show during a touch-and-hold, which can appear while dragging a piece.
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
 
   initPointerHandling();
   resetGame();
