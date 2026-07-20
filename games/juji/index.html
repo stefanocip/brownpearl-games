@@ -956,6 +956,13 @@
     const TAP_THRESHOLD = 10; // px of movement allowed before a press counts as a drag instead of a tap
     let pointerDownPos = null;
 
+    // iOS Safari (15+) can show its long-press magnifying-glass loupe during the brief
+    // stationary moment right after touchdown — exactly the window our tap-vs-drag check
+    // waits through. CSS alone (-webkit-touch-callout, user-select) doesn't reliably stop
+    // it; explicitly preventing the native (non-passive) touchstart does.
+    previewFrame.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+    document.getElementById('boardArea').addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+
     previewFrame.addEventListener('pointerdown', (e) => {
       if(gameOver || busy) return;
       e.preventDefault();
