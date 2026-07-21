@@ -441,7 +441,8 @@
     const bx = side>0 ? b.right + margin : b.left - margin;
     const size = 13+Math.random()*10;
     const clearOfWater = !waters.some(w => Math.abs(-size - w.y) < w.hh + 20);
-    if(!clearOfWater) return; // don't sprout grass in the river
+    const clearOfRocks = !scenery.some(s => (s.kind==='rockDark'||s.kind==='rockLight') && (bx-s.x)**2 < (size+s.size+10)**2);
+    if(!clearOfWater || !clearOfRocks) return; // don't sprout grass in the river or on top of a boulder
     scenery.push({ x:bx, y:-size, size, kind:'grassPatch', seed: Math.floor(Math.random()*97) });
   }
 
@@ -478,7 +479,7 @@
     for(let attempt=0; attempt<10; attempt++){
       x = b.left + Math.random()*(b.right-b.left);
       r = 40+Math.random()*8;
-      const clear = !hogs.some(h => (x-h.cx)**2+(y-h.y)**2 < (34+h.r)**2)
+      const clear = !hogs.some(h => ((x-h.cx)**2+(y-h.y)**2 < (34+h.r)**2) || (Math.abs(x-h.cx) < (34+h.r) && y < h.y))
         && !crocs.some(c => (x-c.x)**2+(y-c.y)**2 < (34+c.r)**2)
         && crocLeavesEscapeGap(x, r);
       if(clear) break;
@@ -514,13 +515,20 @@
     if(light){ grad.addColorStop(0,'#d9c9a8'); grad.addColorStop(1,'#a89570'); }
     else { grad.addColorStop(0,'#8a7a6a'); grad.addColorStop(1,'#4f453a'); }
     ctx.fillStyle = grad;
-    const jag = [1,0.72,0.92,0.65,1.05,0.7,0.95,0.68];
+    const n = 12;
     ctx.beginPath();
-    for(let i=0;i<jag.length;i++){
-      const a = (i/jag.length)*Math.PI*2;
-      const rr = r*jag[(i+seed)%jag.length];
-      const px = Math.cos(a)*rr, py = Math.sin(a)*rr*0.9;
-      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    const pts = [];
+    for(let i=0;i<n;i++){
+      const a = (i/n)*Math.PI*2;
+      const jitter = 0.78 + (((i*seed*13)%37)/37)*0.36; // smoother, less regular than a fixed repeating pattern
+      const rr = r*jitter;
+      pts.push([Math.cos(a)*rr, Math.sin(a)*rr*0.9]);
+    }
+    ctx.moveTo((pts[0][0]+pts[n-1][0])/2, (pts[0][1]+pts[n-1][1])/2);
+    for(let i=0;i<n;i++){
+      const next = pts[(i+1)%n];
+      const mid = [(pts[i][0]+next[0])/2, (pts[i][1]+next[1])/2];
+      ctx.quadraticCurveTo(pts[i][0], pts[i][1], mid[0], mid[1]);
     }
     ctx.closePath(); ctx.fill();
     ctx.strokeStyle= light ? 'rgba(90,70,40,0.3)' : 'rgba(0,0,0,0.25)'; ctx.lineWidth=r*0.05;
@@ -722,9 +730,17 @@
     ctx.closePath(); ctx.fill();
 
     // eyes
-    ctx.fillStyle = '#241708';
-    ctx.beginPath(); ctx.arc(-7,-30,1.8,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(7,-30,1.8,0,Math.PI*2); ctx.fill();
+    if(state==='dying' || state==='over'){
+      ctx.strokeStyle = '#241708'; ctx.lineWidth = 2; ctx.lineCap='round';
+      for(const ex of [-7,7]){
+        ctx.beginPath(); ctx.moveTo(ex-2.2,-32.2); ctx.lineTo(ex+2.2,-27.8); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ex-2.2,-27.8); ctx.lineTo(ex+2.2,-32.2); ctx.stroke();
+      }
+    } else {
+      ctx.fillStyle = '#241708';
+      ctx.beginPath(); ctx.arc(-7,-30,1.8,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(7,-30,1.8,0,Math.PI*2); ctx.fill();
+    }
     if(boostActive){
       // angry eyebrows while smashing (inner corners pulled down toward the eyes)
       ctx.strokeStyle = '#241708'; ctx.lineWidth = 2.2; ctx.lineCap='round';
@@ -886,10 +902,10 @@
     ctx.beginPath(); ctx.ellipse(-h.r*0.1,-h.r*1.2, h.r*0.045, h.r*0.06, 0, 0, Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.ellipse(h.r*0.1,-h.r*1.2, h.r*0.045, h.r*0.06, 0, 0, Math.PI*2); ctx.fill();
 
-    // tusks, straight out to the sides
-    ctx.strokeStyle = '#f4e8c8'; ctx.lineWidth = h.r*0.1; ctx.lineCap='round';
-    ctx.beginPath(); ctx.moveTo(-h.r*0.3,-h.r*1.0); ctx.lineTo(-h.r*0.62,-h.r*0.8); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(h.r*0.3,-h.r*1.0); ctx.lineTo(h.r*0.62,-h.r*0.8); ctx.stroke();
+    // tusks, straight out to the sides, nearly horizontal
+    ctx.strokeStyle = '#c9c2a8'; ctx.lineWidth = h.r*0.1; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(-h.r*0.3,-h.r*1.0); ctx.lineTo(-h.r*0.68,-h.r*0.9); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(h.r*0.3,-h.r*1.0); ctx.lineTo(h.r*0.68,-h.r*0.9); ctx.stroke();
 
     // ears
     ctx.fillStyle = '#6b5a42';
@@ -1370,13 +1386,13 @@
     const BOOST_MAX = 55, RECHARGE_RATE = 100/36;
     if(superMode){
       energy -= ENERGY_DRAIN * diff;
-      if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:7+Math.random()*5, life:26, color:'#ff9a3d'});
-      if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*30, y:player.y+44, size:5+Math.random()*4, life:22, color:'#ff9a3d'});
+      if(!inWater && t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:7+Math.random()*5, life:26, color:'#ff9a3d'});
+      if(!inWater && t%2===0) dust.push({x:player.x+(Math.random()-0.5)*30, y:player.y+44, size:5+Math.random()*4, life:22, color:'#ff9a3d'});
       if(energy<=0){ energy=0; superMode=false; boostActive=false; invuln=48; }
     } else if(boostActive){
       boostTimer--;
-      if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:7+Math.random()*5, life:26, color:'#fff4da'});
-      if(t%2===0) dust.push({x:player.x+(Math.random()-0.5)*30, y:player.y+44, size:5+Math.random()*4, life:22, color:'#fff4da'});
+      if(!inWater && t%2===0) dust.push({x:player.x+(Math.random()-0.5)*20, y:player.y+40, size:7+Math.random()*5, life:26, color:'#fff4da'});
+      if(!inWater && t%2===0) dust.push({x:player.x+(Math.random()-0.5)*30, y:player.y+44, size:5+Math.random()*4, life:22, color:'#fff4da'});
       if(boostTimer<=0){ boostActive=false; }
     } else if(charge<100){
       charge = Math.min(charge + RECHARGE_RATE*diff, 100);
@@ -1384,7 +1400,7 @@
     if(invuln>0) invuln--;
 
     // ambient dust trail behind the rhino at all times, not just while smashing
-    if(!boostActive && t%5===0){
+    if(!boostActive && !inWater && t%5===0){
       dust.push({x:player.x+(Math.random()-0.5)*16, y:player.y+36, size:5+Math.random()*3, life:24, color:'#f0dcae'});
     }
 
@@ -1422,7 +1438,8 @@
       if(deathTimer<=0){ finishGameOver(); }
     }
     // dust/particles keep fading and drifting regardless of game state
-    for(let i=dust.length-1;i>=0;i--){ const d=dust[i]; d.y += (scrollSpeed||4)*0.4; d.life--; if(d.life<=0) dust.splice(i,1); }
+    const dustSpeed = (scrollSpeed||4.3) * (1+(score||0)/600) * (superMode ? 3.3 : (boostActive?2.0:1)) * 0.4;
+    for(let i=dust.length-1;i>=0;i--){ const d=dust[i]; d.y += dustSpeed; d.life--; if(d.life<=0) dust.splice(i,1); }
     for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.25; p.life--; if(p.life<=0) particles.splice(i,1); }
     ctx.save();
     if(shake>0.3){
