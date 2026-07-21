@@ -221,7 +221,7 @@
   bestEl.textContent = 'Best: '+best;
   homeBestEl.textContent = best>0 ? ('Best: '+best) : '';
 
-  const ENERGY_GAIN = 17, ENERGY_DRAIN = 0.32, CHILI_ENERGY = 380;
+  const ENERGY_GAIN = 9, ENERGY_DRAIN = 0.32, CHILI_ENERGY = 380;
   let player, rocks, grasses, hogs, waters, crocs, chilis, scenery, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, chiliTimer, sceneryTimer, bushTimer, grassPatchTimer, boostActive, superMode, boostTimer, charge, energy, invuln, shake, roadOffset, stonesSmashed, hogsSquashed, deathTimer, groundSegments;
   let tiltX = 0;       // -1..1 target from gyroscope/touch
   let smoothX = 0;      // smoothed player position factor
@@ -1174,7 +1174,7 @@
     grassTimer -= diff;
     if(grassTimer<=0){
       spawnGrass();
-      grassTimer = 130 + Math.random()*90;
+      grassTimer = 70 + Math.random()*50;
     }
     hogTimer -= diff;
     if(hogTimer<=0){
