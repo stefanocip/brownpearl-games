@@ -427,7 +427,7 @@
       const side = Math.random()<0.5 ? -1 : 1;
       const margin = 10 + Math.random()*(W*0.16);
       bx = side>0 ? b.right + margin : b.left - margin;
-      const clearOfRocks = !scenery.some(s => (s.kind==='rockDark'||s.kind==='rockLight') && (bx-s.x)**2+(0-0)**2 < (size+s.size+10)**2);
+      const clearOfRocks = !scenery.some(s => (s.kind==='rockDark'||s.kind==='rockLight') && (bx-s.x)**2+(-size-s.y)**2 < (size+s.size+16)**2);
       const clearOfWater = !waters.some(w => Math.abs(-size - w.y) < w.hh + 20);
       if(!clearOfRocks || !clearOfWater) return; // don't sprout a bush on a boulder or in the river
     }
@@ -1114,7 +1114,7 @@
     energyWrap.classList.add('hidden');
     resize();
     score = Math.floor(score);
-    if(score>best){ best=score; localStorage.setItem('savannaBest', String(best)); homeBestEl.textContent = 'Best: '+best; }
+    if(score>best){ best=score; localStorage.setItem('savannaBest', String(best)); homeBestEl.textContent = 'Best: '+best; bestEl.textContent = 'Best: '+best; }
     const metersRun = Math.floor((roadOffset||0)/40);
     lastStats = { score, best, stonesSmashed, hogsSquashed, metersRun };
     finalScoreEl.innerHTML =
@@ -1454,13 +1454,14 @@
     for(const h of (hogs||[])) drawHog(h);
     for(const c of (crocs||[])) drawCroc(c);
     if(state!=='idle') drawRhino();
-    for(const s of (scenery||[])){
-      if(s.kind==='leafyTree') drawLeafyTree(s.x, s.y, s.size, s.seed);
-      else if(s.kind==='dryBush') drawDryBush(s.x, s.y, s.size, s.seed);
-      else if(s.kind==='grassPatch') drawGrassPatch(s.x, s.y, s.size, s.seed);
-      else if(s.kind==='rockLight') drawSceneryRock(s.x, s.y, s.size, s.seed, true);
-      else drawSceneryRock(s.x, s.y, s.size, s.seed, false);
+    const sceneryList = scenery||[];
+    for(const s of sceneryList){ if(s.kind==='grassPatch') drawGrassPatch(s.x, s.y, s.size, s.seed); }
+    for(const s of sceneryList){ if(s.kind==='dryBush') drawDryBush(s.x, s.y, s.size, s.seed); }
+    for(const s of sceneryList){
+      if(s.kind==='rockLight') drawSceneryRock(s.x, s.y, s.size, s.seed, true);
+      else if(s.kind==='rockDark') drawSceneryRock(s.x, s.y, s.size, s.seed, false);
     }
+    for(const s of sceneryList){ if(s.kind==='leafyTree') drawLeafyTree(s.x, s.y, s.size, s.seed); }
     if(state==='dying') drawDeathStars();
     drawParticles();
     ctx.restore();
