@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Night Creatures</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    width:100%; height:100%; overflow:hidden;
+    background:#0a0e08;
+    font-family: 'Courier New', monospace;
+    touch-action:none;
+  }
+  #gameCanvas {
+    display:block;
+    position:absolute;
+    top:0; left:0;
+    background:#1a1f14;
+  }
+  .overlay {
+    position:absolute; top:0; left:0; width:100%; height:100%;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#d8e8c0; text-align:center; padding:24px;
+    background:rgba(6,10,4,0.92);
+    z-index:10;
+  }
+  .overlay h1 {
+    font-size:38px; color:#7fbf3f; letter-spacing:2px;
+    text-shadow: 0 0 12px rgba(127,191,63,0.6);
+    margin-bottom:6px;
+  }
+  .overlay .sub { color:#8a9a78; font-size:13px; margin-bottom:22px; }
+  .overlay p { font-size:14px; line-height:1.6; max-width:320px; margin-bottom:8px; color:#b8c8a0; }
+  .btn {
+    margin-top:18px;
+    padding:14px 36px;
+    font-size:17px;
+    font-weight:bold;
+    letter-spacing:1px;
+    color:#0a0e08;
+    background:#7fbf3f;
+    border:none;
+    border-radius:6px;
+    box-shadow:0 4px 0 #4a7020, 0 4px 12px rgba(0,0,0,0.4);
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .btn:active { transform:translateY(3px); box-shadow:0 1px 0 #4a7020; }
+  .btn.secondary {
+    background:transparent; color:#8a9a78; border:1px solid #4a5a3a; box-shadow:none;
+    margin-top:10px; padding:10px 28px; font-size:13px;
+  }
+  #hud {
+    position:absolute; top:0; left:0; width:100%;
+    display:flex; justify-content:space-between; align-items:center;
+    padding:12px 16px; z-index:5;
+    color:#d8e8c0; font-size:16px; font-weight:bold;
+    text-shadow:0 2px 4px rgba(0,0,0,0.8);
+    pointer-events:none;
+  }
+  #hud .lives { color:#e05a4a; letter-spacing:2px; }
+  #hud .score { color:#7fbf3f; }
+  #hud .wave { color:#c0a848; font-size:13px; }
+  #hud .counter { color:#9fd6ff; font-size:13px; }
+  .hidden { display:none !important; }
+  #calibBar {
+    position:absolute; bottom:18px; left:50%; transform:translateX(-50%);
+    width:70%; max-width:280px; height:6px; background:rgba(255,255,255,0.15);
+    border-radius:3px; overflow:hidden; z-index:5;
+  }
+  #calibFill { height:100%; width:0%; background:#7fbf3f; transition:width 0.1s linear; }
+
+  #bossBar {
+    position:absolute; top:52px; left:50%; transform:translateX(-50%);
+    width:80%; max-width:360px; z-index:5;
+    text-align:center; pointer-events:none;
+  }
+  #bossBar .label {
+    color:#e05a4a; font-size:12px; font-weight:bold; letter-spacing:3px;
+    text-shadow:0 2px 4px rgba(0,0,0,0.8); margin-bottom:4px;
+  }
+  #bossBarTrack {
+    width:100%; height:10px; background:rgba(0,0,0,0.5);
+    border:1px solid rgba(224,90,74,0.6); border-radius:5px; overflow:hidden;
+  }
+  #bossBarFill { height:100%; width:100%; background:#e05a4a; transition:width 0.15s linear; }
+
+  #weaponSwitch {
+    position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
+    display:flex; gap:14px; z-index:6;
+  }
+  .weaponBtn {
+    width:56px; height:56px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:26px; border:2px solid rgba(255,255,255,0.25);
+    background:rgba(20,26,14,0.7);
+    box-shadow:0 3px 10px rgba(0,0,0,0.5);
+    opacity:0.55;
+    touch-action:manipulation;
+  }
+  .weaponBtn.green.active { border-color:#7fbf3f; box-shadow:0 0 14px rgba(127,191,63,0.7); opacity:1; }
+  .weaponBtn.silver.active { border-color:#dfe6ea; box-shadow:0 0 14px rgba(223,230,234,0.7); opacity:1; }
+  .weaponBtn.scarab.active { border-color:#e0b23a; box-shadow:0 0 14px rgba(224,178,58,0.7); opacity:1; }
+  .weaponBtn.scarab.hidden { display:none !important; }
+  .weaponBtn.stake.active { border-color:#5a7fd6; box-shadow:0 0 14px rgba(90,127,214,0.7); opacity:1; }
+  .weaponBtn.stake.hidden { display:none !important; }
+
+  #molotovBtn {
+    position:absolute; bottom:22px; right:20px; z-index:6;
+    width:58px; height:58px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:26px; border:2px solid #e08a2a;
+    background:rgba(40,22,8,0.75);
+    box-shadow:0 0 16px rgba(224,138,42,0.6), 0 3px 10px rgba(0,0,0,0.5);
+    animation: molotovPulse 1.4s ease-in-out infinite;
+    touch-action:manipulation;
+  }
+  #molotovBtn.hidden { display:none !important; }
+  @keyframes molotovPulse {
+    0%, 100% { transform:scale(1); }
+    50% { transform:scale(1.08); }
+  }
+  #molotovCount {
+    position:absolute; top:-6px; right:-6px;
+    background:#e05a4a; color:#fff; font-size:12px; font-weight:bold;
+    border-radius:50%; width:20px; height:20px;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 2px 4px rgba(0,0,0,0.5);
+  }
+
+  #unlockToast {
+    position:absolute; top:38%; left:50%; transform:translate(-50%,-50%);
+    z-index:8; text-align:center; color:#dfe6ea;
+    text-shadow:0 0 14px rgba(223,230,234,0.8), 0 2px 6px rgba(0,0,0,0.9);
+    font-size:20px; font-weight:bold; letter-spacing:1px;
+    padding:14px 22px; pointer-events:none;
+    opacity:0; transition:opacity 0.4s ease;
+  }
+  #unlockToast.show { opacity:1; }
+  #unlockToast .sub { display:block; font-size:12px; color:#b8c8a0; margin-top:6px; letter-spacing:0.5px; }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="hud" class="hidden">
+  <div class="lives" id="livesDisplay">♥♥♥</div>
+  <div class="counter" id="counterDisplay">ZOMBIE 0/20</div>
+  <div class="score" id="scoreDisplay">0</div>
+</div>
+
+<div id="bossBar" class="hidden">
+  <div class="label">ZOMBIE BOSS</div>
+  <div id="bossBarTrack"><div id="bossBarFill"></div></div>
+</div>
+
+<div id="weaponSwitch" class="hidden">
+  <button class="weaponBtn green active" id="weaponGreenBtn">🧟</button>
+  <button class="weaponBtn silver" id="weaponSilverBtn">🐺</button>
+  <button class="weaponBtn scarab hidden" id="weaponScarabBtn">🪲</button>
+  <button class="weaponBtn stake hidden" id="weaponStakeBtn">🪵</button>
+</div>
+
+<button id="molotovBtn" class="hidden">🔥<span id="molotovCount">0</span></button>
+
+<div id="unlockToast"><span id="unlockToastMain">PALLOTTOLA D'ARGENTO SBLOCCATA</span><span class="sub" id="unlockToastSub">tocca 🐺 per colpire i licantropi</span></div>
+
+<div id="startScreen" class="overlay">
+  <h1>NIGHT CREATURES</h1>
+  <div class="sub">tilt &amp; survive</div>
+  <p>Tilt your phone left and right to move down the road. Your gun fires on its own — just dodge into position and mow them down.</p>
+  <button class="btn" id="startBtn">TILT TO START</button>
+  <button class="btn secondary" id="startBtnTouch">USE TOUCH INSTEAD</button>
+</div>
+
+<div id="gameOverScreen" class="overlay hidden">
+  <h1 style="color:#e05a4a;">YOU DIED</h1>
+  <p id="finalScoreText" style="font-size:22px; color:#d8e8c0;">Score: 0</p>
+  <button class="btn" id="retryBtn">RETRY</button>
+</div>
+
+<div id="calibBar" class="hidden"><div id="calibFill"></div></div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, ROAD_LEFT, ROAD_RIGHT, ROAD_WIDTH;
+
+  let trees = [];
+
+  function resize(){
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    const margin = W * 0.10;
+    ROAD_LEFT = margin;
+    ROAD_RIGHT = W - margin;
+    ROAD_WIDTH = ROAD_RIGHT - ROAD_LEFT;
+    generateTrees();
+  }
+
+  function generateTrees(){
+    trees = [];
+    let y = -20;
+    while (y < H + 40) {
+      const step = 70 + Math.random()*50;
+      // left side
+      trees.push({
+        x: Math.random() * (ROAD_LEFT * 0.75),
+        y: y + Math.random()*20,
+        size: 16 + Math.random()*14
+      });
+      // right side
+      trees.push({
+        x: ROAD_RIGHT + Math.random() * (ROAD_LEFT * 0.8),
+        y: y + Math.random()*20,
+        size: 16 + Math.random()*14
+      });
+      y += step;
+    }
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- STATE ----------
+  const startScreen = document.getElementById('startScreen');
+  const gameOverScreen = document.getElementById('gameOverScreen');
+  const hud = document.getElementById('hud');
+  const livesDisplay = document.getElementById('livesDisplay');
+  const scoreDisplay = document.getElementById('scoreDisplay');
+  const counterDisplay = document.getElementById('counterDisplay');
+  const finalScoreText = document.getElementById('finalScoreText');
+  const bossBar = document.getElementById('bossBar');
+  const bossBarFill = document.getElementById('bossBarFill');
+  const weaponSwitch = document.getElementById('weaponSwitch');
+  const weaponGreenBtn = document.getElementById('weaponGreenBtn');
+  const weaponSilverBtn = document.getElementById('weaponSilverBtn');
+  const weaponScarabBtn = document.getElementById('weaponScarabBtn');
+  const weaponStakeBtn = document.getElementById('weaponStakeBtn');
+  const unlockToast = document.getElementById('unlockToast');
+  const unlockToastMain = document.getElementById('unlockToastMain');
+  const unlockToastSub = document.getElementById('unlockToastSub');
+  const molotovBtn = document.getElementById('molotovBtn');
+  const molotovCountEl = document.getElementById('molotovCount');
+
+  let useTouch = false;
+  let tiltInput = 0;        // -1..1
+  let playerX = 0;          // 0..1 across road
+  let playerTargetX = 0.5;
+  let lives = 3;
+  let score = 0;
+  let running = false;
+  let lastTime = 0;
+  let fireTimer = 0;
+  let spawnTimer = 0;
+  let flashTimer = 0;
+
+  let zombieCounter = 0;     // counts every enemy that has spawned so far
+  let bossSpawned = false;
+  let bossActive = false;
+  let bossRef = null;
+  let werewolfUnlocked = false;
+  let werewolfKillCount = 0;
+  let mummyUnlocked = false;
+  let mummyKillCount = 0;
+  let vampireUnlocked = false;
+  let activeWeapon = 'green'; // 'green' or 'silver'
+
+  let killCount = 0;        // total kills, drives the molotov every-10 reward
+  let molotovCount = 0;
+  let molotovThrow = null;  // {t, duration, fromX, fromY, toX, toY} while in flight
+  let explosion = null;     // {y, t, duration} while the fire sweep is visible
+
+  const bullets = [];
+  const zombies = [];
+  const particles = [];
+
+  const PLAYER_Y_RATIO = 0.86;
+  const PLAYER_SIZE = 26;
+  const BULLET_SPEED = 780;
+  const FIRE_RATE = 0.12; // seconds between shots
+  const BASE_ZOMBIE_SPEED = 40;
+
+  // ---------- GYROSCOPE ----------
+  let gyroBaseline = null;
+  let gyroReady = false;
+
+  function handleOrientation(e){
+    if (e.gamma === null) return;
+    let gamma = e.gamma; // left-right tilt
+    if (gyroBaseline === null) gyroBaseline = gamma;
+    let delta = gamma - gyroBaseline;
+    delta = Math.max(-30, Math.min(30, delta));
+    tiltInput = delta / 30;
+    if (!gyroReady) gyroReady = true;
+  }
+
+  function requestGyro(){
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().then(state => {
+        if (state === 'granted') {
+          window.addEventListener('deviceorientation', handleOrientation);
+          beginCalibration();
+        } else {
+          useTouch = true;
+          startGame();
+        }
+      }).catch(() => { useTouch = true; startGame(); });
+    } else if (typeof DeviceOrientationEvent !== 'undefined') {
+      window.addEventListener('deviceorientation', handleOrientation);
+      beginCalibration();
+    } else {
+      useTouch = true;
+      startGame();
+    }
+  }
+
+  function beginCalibration(){
+    const calibBar = document.getElementById('calibBar');
+    const calibFill = document.getElementById('calibFill');
+    startScreen.classList.add('hidden');
+    calibBar.classList.remove('hidden');
+    gyroBaseline = null;
+    let t = 0;
+    const dur = 900;
+    const start = performance.now();
+    function step(now){
+      t = now - start;
+      calibFill.style.width = Math.min(100, (t/dur)*100) + '%';
+      if (t < dur) {
+        requestAnimationFrame(step);
+      } else {
+        calibBar.classList.add('hidden');
+        startGame();
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  // ---------- TOUCH FALLBACK ----------
+  let touchActive = false;
+  canvas.addEventListener('touchstart', onTouch, {passive:true});
+  canvas.addEventListener('touchmove', onTouch, {passive:true});
+  function onTouch(e){
+    if (!useTouch || !running) return;
+    const t = e.touches[0];
+    if (!t) return;
+    const rel = (t.clientX - ROAD_LEFT) / ROAD_WIDTH;
+    playerTargetX = Math.max(0, Math.min(1, rel));
+  }
+
+  // ---------- GAME FLOW ----------
+  document.getElementById('startBtn').addEventListener('click', () => {
+    useTouch = false;
+    requestGyro();
+  });
+  document.getElementById('startBtnTouch').addEventListener('click', () => {
+    useTouch = true;
+    startGame();
+  });
+  document.getElementById('retryBtn').addEventListener('click', resetGame);
+
+  function resetGame(){
+    lives = 3;
+    score = 0;
+    zombieCounter = 0;
+    bossSpawned = false;
+    bossActive = false;
+    bossRef = null;
+    werewolfUnlocked = false;
+    werewolfKillCount = 0;
+    mummyUnlocked = false;
+    mummyKillCount = 0;
+    vampireUnlocked = false;
+    activeWeapon = 'green';
+    killCount = 0;
+    molotovCount = 0;
+    molotovThrow = null;
+    explosion = null;
+    bullets.length = 0;
+    zombies.length = 0;
+    particles.length = 0;
+    playerX = 0.5;
+    playerTargetX = 0.5;
+    gameOverScreen.classList.add('hidden');
+    bossBar.classList.add('hidden');
+    weaponSwitch.classList.add('hidden');
+    unlockToast.classList.remove('show');
+    weaponGreenBtn.classList.add('active');
+    weaponSilverBtn.classList.remove('active');
+    weaponScarabBtn.classList.remove('active');
+    weaponScarabBtn.classList.add('hidden');
+    weaponStakeBtn.classList.remove('active');
+    weaponStakeBtn.classList.add('hidden');
+    updateMolotovUI();
+    startGame();
+  }
+
+  function startGame(){
+    startScreen.classList.add('hidden');
+    gameOverScreen.classList.add('hidden');
+    hud.classList.remove('hidden');
+    updateHud();
+    running = true;
+    lastTime = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function updateHud(){
+    livesDisplay.textContent = '♥'.repeat(Math.max(0,lives));
+    scoreDisplay.textContent = score;
+    if (!bossSpawned) {
+      counterDisplay.textContent = 'ZOMBIE ' + Math.min(zombieCounter, 20) + '/20';
+    } else {
+      counterDisplay.textContent = '';
+    }
+  }
+
+  function updateMolotovUI(){
+    molotovCountEl.textContent = molotovCount;
+    molotovBtn.classList.toggle('hidden', molotovCount <= 0);
+  }
+
+  function registerKill(){
+    killCount++;
+    if (killCount % 10 === 0) {
+      molotovCount++;
+      updateMolotovUI();
+    }
+  }
+
+  molotovBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    throwMolotov();
+  });
+
+  function throwMolotov(){
+    if (molotovCount <= 0 || molotovThrow || !running) return;
+    molotovCount--;
+    updateMolotovUI();
+    molotovThrow = {
+      t: 0,
+      duration: 0.45,
+      fromX: ROAD_LEFT + playerX * ROAD_WIDTH,
+      fromY: H * PLAYER_Y_RATIO,
+      toX: ROAD_LEFT + ROAD_WIDTH * 0.5,
+      toY: H * 0.5
+    };
+  }
+
+  function gameOver(){
+    running = false;
+    finalScoreText.textContent = 'Score: ' + score;
+    gameOverScreen.classList.remove('hidden');
+  }
+
+  function setWeapon(weapon){
+    activeWeapon = weapon;
+    weaponGreenBtn.classList.toggle('active', weapon === 'green');
+    weaponSilverBtn.classList.toggle('active', weapon === 'silver');
+    weaponScarabBtn.classList.toggle('active', weapon === 'scarab');
+    weaponStakeBtn.classList.toggle('active', weapon === 'stake');
+  }
+
+  weaponGreenBtn.addEventListener('click', (e) => { e.stopPropagation(); setWeapon('green'); });
+  weaponSilverBtn.addEventListener('click', (e) => { e.stopPropagation(); setWeapon('silver'); });
+  weaponScarabBtn.addEventListener('click', (e) => { e.stopPropagation(); setWeapon('scarab'); });
+  weaponStakeBtn.addEventListener('click', (e) => { e.stopPropagation(); setWeapon('stake'); });
+
+  function showUnlockToast(mainText, subText){
+    weaponSwitch.classList.remove('hidden');
+    unlockToastMain.textContent = mainText;
+    unlockToastSub.textContent = subText;
+    unlockToast.classList.add('show');
+    setTimeout(() => unlockToast.classList.remove('show'), 2600);
+  }
+
+  function registerWerewolfKill(){
+    werewolfKillCount++;
+    if (!mummyUnlocked && werewolfKillCount >= 15) {
+      mummyUnlocked = true;
+      weaponScarabBtn.classList.remove('hidden');
+      showUnlockToast("SCARABEO SACRO SBLOCCATO", "tocca 🪲 per colpire le mummie");
+    }
+  }
+
+  function registerMummyKill(){
+    mummyKillCount++;
+    if (!vampireUnlocked && mummyKillCount >= 20) {
+      vampireUnlocked = true;
+      weaponStakeBtn.classList.remove('hidden');
+      showUnlockToast("PALETTO DI LEGNO SBLOCCATO", "tocca 🪵 per colpire i vampiri");
+    }
+  }
+
+  // ---------- ENTITIES ----------
+  const GREEN_SHADES = ['#4a7a2f', '#5a8a35', '#3f6e28', '#63893c'];
+  const BROWN_SHADES = ['#7a5230', '#8a6238', '#6a4526', '#96703f'];
+  const MUMMY_SHADES = ['#d8c88a', '#e6dcb8', '#c9b878', '#ded4a8'];
+  const VAMPIRE_SHADES = ['#2a3a7a', '#334a8a', '#22326a', '#3a4d96'];
+
+  function difficultyMul(){
+    return 1 + Math.min(zombieCounter, 40) * 0.010;
+  }
+
+  function zombiePos(z){
+    if (z.state === 'entering') {
+      const t = Math.min(1, z.entryT / z.entryDuration);
+      const marginW = z.entryFromLeft ? ROAD_LEFT : (W - ROAD_RIGHT);
+      const startPx = z.entryFromLeft
+        ? ROAD_LEFT * z.entryStartFrac
+        : ROAD_RIGHT + marginW * z.entryStartFrac;
+      const targetPx = ROAD_LEFT + z.x * ROAD_WIDTH;
+      const ease = t*t*(3 - 2*t); // smoothstep
+      return { px: startPx + (targetPx - startPx) * ease, py: z.y * H };
+    }
+    const wobbleOffset = z.state === 'active' ? Math.sin(z.wobble) * 4 : 0;
+    return { px: ROAD_LEFT + z.x * ROAD_WIDTH + wobbleOffset, py: z.y * H };
+  }
+
+  function spawnEnemy(){
+    zombieCounter++;
+    if (!bossSpawned && zombieCounter >= 20) {
+      bossSpawned = true;
+      bossActive = true;
+      spawnBoss();
+      updateHud();
+      return;
+    }
+    const roll = Math.random();
+    if (werewolfUnlocked && mummyUnlocked && vampireUnlocked) {
+      if (roll < 0.26) spawnWerewolf();
+      else if (roll < 0.52) spawnMummy();
+      else if (roll < 0.78) spawnVampire();
+      else spawnZombieNormal();
+    } else if (werewolfUnlocked && mummyUnlocked) {
+      if (roll < 0.34) spawnWerewolf();
+      else if (roll < 0.68) spawnMummy();
+      else spawnZombieNormal();
+    } else if (werewolfUnlocked) {
+      if (roll < 0.45) spawnWerewolf();
+      else spawnZombieNormal();
+    } else {
+      spawnZombieNormal();
+    }
+    updateHud();
+  }
+
+  function spawnZombieNormal(){
+    const types = ['walker','walker','walker','runner','brute'];
+    const type = types[Math.floor(Math.random()*types.length)];
+    let speedMul = 1, hp = 1, size = 22;
+    if (type === 'runner') { speedMul = 1.2; hp = 1; size = 19; }
+    if (type === 'brute')  { speedMul = 0.55; hp = 3; size = 30; }
+    const color = GREEN_SHADES[Math.floor(Math.random()*GREEN_SHADES.length)];
+    zombies.push({
+      x: Math.random(),
+      y: Math.random()*0.12,
+      speed: BASE_ZOMBIE_SPEED * speedMul * difficultyMul(),
+      hp, maxHp: hp, size, color, type,
+      weaponType: 'green',
+      wobble: Math.random()*Math.PI*2,
+      state: 'rising',
+      riseT: 0,
+      riseDuration: 0.55
+    });
+  }
+
+  function spawnWerewolf(){
+    const color = BROWN_SHADES[Math.floor(Math.random()*BROWN_SHADES.length)];
+    const fromLeft = Math.random() < 0.5;
+    zombies.push({
+      x: 0.15 + Math.random()*0.7,   // target position once it steps onto the road
+      y: 0.03 + Math.random()*0.10,
+      speed: BASE_ZOMBIE_SPEED * 0.95 * difficultyMul(),
+      hp: 2, maxHp: 2, size: 25, color, type: 'werewolf',
+      weaponType: 'silver',
+      wobble: Math.random()*Math.PI*2,
+      state: 'entering',
+      entryFromLeft: fromLeft,
+      entryStartFrac: 0.25 + Math.random()*0.4,
+      entryT: 0,
+      entryDuration: 0.9
+    });
+  }
+
+  function spawnMummy(){
+    const color = MUMMY_SHADES[Math.floor(Math.random()*MUMMY_SHADES.length)];
+    const xNorm = 0.1 + Math.random()*0.8;
+    const yNorm = 0.02 + Math.random()*0.08;
+    zombies.push({
+      x: xNorm,
+      y: yNorm,
+      speed: BASE_ZOMBIE_SPEED * 0.85 * difficultyMul(),
+      hp: 3, maxHp: 3, size: 23, color, type: 'mummy',
+      weaponType: 'scarab',
+      wobble: Math.random()*Math.PI*2,
+      state: 'materializing',
+      materializeT: 0,
+      materializeDuration: 0.35
+    });
+    // one-off spark burst at the materialize point
+    spawnParticles(ROAD_LEFT + xNorm*ROAD_WIDTH, yNorm*H, '#fff2b0');
+  }
+
+  function spawnVampire(){
+    const color = VAMPIRE_SHADES[Math.floor(Math.random()*VAMPIRE_SHADES.length)];
+    const xNorm = 0.1 + Math.random()*0.8;
+    const yNorm = 0.02 + Math.random()*0.08;
+    zombies.push({
+      x: xNorm,
+      y: yNorm,
+      speed: BASE_ZOMBIE_SPEED * 1.05 * difficultyMul(),
+      hp: 2, maxHp: 2, size: 24, color, type: 'vampire',
+      weaponType: 'stake',
+      wobble: Math.random()*Math.PI*2,
+      state: 'materializing',
+      materializeT: 0,
+      materializeDuration: 0.4
+    });
+    // dark mist puff instead of the mummy's golden spark
+    spawnParticles(ROAD_LEFT + xNorm*ROAD_WIDTH, yNorm*H, '#3a2a5a');
+  }
+
+  function spawnBoss(){
+    const boss = {
+      x: 0.5,
+      y: 0.02,
+      speed: BASE_ZOMBIE_SPEED * 0.28,
+      hp: 35, maxHp: 35, size: 58, color: '#2f5a1c', type: 'boss',
+      weaponType: 'green',
+      wobble: 0,
+      state: 'rising',
+      riseT: 0,
+      riseDuration: 1.1
+    };
+    zombies.push(boss);
+    bossRef = boss;
+    bossBar.classList.remove('hidden');
+    bossBarFill.style.width = '100%';
+  }
+
+  function fireBullet(){
+    const px = ROAD_LEFT + playerX * ROAD_WIDTH;
+    const py = H * PLAYER_Y_RATIO - PLAYER_SIZE*0.6;
+    bullets.push({x: px, y: py, weapon: activeWeapon});
+  }
+
+  function spawnParticles(x, y, color){
+    for (let i=0;i<8;i++){
+      particles.push({
+        x, y,
+        vx: (Math.random()-0.5)*220,
+        vy: (Math.random()-0.5)*220,
+        life: 0.4,
+        color
+      });
+    }
+  }
+
+  // ---------- LOOP ----------
+  function loop(now){
+    if (!running) return;
+    let dt = (now - lastTime) / 1000;
+    dt = Math.min(dt, 0.05);
+    lastTime = now;
+
+    update(dt);
+    draw();
+
+    requestAnimationFrame(loop);
+  }
+
+  function update(dt){
+    // player movement
+    if (!useTouch) {
+      playerTargetX = 0.5 + tiltInput * 0.5;
+      playerTargetX = Math.max(0, Math.min(1, playerTargetX));
+    }
+    playerX += (playerTargetX - playerX) * Math.min(1, dt*8);
+
+    // firing
+    fireTimer -= dt;
+    if (fireTimer <= 0) {
+      fireBullet();
+      fireTimer = FIRE_RATE;
+    }
+
+    // spawning
+    spawnTimer -= dt;
+    const spawnInterval = Math.max(0.9, 2.1 - Math.min(zombieCounter,25)*0.03);
+    const MAX_ON_SCREEN = 5;
+    if (!bossActive && spawnTimer <= 0 && zombies.length < MAX_ON_SCREEN) {
+      spawnEnemy();
+      spawnTimer = spawnInterval;
+    }
+
+    // bullets
+    for (let i = bullets.length-1; i>=0; i--){
+      const b = bullets[i];
+      b.y -= BULLET_SPEED * dt;
+      if (b.y < -20) bullets.splice(i,1);
+    }
+
+    // zombies
+    const playerPx = ROAD_LEFT + playerX * ROAD_WIDTH;
+    const playerPy = H * PLAYER_Y_RATIO;
+
+    for (let i = zombies.length-1; i>=0; i--){
+      const z = zombies[i];
+
+      if (z.state === 'rising') {
+        z.riseT += dt;
+        if (z.riseT >= z.riseDuration) z.state = 'active';
+        continue;
+      }
+
+      if (z.state === 'entering') {
+        z.entryT += dt;
+        if (z.entryT >= z.entryDuration) z.state = 'active';
+        continue;
+      }
+
+      if (z.state === 'materializing') {
+        z.materializeT += dt;
+        if (z.materializeT >= z.materializeDuration) z.state = 'active';
+        continue;
+      }
+
+      z.y += (z.speed/H) * dt;
+      z.wobble += dt*4;
+      const { px: zpx, py: zpy } = zombiePos(z);
+
+      // reached player row -> damage
+      if (z.y > PLAYER_Y_RATIO - 0.02) {
+        const dx = zpx - playerPx;
+        if (Math.abs(dx) < (z.size + PLAYER_SIZE)*0.7) {
+          zombies.splice(i,1);
+          if (z.type === 'boss') { bossActive = false; bossRef = null; bossBar.classList.add('hidden'); }
+          lives--;
+          flashTimer = 0.25;
+          updateHud();
+          if (lives <= 0) { gameOver(); return; }
+          continue;
+        }
+      }
+      if (z.y > 1.08) {
+        zombies.splice(i,1);
+        if (z.type === 'boss') { bossActive = false; bossRef = null; bossBar.classList.add('hidden'); }
+        continue;
+      }
+    }
+
+    // bullet-zombie collisions
+    for (let i = bullets.length-1; i>=0; i--){
+      const b = bullets[i];
+      for (let j = zombies.length-1; j>=0; j--){
+        const z = zombies[j];
+        if (z.weaponType !== b.weapon) continue; // wrong ammo, passes through
+        const { px: zpx, py: zpy } = zombiePos(z);
+        const dx = b.x - zpx, dy = b.y - zpy;
+        if (dx*dx + dy*dy < (z.size*0.75)*(z.size*0.75)) {
+          bullets.splice(i,1);
+          z.hp--;
+          if (z.type === 'boss') {
+            bossBarFill.style.width = Math.max(0, (z.hp/z.maxHp)*100) + '%';
+          }
+          if (z.hp <= 0) {
+            spawnParticles(zpx, zpy, z.color);
+            zombies.splice(j,1);
+            registerKill();
+            if (z.type === 'boss') {
+              score += 350;
+              bossActive = false;
+              bossRef = null;
+              werewolfUnlocked = true;
+              bossBar.classList.add('hidden');
+              showUnlockToast("PALLOTTOLA D'ARGENTO SBLOCCATA", "tocca 🐺 per colpire i licantropi");
+            } else if (z.type === 'werewolf') {
+              score += 20;
+              registerWerewolfKill();
+            } else if (z.type === 'mummy') {
+              score += 25;
+              registerMummyKill();
+            } else if (z.type === 'vampire') {
+              score += 30;
+            } else {
+              score += (z.type==='brute'?30:z.type==='runner'?15:10);
+            }
+            updateHud();
+          }
+          break;
+        }
+      }
+    }
+
+    // particles
+    for (let i = particles.length-1; i>=0; i--){
+      const p = particles[i];
+      p.x += p.vx*dt; p.y += p.vy*dt;
+      p.life -= dt;
+      if (p.life <= 0) particles.splice(i,1);
+    }
+
+    // molotov in flight
+    if (molotovThrow) {
+      molotovThrow.t += dt;
+      if (molotovThrow.t >= molotovThrow.duration) {
+        const impactY = molotovThrow.toY;
+        explosion = { y: impactY, t: 0, duration: 0.5 };
+        molotovThrow = null;
+
+        // hit every non-boss creature still behind the impact line with a single blast (like one bullet each)
+        for (let i = zombies.length - 1; i >= 0; i--) {
+          const z = zombies[i];
+          if (z.type === 'boss') continue;
+          const pos = zombiePos(z);
+          if (pos.py <= impactY) {
+            z.hp--;
+            spawnParticles(pos.px, pos.py, '#ff8a3a');
+            if (z.hp <= 0) {
+              zombies.splice(i, 1);
+              registerKill();
+              if (z.type === 'werewolf') { registerWerewolfKill(); score += 20; }
+              else if (z.type === 'mummy') { registerMummyKill(); score += 25; }
+              else if (z.type === 'vampire') { score += 30; }
+              else { score += (z.type==='brute'?30:z.type==='runner'?15:10); }
+            }
+          }
+        }
+        updateHud();
+      }
+    }
+    if (explosion) {
+      explosion.t += dt;
+      if (explosion.t >= explosion.duration) explosion = null;
+    }
+
+    if (flashTimer > 0) flashTimer -= dt;
+  }
+
+  // ---------- DRAW ----------
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+
+    // night sky / countryside field
+    ctx.fillStyle = '#0c1408';
+    ctx.fillRect(0,0,W,H);
+
+    // dirt road, dry yellow-brown
+    const roadGrad = ctx.createLinearGradient(ROAD_LEFT, 0, ROAD_RIGHT, 0);
+    roadGrad.addColorStop(0, '#5f4a1f');
+    roadGrad.addColorStop(0.5, '#8a6a2a');
+    roadGrad.addColorStop(1, '#5f4a1f');
+    ctx.fillStyle = roadGrad;
+    ctx.fillRect(ROAD_LEFT, 0, ROAD_WIDTH, H);
+
+    // grassy edge strip
+    ctx.strokeStyle = 'rgba(70,90,40,0.6)';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(ROAD_LEFT, 0); ctx.lineTo(ROAD_LEFT, H);
+    ctx.moveTo(ROAD_RIGHT, 0); ctx.lineTo(ROAD_RIGHT, H);
+    ctx.stroke();
+
+    // wheel ruts (tire tracks) instead of a painted centerline
+    ctx.strokeStyle = 'rgba(70,54,24,0.5)';
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(ROAD_LEFT + ROAD_WIDTH*0.32, 0); ctx.lineTo(ROAD_LEFT + ROAD_WIDTH*0.32, H);
+    ctx.moveTo(ROAD_LEFT + ROAD_WIDTH*0.68, 0); ctx.lineTo(ROAD_LEFT + ROAD_WIDTH*0.68, H);
+    ctx.stroke();
+
+    // trees along the roadside, dark silhouettes under the moon
+    for (const t of trees){
+      ctx.fillStyle = '#16240e';
+      ctx.beginPath();
+      ctx.ellipse(t.x, t.y, t.size*0.5, t.size*0.35, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(t.x, t.y - t.size*0.3, t.size*0.55, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#241a0c';
+      ctx.fillRect(t.x - 2, t.y, 4, t.size*0.4);
+    }
+
+    // zombies
+    for (const z of zombies){
+      const { px: zpx, py: zpy } = zombiePos(z);
+
+      if (z.state === 'rising') {
+        const p = Math.min(1, z.riseT / z.riseDuration);
+        // dirt mound / grave, always visible while emerging
+        ctx.save();
+        ctx.translate(zpx, zpy);
+        ctx.fillStyle = '#3a2c14';
+        ctx.beginPath();
+        ctx.ellipse(0, z.size*0.4, z.size*0.65, z.size*0.22, 0, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = '#5a4522';
+        ctx.fillRect(-2, -z.size*0.15, 4, z.size*0.35);
+        ctx.fillRect(-z.size*0.22, -z.size*0.15, z.size*0.44, 5);
+        ctx.restore();
+
+        // zombie rising out of the mound, clipped so it looks buried
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(zpx - z.size, zpy + z.size*0.45 - (p*z.size*1.1), z.size*2, z.size*1.1);
+        ctx.clip();
+        ctx.translate(zpx, zpy + z.size*0.45 - (p*z.size*1.1));
+        ctx.fillStyle = z.color;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, z.size*0.55, z.size*0.7, 0, 0, Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+        continue;
+      }
+
+      if (z.state === 'materializing') {
+        const p = Math.min(1, z.materializeT / z.materializeDuration);
+        ctx.save();
+        ctx.globalAlpha = (1 - p) * 0.9;
+        ctx.strokeStyle = z.type === 'vampire' ? '#8a6ad6' : '#fff2b0';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(zpx, zpy, z.size * (0.3 + p * 1.3), 0, Math.PI*2);
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = p;
+        ctx.translate(zpx, zpy);
+        ctx.fillStyle = z.color;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, z.size*0.55, z.size*0.7, 0, 0, Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+        continue;
+      }
+
+      const bob = z.state === 'entering' ? Math.sin(performance.now()/90 + z.wobble) * 3 : 0;
+
+      ctx.save();
+      ctx.translate(zpx, zpy + bob);
+      ctx.fillStyle = z.color;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, z.size*0.55, z.size*0.7, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(0, z.size*0.55, z.size*0.5, z.size*0.18, 0, 0, Math.PI*2);
+      ctx.fill();
+      if (z.type === 'werewolf') {
+        // pointed ears and snout to distinguish from zombies
+        ctx.fillStyle = z.color;
+        ctx.beginPath();
+        ctx.moveTo(-z.size*0.4, -z.size*0.5); ctx.lineTo(-z.size*0.55, -z.size*0.95); ctx.lineTo(-z.size*0.15, -z.size*0.55);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(z.size*0.4, -z.size*0.5); ctx.lineTo(z.size*0.55, -z.size*0.95); ctx.lineTo(z.size*0.15, -z.size*0.55);
+        ctx.fill();
+        ctx.fillStyle = '#2a1c10';
+        ctx.beginPath();
+        ctx.ellipse(0, -z.size*0.25, z.size*0.16, z.size*0.12, 0, 0, Math.PI*2);
+        ctx.fill();
+      }
+      if (z.type === 'mummy') {
+        // dirty bandage wrap stripes
+        ctx.strokeStyle = 'rgba(120,108,70,0.55)';
+        ctx.lineWidth = 2.5;
+        for (let s = -2; s <= 2; s++) {
+          ctx.beginPath();
+          ctx.moveTo(-z.size*0.5, s*z.size*0.22);
+          ctx.lineTo(z.size*0.5, s*z.size*0.22 + z.size*0.14);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#1a1408';
+        ctx.beginPath();
+        ctx.ellipse(-z.size*0.14, -z.size*0.2, z.size*0.08, z.size*0.05, 0, 0, Math.PI*2);
+        ctx.ellipse(z.size*0.14, -z.size*0.2, z.size*0.08, z.size*0.05, 0, 0, Math.PI*2);
+        ctx.fill();
+      }
+      if (z.type === 'vampire') {
+        // popped cape collar
+        ctx.fillStyle = '#1a1220';
+        ctx.beginPath();
+        ctx.moveTo(-z.size*0.5, -z.size*0.35); ctx.lineTo(-z.size*0.15, -z.size*0.75); ctx.lineTo(0, -z.size*0.4);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(z.size*0.5, -z.size*0.35); ctx.lineTo(z.size*0.15, -z.size*0.75); ctx.lineTo(0, -z.size*0.4);
+        ctx.fill();
+        // pale face patch
+        ctx.fillStyle = '#e8dce8';
+        ctx.beginPath();
+        ctx.ellipse(0, -z.size*0.28, z.size*0.32, z.size*0.28, 0, 0, Math.PI*2);
+        ctx.fill();
+        // glowing red eyes
+        ctx.fillStyle = '#e04040';
+        ctx.beginPath();
+        ctx.ellipse(-z.size*0.13, -z.size*0.3, z.size*0.055, z.size*0.04, 0, 0, Math.PI*2);
+        ctx.ellipse(z.size*0.13, -z.size*0.3, z.size*0.055, z.size*0.04, 0, 0, Math.PI*2);
+        ctx.fill();
+        // sharp fangs
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.moveTo(-z.size*0.1, -z.size*0.16); ctx.lineTo(-z.size*0.06, -z.size*0.02); ctx.lineTo(-z.size*0.02, -z.size*0.16);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(z.size*0.1, -z.size*0.16); ctx.lineTo(z.size*0.06, -z.size*0.02); ctx.lineTo(z.size*0.02, -z.size*0.16);
+        ctx.fill();
+      }
+      if (z.type === 'boss') {
+        ctx.strokeStyle = '#e05a4a';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, z.size*0.55, z.size*0.7, 0, 0, Math.PI*2);
+        ctx.stroke();
+      }
+      if (z.hp < z.maxHp && z.type !== 'boss') {
+        ctx.fillStyle = '#e05a4a';
+        ctx.fillRect(-z.size*0.5, -z.size*0.9, z.size*(z.hp/z.maxHp), 4);
+      }
+      ctx.restore();
+    }
+
+    // bullets
+    for (const b of bullets){
+      if (b.weapon === 'silver') {
+        ctx.fillStyle = '#eef3f6';
+        ctx.shadowColor = 'rgba(220,230,240,0.9)';
+        ctx.shadowBlur = 6;
+      } else if (b.weapon === 'scarab') {
+        ctx.fillStyle = '#f0c85a';
+        ctx.shadowColor = 'rgba(240,200,90,0.9)';
+        ctx.shadowBlur = 6;
+      } else if (b.weapon === 'stake') {
+        ctx.fillStyle = '#c9a24a';
+        ctx.shadowColor = 'rgba(201,162,74,0.9)';
+        ctx.shadowBlur = 6;
+      } else {
+        ctx.fillStyle = '#9dff6a';
+        ctx.shadowColor = 'rgba(157,255,106,0.8)';
+        ctx.shadowBlur = 6;
+      }
+      ctx.beginPath();
+      ctx.ellipse(b.x, b.y, 3, 9, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // particles
+    for (const p of particles){
+      ctx.globalAlpha = Math.max(0, p.life/0.4);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x-2, p.y-2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+
+    // player
+    const px = ROAD_LEFT + playerX*ROAD_WIDTH;
+    const py = H * PLAYER_Y_RATIO;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(0, PLAYER_SIZE*0.55, PLAYER_SIZE*0.55, PLAYER_SIZE*0.2, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#3a5a2a';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, PLAYER_SIZE*0.4, PLAYER_SIZE*0.55, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#d8b088';
+    ctx.beginPath();
+    ctx.arc(0, -PLAYER_SIZE*0.62, PLAYER_SIZE*0.28, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#222';
+    ctx.fillRect(-4, -PLAYER_SIZE*0.3, 8, PLAYER_SIZE*0.55);
+    ctx.restore();
+
+    // molotov in flight
+    if (molotovThrow) {
+      const t = molotovThrow.t / molotovThrow.duration;
+      const mx = molotovThrow.fromX + (molotovThrow.toX - molotovThrow.fromX) * t;
+      const arcLift = Math.sin(t * Math.PI) * H * 0.18;
+      const my = molotovThrow.fromY + (molotovThrow.toY - molotovThrow.fromY) * t - arcLift;
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.rotate(t * Math.PI * 4);
+      ctx.fillStyle = '#4a7a3a';
+      ctx.fillRect(-4, -8, 8, 14);
+      ctx.fillStyle = '#c9a24a';
+      ctx.fillRect(-2, -12, 4, 5);
+      ctx.restore();
+      // little trailing flame
+      ctx.fillStyle = 'rgba(255,150,60,0.7)';
+      ctx.beginPath();
+      ctx.arc(mx, my + 6, 4, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // molotov explosion sweep
+    if (explosion) {
+      const p = explosion.t / explosion.duration;
+      const alpha = 1 - p;
+      const grad = ctx.createLinearGradient(0, 0, 0, explosion.y);
+      grad.addColorStop(0, 'rgba(255,120,30,0)');
+      grad.addColorStop(0.7, 'rgba(255,120,30,' + (0.55*alpha) + ')');
+      grad.addColorStop(1, 'rgba(255,210,120,' + (0.85*alpha) + ')');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, explosion.y);
+      ctx.fillStyle = 'rgba(255,230,180,' + (0.9*alpha) + ')';
+      ctx.fillRect(0, explosion.y - 6, W, 12 * (1-p) + 3);
+    }
+
+    // damage flash
+    if (flashTimer > 0) {
+      ctx.fillStyle = 'rgba(224,90,74,' + (flashTimer/0.25*0.35) + ')';
+      ctx.fillRect(0,0,W,H);
+    }
+  }
+
+  // initial static draw so background isn't blank behind start screen
+  draw();
+})();
+</script>
+</body>
+</html>
