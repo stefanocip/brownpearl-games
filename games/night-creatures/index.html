@@ -71,21 +71,6 @@
   }
   #calibFill { height:100%; width:0%; background:#7fbf3f; transition:width 0.1s linear; }
 
-  #bossBar {
-    position:absolute; top:52px; left:50%; transform:translateX(-50%);
-    width:80%; max-width:360px; z-index:5;
-    text-align:center; pointer-events:none;
-  }
-  #bossBar .label {
-    color:#e05a4a; font-size:12px; font-weight:bold; letter-spacing:3px;
-    text-shadow:0 2px 4px rgba(0,0,0,0.8); margin-bottom:4px;
-  }
-  #bossBarTrack {
-    width:100%; height:10px; background:rgba(0,0,0,0.5);
-    border:1px solid rgba(224,90,74,0.6); border-radius:5px; overflow:hidden;
-  }
-  #bossBarFill { height:100%; width:100%; background:#e05a4a; transition:width 0.15s linear; }
-
   #weaponSwitch {
     position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
     display:flex; gap:14px; z-index:6;
@@ -105,6 +90,8 @@
   .weaponBtn.scarab.hidden { display:none !important; }
   .weaponBtn.stake.active { border-color:#5a7fd6; box-shadow:0 0 14px rgba(90,127,214,0.7); opacity:1; }
   .weaponBtn.stake.hidden { display:none !important; }
+  .weaponBtn.cross.active { border-color:#e8d060; box-shadow:0 0 14px rgba(232,208,96,0.7); opacity:1; }
+  .weaponBtn.cross.hidden { display:none !important; }
 
   #molotovBtn {
     position:absolute; bottom:22px; right:20px; z-index:6;
@@ -117,9 +104,18 @@
     touch-action:manipulation;
   }
   #molotovBtn.hidden { display:none !important; }
+  #molotovBtn.armed {
+    border-color:#ff3a3a;
+    box-shadow:0 0 22px rgba(255,58,58,0.9), 0 3px 10px rgba(0,0,0,0.5);
+    animation: molotovArmedPulse 0.7s ease-in-out infinite;
+  }
   @keyframes molotovPulse {
     0%, 100% { transform:scale(1); }
     50% { transform:scale(1.08); }
+  }
+  @keyframes molotovArmedPulse {
+    0%, 100% { transform:scale(1); }
+    50% { transform:scale(1.16); }
   }
   #molotovCount {
     position:absolute; top:-6px; right:-6px;
@@ -128,6 +124,15 @@
     display:flex; align-items:center; justify-content:center;
     box-shadow:0 2px 4px rgba(0,0,0,0.5);
   }
+  #molotovHint {
+    position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    z-index:7; color:#ffb04a; font-size:13px; font-weight:bold; letter-spacing:1px;
+    text-shadow:0 2px 6px rgba(0,0,0,0.9);
+    padding:6px 14px; border-radius:14px;
+    background:rgba(40,22,8,0.6); border:1px solid rgba(255,138,42,0.5);
+    opacity:0; transition:opacity 0.2s ease; pointer-events:none;
+  }
+  #molotovHint.show { opacity:1; }
 
   #unlockToast {
     position:absolute; top:38%; left:50%; transform:translate(-50%,-50%);
@@ -151,21 +156,18 @@
   <div class="score" id="scoreDisplay">0</div>
 </div>
 
-<div id="bossBar" class="hidden">
-  <div class="label">ZOMBIE BOSS</div>
-  <div id="bossBarTrack"><div id="bossBarFill"></div></div>
-</div>
-
 <div id="weaponSwitch" class="hidden">
   <button class="weaponBtn green active" id="weaponGreenBtn">🧟</button>
-  <button class="weaponBtn silver" id="weaponSilverBtn">🐺</button>
+  <button class="weaponBtn silver hidden" id="weaponSilverBtn">🐺</button>
   <button class="weaponBtn scarab hidden" id="weaponScarabBtn">🪲</button>
   <button class="weaponBtn stake hidden" id="weaponStakeBtn">🪵</button>
+  <button class="weaponBtn cross hidden" id="weaponCrossBtn">✝️</button>
 </div>
 
 <button id="molotovBtn" class="hidden">🔥<span id="molotovCount">0</span></button>
+<div id="molotovHint">TAP ANYWHERE TO STRIKE</div>
 
-<div id="unlockToast"><span id="unlockToastMain">PALLOTTOLA D'ARGENTO SBLOCCATA</span><span class="sub" id="unlockToastSub">tocca 🐺 per colpire i licantropi</span></div>
+<div id="unlockToast"><span id="unlockToastMain">SILVER BULLET UNLOCKED</span><span class="sub" id="unlockToastSub">tap 🐺 to hit werewolves</span></div>
 
 <div id="startScreen" class="overlay">
   <h1>NIGHT CREATURES</h1>
@@ -233,18 +235,18 @@
   const scoreDisplay = document.getElementById('scoreDisplay');
   const counterDisplay = document.getElementById('counterDisplay');
   const finalScoreText = document.getElementById('finalScoreText');
-  const bossBar = document.getElementById('bossBar');
-  const bossBarFill = document.getElementById('bossBarFill');
   const weaponSwitch = document.getElementById('weaponSwitch');
   const weaponGreenBtn = document.getElementById('weaponGreenBtn');
   const weaponSilverBtn = document.getElementById('weaponSilverBtn');
   const weaponScarabBtn = document.getElementById('weaponScarabBtn');
   const weaponStakeBtn = document.getElementById('weaponStakeBtn');
+  const weaponCrossBtn = document.getElementById('weaponCrossBtn');
   const unlockToast = document.getElementById('unlockToast');
   const unlockToastMain = document.getElementById('unlockToastMain');
   const unlockToastSub = document.getElementById('unlockToastSub');
   const molotovBtn = document.getElementById('molotovBtn');
   const molotovCountEl = document.getElementById('molotovCount');
+  const molotovHint = document.getElementById('molotovHint');
 
   let useTouch = false;
   let tiltInput = 0;        // -1..1
@@ -257,20 +259,21 @@
   let fireTimer = 0;
   let spawnTimer = 0;
   let flashTimer = 0;
+  let elapsed = 0;          // seconds survived, drives the difficulty ramp
 
-  let zombieCounter = 0;     // counts every enemy that has spawned so far
-  let bossSpawned = false;
-  let bossActive = false;
-  let bossRef = null;
+  let zombieKillCount = 0;
   let werewolfUnlocked = false;
   let werewolfKillCount = 0;
   let mummyUnlocked = false;
   let mummyKillCount = 0;
   let vampireUnlocked = false;
-  let activeWeapon = 'green'; // 'green' or 'silver'
+  let vampireKillCount = 0;
+  let impUnlocked = false;
+  let activeWeapon = 'green'; // 'green' | 'silver' | 'scarab' | 'stake' | 'cross'
 
   let killCount = 0;        // total kills, drives the molotov every-10 reward
   let molotovCount = 0;
+  let molotovArmed = false;
   let molotovThrow = null;  // {t, duration, fromX, fromY, toX, toY} while in flight
   let explosion = null;     // {y, t, duration} while the fire sweep is visible
 
@@ -283,6 +286,11 @@
   const BULLET_SPEED = 780;
   const FIRE_RATE = 0.12; // seconds between shots
   const BASE_ZOMBIE_SPEED = 40;
+
+  const ZOMBIE_KILLS_TO_UNLOCK_WEREWOLVES = 10;
+  const WEREWOLF_KILLS_TO_UNLOCK_MUMMIES = 15;
+  const MUMMY_KILLS_TO_UNLOCK_VAMPIRES = 20;
+  const VAMPIRE_KILLS_TO_UNLOCK_IMPS = 25;
 
   // ---------- GYROSCOPE ----------
   let gyroBaseline = null;
@@ -343,8 +351,26 @@
 
   // ---------- TOUCH FALLBACK ----------
   let touchActive = false;
-  canvas.addEventListener('touchstart', onTouch, {passive:true});
+  canvas.addEventListener('touchstart', handleCanvasTouchStart, {passive:true});
   canvas.addEventListener('touchmove', onTouch, {passive:true});
+  canvas.addEventListener('click', (e) => { tryMolotovTargetTap(e.clientX, e.clientY); });
+
+  function handleCanvasTouchStart(e){
+    const t = e.touches[0];
+    if (!t) return;
+    if (tryMolotovTargetTap(t.clientX, t.clientY)) return;
+    onTouch(e);
+  }
+
+  function tryMolotovTargetTap(clientX, clientY){
+    if (!molotovArmed || !running) return false;
+    molotovArmed = false;
+    molotovBtn.classList.remove('armed');
+    molotovHint.classList.remove('show');
+    throwMolotovTo(clientX, clientY);
+    return true;
+  }
+
   function onTouch(e){
     if (!useTouch || !running) return;
     const t = e.touches[0];
@@ -367,35 +393,40 @@
   function resetGame(){
     lives = 3;
     score = 0;
-    zombieCounter = 0;
-    bossSpawned = false;
-    bossActive = false;
-    bossRef = null;
+    elapsed = 0;
+    zombieKillCount = 0;
     werewolfUnlocked = false;
     werewolfKillCount = 0;
     mummyUnlocked = false;
     mummyKillCount = 0;
     vampireUnlocked = false;
+    vampireKillCount = 0;
+    impUnlocked = false;
     activeWeapon = 'green';
     killCount = 0;
     molotovCount = 0;
+    molotovArmed = false;
     molotovThrow = null;
     explosion = null;
+    molotovBtn.classList.remove('armed');
+    molotovHint.classList.remove('show');
     bullets.length = 0;
     zombies.length = 0;
     particles.length = 0;
     playerX = 0.5;
     playerTargetX = 0.5;
     gameOverScreen.classList.add('hidden');
-    bossBar.classList.add('hidden');
     weaponSwitch.classList.add('hidden');
     unlockToast.classList.remove('show');
     weaponGreenBtn.classList.add('active');
     weaponSilverBtn.classList.remove('active');
+    weaponSilverBtn.classList.add('hidden');
     weaponScarabBtn.classList.remove('active');
     weaponScarabBtn.classList.add('hidden');
     weaponStakeBtn.classList.remove('active');
     weaponStakeBtn.classList.add('hidden');
+    weaponCrossBtn.classList.remove('active');
+    weaponCrossBtn.classList.add('hidden');
     updateMolotovUI();
     startGame();
   }
@@ -413,11 +444,7 @@
   function updateHud(){
     livesDisplay.textContent = '♥'.repeat(Math.max(0,lives));
     scoreDisplay.textContent = score;
-    if (!bossSpawned) {
-      counterDisplay.textContent = 'ZOMBIE ' + Math.min(zombieCounter, 20) + '/20';
-    } else {
-      counterDisplay.textContent = '';
-    }
+    counterDisplay.textContent = 'KILLS ' + killCount;
   }
 
   function updateMolotovUI(){
@@ -427,6 +454,7 @@
 
   function registerKill(){
     killCount++;
+    updateHud();
     if (killCount % 10 === 0) {
       molotovCount++;
       updateMolotovUI();
@@ -435,20 +463,36 @@
 
   molotovBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    throwMolotov();
+    toggleMolotovArm();
   });
 
-  function throwMolotov(){
-    if (molotovCount <= 0 || molotovThrow || !running) return;
+  function toggleMolotovArm(){
+    if (!running) return;
+    if (molotovArmed) {
+      molotovArmed = false;
+      molotovBtn.classList.remove('armed');
+      molotovHint.classList.remove('show');
+      return;
+    }
+    if (molotovCount <= 0 || molotovThrow) return;
+    molotovArmed = true;
+    molotovBtn.classList.add('armed');
+    molotovHint.classList.add('show');
+  }
+
+  function throwMolotovTo(targetX, targetY){
+    if (molotovCount <= 0 || molotovThrow) return;
     molotovCount--;
     updateMolotovUI();
+    const clampedX = Math.max(20, Math.min(W - 20, targetX));
+    const clampedY = Math.max(20, Math.min(H - 20, targetY));
     molotovThrow = {
       t: 0,
       duration: 0.45,
       fromX: ROAD_LEFT + playerX * ROAD_WIDTH,
       fromY: H * PLAYER_Y_RATIO,
-      toX: ROAD_LEFT + ROAD_WIDTH * 0.5,
-      toY: H * 0.5
+      toX: clampedX,
+      toY: clampedY
     };
   }
 
@@ -464,12 +508,14 @@
     weaponSilverBtn.classList.toggle('active', weapon === 'silver');
     weaponScarabBtn.classList.toggle('active', weapon === 'scarab');
     weaponStakeBtn.classList.toggle('active', weapon === 'stake');
+    weaponCrossBtn.classList.toggle('active', weapon === 'cross');
   }
 
   weaponGreenBtn.addEventListener('click', (e) => { e.stopPropagation(); setWeapon('green'); });
   weaponSilverBtn.addEventListener('click', (e) => { e.stopPropagation(); setWeapon('silver'); });
   weaponScarabBtn.addEventListener('click', (e) => { e.stopPropagation(); setWeapon('scarab'); });
   weaponStakeBtn.addEventListener('click', (e) => { e.stopPropagation(); setWeapon('stake'); });
+  weaponCrossBtn.addEventListener('click', (e) => { e.stopPropagation(); setWeapon('cross'); });
 
   function showUnlockToast(mainText, subText){
     weaponSwitch.classList.remove('hidden');
@@ -479,21 +525,39 @@
     setTimeout(() => unlockToast.classList.remove('show'), 2600);
   }
 
+  function registerZombieKill(){
+    zombieKillCount++;
+    if (!werewolfUnlocked && zombieKillCount >= ZOMBIE_KILLS_TO_UNLOCK_WEREWOLVES) {
+      werewolfUnlocked = true;
+      weaponSilverBtn.classList.remove('hidden');
+      showUnlockToast("SILVER BULLET UNLOCKED", "tap 🐺 to hit werewolves");
+    }
+  }
+
   function registerWerewolfKill(){
     werewolfKillCount++;
-    if (!mummyUnlocked && werewolfKillCount >= 15) {
+    if (!mummyUnlocked && werewolfKillCount >= WEREWOLF_KILLS_TO_UNLOCK_MUMMIES) {
       mummyUnlocked = true;
       weaponScarabBtn.classList.remove('hidden');
-      showUnlockToast("SCARABEO SACRO SBLOCCATO", "tocca 🪲 per colpire le mummie");
+      showUnlockToast("SACRED SCARAB UNLOCKED", "tap 🪲 to hit mummies");
     }
   }
 
   function registerMummyKill(){
     mummyKillCount++;
-    if (!vampireUnlocked && mummyKillCount >= 20) {
+    if (!vampireUnlocked && mummyKillCount >= MUMMY_KILLS_TO_UNLOCK_VAMPIRES) {
       vampireUnlocked = true;
       weaponStakeBtn.classList.remove('hidden');
-      showUnlockToast("PALETTO DI LEGNO SBLOCCATO", "tocca 🪵 per colpire i vampiri");
+      showUnlockToast("WOODEN STAKE UNLOCKED", "tap 🪵 to hit vampires");
+    }
+  }
+
+  function registerVampireKill(){
+    vampireKillCount++;
+    if (!impUnlocked && vampireKillCount >= VAMPIRE_KILLS_TO_UNLOCK_IMPS) {
+      impUnlocked = true;
+      weaponCrossBtn.classList.remove('hidden');
+      showUnlockToast("HOLY CROSS UNLOCKED", "tap ✝️ to hit imps");
     }
   }
 
@@ -502,9 +566,17 @@
   const BROWN_SHADES = ['#7a5230', '#8a6238', '#6a4526', '#96703f'];
   const MUMMY_SHADES = ['#d8c88a', '#e6dcb8', '#c9b878', '#ded4a8'];
   const VAMPIRE_SHADES = ['#2a3a7a', '#334a8a', '#22326a', '#3a4d96'];
+  const IMP_SHADES = ['#a01818', '#c02a20', '#8a1010', '#b83a28'];
 
+  // difficulty ramps up the longer you survive: easy start, noticeably harder later
   function difficultyMul(){
-    return 1 + Math.min(zombieCounter, 40) * 0.010;
+    return 1 + Math.min(elapsed / 15, 6) * 0.14;
+  }
+  function currentSpawnInterval(){
+    return Math.max(0.6, 2.3 - Math.min(elapsed / 8, 16) * 0.09);
+  }
+  function currentMaxOnScreen(){
+    return Math.min(4 + Math.floor(elapsed / 25), 8);
   }
 
   function zombiePos(z){
@@ -523,16 +595,14 @@
   }
 
   function spawnEnemy(){
-    zombieCounter++;
-    if (!bossSpawned && zombieCounter >= 20) {
-      bossSpawned = true;
-      bossActive = true;
-      spawnBoss();
-      updateHud();
-      return;
-    }
     const roll = Math.random();
-    if (werewolfUnlocked && mummyUnlocked && vampireUnlocked) {
+    if (werewolfUnlocked && mummyUnlocked && vampireUnlocked && impUnlocked) {
+      if (roll < 0.20) spawnWerewolf();
+      else if (roll < 0.40) spawnMummy();
+      else if (roll < 0.60) spawnVampire();
+      else if (roll < 0.80) spawnImp();
+      else spawnZombieNormal();
+    } else if (werewolfUnlocked && mummyUnlocked && vampireUnlocked) {
       if (roll < 0.26) spawnWerewolf();
       else if (roll < 0.52) spawnMummy();
       else if (roll < 0.78) spawnVampire();
@@ -626,22 +696,23 @@
     spawnParticles(ROAD_LEFT + xNorm*ROAD_WIDTH, yNorm*H, '#3a2a5a');
   }
 
-  function spawnBoss(){
-    const boss = {
-      x: 0.5,
-      y: 0.02,
-      speed: BASE_ZOMBIE_SPEED * 0.28,
-      hp: 35, maxHp: 35, size: 58, color: '#2f5a1c', type: 'boss',
-      weaponType: 'green',
-      wobble: 0,
-      state: 'rising',
-      riseT: 0,
-      riseDuration: 1.1
-    };
-    zombies.push(boss);
-    bossRef = boss;
-    bossBar.classList.remove('hidden');
-    bossBarFill.style.width = '100%';
+  function spawnImp(){
+    const color = IMP_SHADES[Math.floor(Math.random()*IMP_SHADES.length)];
+    const xNorm = 0.1 + Math.random()*0.8;
+    const yNorm = 0.02 + Math.random()*0.08;
+    zombies.push({
+      x: xNorm,
+      y: yNorm,
+      speed: BASE_ZOMBIE_SPEED * 1.15 * difficultyMul(),
+      hp: 2, maxHp: 2, size: 20, color, type: 'imp',
+      weaponType: 'cross',
+      wobble: Math.random()*Math.PI*2,
+      state: 'materializing',
+      materializeT: 0,
+      materializeDuration: 0.35
+    });
+    // little burst of hellfire instead of a spark or mist
+    spawnParticles(ROAD_LEFT + xNorm*ROAD_WIDTH, yNorm*H, '#ff5a1a');
   }
 
   function fireBullet(){
@@ -676,6 +747,8 @@
   }
 
   function update(dt){
+    elapsed += dt;
+
     // player movement
     if (!useTouch) {
       playerTargetX = 0.5 + tiltInput * 0.5;
@@ -690,13 +763,11 @@
       fireTimer = FIRE_RATE;
     }
 
-    // spawning
+    // spawning — starts sparse and slow, ramps up the longer you survive
     spawnTimer -= dt;
-    const spawnInterval = Math.max(0.9, 2.1 - Math.min(zombieCounter,25)*0.03);
-    const MAX_ON_SCREEN = 5;
-    if (!bossActive && spawnTimer <= 0 && zombies.length < MAX_ON_SCREEN) {
+    if (spawnTimer <= 0 && zombies.length < currentMaxOnScreen()) {
       spawnEnemy();
-      spawnTimer = spawnInterval;
+      spawnTimer = currentSpawnInterval();
     }
 
     // bullets
@@ -740,7 +811,6 @@
         const dx = zpx - playerPx;
         if (Math.abs(dx) < (z.size + PLAYER_SIZE)*0.7) {
           zombies.splice(i,1);
-          if (z.type === 'boss') { bossActive = false; bossRef = null; bossBar.classList.add('hidden'); }
           lives--;
           flashTimer = 0.25;
           updateHud();
@@ -750,7 +820,6 @@
       }
       if (z.y > 1.08) {
         zombies.splice(i,1);
-        if (z.type === 'boss') { bossActive = false; bossRef = null; bossBar.classList.add('hidden'); }
         continue;
       }
     }
@@ -766,21 +835,11 @@
         if (dx*dx + dy*dy < (z.size*0.75)*(z.size*0.75)) {
           bullets.splice(i,1);
           z.hp--;
-          if (z.type === 'boss') {
-            bossBarFill.style.width = Math.max(0, (z.hp/z.maxHp)*100) + '%';
-          }
           if (z.hp <= 0) {
             spawnParticles(zpx, zpy, z.color);
             zombies.splice(j,1);
             registerKill();
-            if (z.type === 'boss') {
-              score += 350;
-              bossActive = false;
-              bossRef = null;
-              werewolfUnlocked = true;
-              bossBar.classList.add('hidden');
-              showUnlockToast("PALLOTTOLA D'ARGENTO SBLOCCATA", "tocca 🐺 per colpire i licantropi");
-            } else if (z.type === 'werewolf') {
+            if (z.type === 'werewolf') {
               score += 20;
               registerWerewolfKill();
             } else if (z.type === 'mummy') {
@@ -788,8 +847,12 @@
               registerMummyKill();
             } else if (z.type === 'vampire') {
               score += 30;
+              registerVampireKill();
+            } else if (z.type === 'imp') {
+              score += 35;
             } else {
               score += (z.type==='brute'?30:z.type==='runner'?15:10);
+              registerZombieKill();
             }
             updateHud();
           }
@@ -810,16 +873,18 @@
     if (molotovThrow) {
       molotovThrow.t += dt;
       if (molotovThrow.t >= molotovThrow.duration) {
-        const impactY = molotovThrow.toY;
-        explosion = { y: impactY, t: 0, duration: 0.5 };
+        const blastX = molotovThrow.toX;
+        const blastY = molotovThrow.toY;
+        const blastRadius = Math.max(W, H) * 0.45;
+        explosion = { x: blastX, y: blastY, radius: blastRadius, t: 0, duration: 0.5 };
         molotovThrow = null;
 
-        // hit every non-boss creature still behind the impact line with a single blast (like one bullet each)
+        // hit every creature within the blast radius with a single blast (like one bullet each)
         for (let i = zombies.length - 1; i >= 0; i--) {
           const z = zombies[i];
-          if (z.type === 'boss') continue;
           const pos = zombiePos(z);
-          if (pos.py <= impactY) {
+          const ddx = pos.px - blastX, ddy = pos.py - blastY;
+          if (ddx*ddx + ddy*ddy <= blastRadius*blastRadius) {
             z.hp--;
             spawnParticles(pos.px, pos.py, '#ff8a3a');
             if (z.hp <= 0) {
@@ -827,8 +892,9 @@
               registerKill();
               if (z.type === 'werewolf') { registerWerewolfKill(); score += 20; }
               else if (z.type === 'mummy') { registerMummyKill(); score += 25; }
-              else if (z.type === 'vampire') { score += 30; }
-              else { score += (z.type==='brute'?30:z.type==='runner'?15:10); }
+              else if (z.type === 'vampire') { registerVampireKill(); score += 30; }
+              else if (z.type === 'imp') { score += 35; }
+              else { registerZombieKill(); score += (z.type==='brute'?30:z.type==='runner'?15:10); }
             }
           }
         }
@@ -924,7 +990,7 @@
         const p = Math.min(1, z.materializeT / z.materializeDuration);
         ctx.save();
         ctx.globalAlpha = (1 - p) * 0.9;
-        ctx.strokeStyle = z.type === 'vampire' ? '#8a6ad6' : '#fff2b0';
+        ctx.strokeStyle = z.type === 'vampire' ? '#8a6ad6' : (z.type === 'imp' ? '#ff5a1a' : '#fff2b0');
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.arc(zpx, zpy, z.size * (0.3 + p * 1.3), 0, Math.PI*2);
@@ -1013,14 +1079,29 @@
         ctx.moveTo(z.size*0.1, -z.size*0.16); ctx.lineTo(z.size*0.06, -z.size*0.02); ctx.lineTo(z.size*0.02, -z.size*0.16);
         ctx.fill();
       }
-      if (z.type === 'boss') {
-        ctx.strokeStyle = '#e05a4a';
-        ctx.lineWidth = 3;
+      if (z.type === 'imp') {
+        // small curved horns
+        ctx.fillStyle = '#3a0808';
         ctx.beginPath();
-        ctx.ellipse(0, 0, z.size*0.55, z.size*0.7, 0, 0, Math.PI*2);
+        ctx.moveTo(-z.size*0.3, -z.size*0.55); ctx.lineTo(-z.size*0.42, -z.size*0.85); ctx.lineTo(-z.size*0.1, -z.size*0.6);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(z.size*0.3, -z.size*0.55); ctx.lineTo(z.size*0.42, -z.size*0.85); ctx.lineTo(z.size*0.1, -z.size*0.6);
+        ctx.fill();
+        // grinning mouth
+        ctx.strokeStyle = '#2a0505';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, -z.size*0.1, z.size*0.2, 0.15*Math.PI, 0.85*Math.PI);
         ctx.stroke();
+        // glowing yellow eyes
+        ctx.fillStyle = '#ffe040';
+        ctx.beginPath();
+        ctx.ellipse(-z.size*0.13, -z.size*0.32, z.size*0.05, z.size*0.05, 0, 0, Math.PI*2);
+        ctx.ellipse(z.size*0.13, -z.size*0.32, z.size*0.05, z.size*0.05, 0, 0, Math.PI*2);
+        ctx.fill();
       }
-      if (z.hp < z.maxHp && z.type !== 'boss') {
+      if (z.hp < z.maxHp) {
         ctx.fillStyle = '#e05a4a';
         ctx.fillRect(-z.size*0.5, -z.size*0.9, z.size*(z.hp/z.maxHp), 4);
       }
@@ -1041,6 +1122,10 @@
         ctx.fillStyle = '#c9a24a';
         ctx.shadowColor = 'rgba(201,162,74,0.9)';
         ctx.shadowBlur = 6;
+      } else if (b.weapon === 'cross') {
+        ctx.fillStyle = '#fff2c0';
+        ctx.shadowColor = 'rgba(255,242,192,0.95)';
+        ctx.shadowBlur = 8;
       } else {
         ctx.fillStyle = '#9dff6a';
         ctx.shadowColor = 'rgba(157,255,106,0.8)';
@@ -1102,18 +1187,20 @@
       ctx.fill();
     }
 
-    // molotov explosion sweep
+    // molotov explosion — wide expanding fireball centered on the tapped point
     if (explosion) {
       const p = explosion.t / explosion.duration;
       const alpha = 1 - p;
-      const grad = ctx.createLinearGradient(0, 0, 0, explosion.y);
-      grad.addColorStop(0, 'rgba(255,120,30,0)');
-      grad.addColorStop(0.7, 'rgba(255,120,30,' + (0.55*alpha) + ')');
-      grad.addColorStop(1, 'rgba(255,210,120,' + (0.85*alpha) + ')');
+      const r = explosion.radius * Math.min(1, p * 1.6);
+      const grad = ctx.createRadialGradient(explosion.x, explosion.y, 0, explosion.x, explosion.y, r);
+      grad.addColorStop(0, 'rgba(255,230,180,' + (0.9*alpha) + ')');
+      grad.addColorStop(0.4, 'rgba(255,150,50,' + (0.65*alpha) + ')');
+      grad.addColorStop(0.8, 'rgba(255,90,20,' + (0.35*alpha) + ')');
+      grad.addColorStop(1, 'rgba(255,90,20,0)');
       ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, W, explosion.y);
-      ctx.fillStyle = 'rgba(255,230,180,' + (0.9*alpha) + ')';
-      ctx.fillRect(0, explosion.y - 6, W, 12 * (1-p) + 3);
+      ctx.beginPath();
+      ctx.arc(explosion.x, explosion.y, r, 0, Math.PI*2);
+      ctx.fill();
     }
 
     // damage flash
