@@ -696,13 +696,14 @@
 
     const body = superMode ? '#5c3018' : (boostActive ? '#7a5a3a' : '#8a6a48');
 
-    // legs (top-down, peeking out either side, alternating for a running feel)
+    // legs (top-down, mostly hidden beneath the body, just a peek at the rim)
     ctx.fillStyle = '#5c4128';
-    const legPhase = Math.sin(t*0.5)*4;
-    ctx.beginPath(); ctx.ellipse(-20, -6+legPhase, 7, 13, 0.3, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(20, -6-legPhase, 7, 13, -0.3, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(-18, 20-legPhase, 7, 13, 0.2, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(18, 20+legPhase, 7, 13, -0.2, 0, Math.PI*2); ctx.fill();
+    const gallopBeat = Math.floor(t/7) % 2; // snappy 1-2, 1-2 gallop instead of a smooth wave
+    const legPhase = gallopBeat===0 ? 4.5 : -4.5;
+    ctx.beginPath(); ctx.ellipse(-11, -8+legPhase, 6, 11, 0.15, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(11, -8-legPhase, 6, 11, -0.15, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-10, 18-legPhase, 6, 11, 0.1, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(10, 18+legPhase, 6, 11, -0.1, 0, Math.PI*2); ctx.fill();
 
     // tail
     ctx.strokeStyle = '#5c4128'; ctx.lineWidth = 5; ctx.lineCap='round';
@@ -1301,13 +1302,13 @@
         if(superMode){
           burst(rk.x, rk.y, rk.weak ? '#cdb27f' : '#8a8378', 16);
           rocks.splice(i,1);
-          score += rk.weak ? 8 : 16;
+          score += rk.weak ? 15 : 30;
           stonesSmashed++;
           shake = 19;
         } else if(rk.weak && boostActive){
           burst(rk.x, rk.y, '#cdb27f', 14);
           rocks.splice(i,1);
-          score += 8;
+          score += 15;
           stonesSmashed++;
           shake = 18;
         } else if(invuln>0){
@@ -1352,7 +1353,7 @@
           h.vy = -(5+Math.random()*3);
           h.spin = (Math.random()-0.5)*0.6;
           h.life = 40;
-          score += 10;
+          score += 20;
           hogsSquashed++;
           shake = 18;
         } else if(invuln>0){
@@ -1374,6 +1375,7 @@
       if(hit){
         burst(g.x, g.y, '#6b8f34', 10);
         grasses.splice(i,1);
+        score += 6;
         energy = Math.min(energy + ENERGY_GAIN, 100);
         if(energy>=100 && !superMode){
           superMode = true; boostActive = true;
