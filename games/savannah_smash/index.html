@@ -165,7 +165,7 @@
       <b>Light rocks</b> break if you hit them while pressing <b>SMASH</b> (which also gives you a burst of speed).<br><br>
       <b>Dark boulders</b> must always be avoided: they never break.<br><br>
       <b>Warthogs</b> trot slowly down the road — smash them and they go flying!<br><br>
-      Watch for <b>water</b> — crocodiles can surge out at the last second.<br><br>
+      Watch for <b>water</b> — crocodiles, or a huge hippo blocking one side, can surge out at the last second.<br><br>
       A rare <b>chili</b> sets you on fire for a very long time.
     </p>
     <button class="primary" id="startBtn">Play</button>
@@ -222,7 +222,7 @@
   homeBestEl.textContent = best>0 ? ('Best: '+best) : '';
 
   const ENERGY_GAIN = 9, ENERGY_DRAIN = 0.32, CHILI_ENERGY = 380;
-  let player, rocks, grasses, hogs, waters, crocs, chilis, scenery, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, chiliTimer, sceneryTimer, bushTimer, grassPatchTimer, boostActive, superMode, boostTimer, charge, energy, invuln, shake, roadOffset, stonesSmashed, hogsSquashed, deathTimer, groundSegments;
+  let player, rocks, grasses, hogs, waters, crocs, chilis, scenery, hippos, particles, dust, t, score, scrollSpeed, spawnTimer, grassTimer, hogTimer, waterTimer, crocTimer, chiliTimer, sceneryTimer, bushTimer, grassPatchTimer, boostActive, superMode, boostTimer, charge, energy, invuln, shake, roadOffset, stonesSmashed, hogsSquashed, deathTimer, groundSegments;
   let tiltX = 0;       // -1..1 target from gyroscope/touch
   let smoothX = 0;      // smoothed player position factor
 
@@ -235,6 +235,7 @@
     crocs = [];
     chilis = [];
     scenery = [];
+    hippos = [];
     groundSegments = [];
     particles = [];
     dust = [];
@@ -446,13 +447,27 @@
     scenery.push({ x:bx, y:-size, size, kind:'grassPatch', seed: Math.floor(Math.random()*97) });
   }
 
+  function spawnHippoIn(wtr, y){
+    const b = roadBounds();
+    const mid = (b.left+b.right)/2;
+    const side = Math.random()<0.5 ? -1 : 1;
+    const halfL = side<0 ? b.left : mid, halfR = side<0 ? mid : b.right;
+    const x = halfL + (halfR-halfL)*(0.3+Math.random()*0.4);
+    hippos.push({
+      x, y, r: 44+Math.random()*6,
+      state:'warning', warnT:0, spawnT:0,
+      wob: Math.random()*6.28,
+    });
+  }
+
   function spawnWater(){
     const hh = 150+Math.random()*130;
-    const maxCrocs = Math.max(1, Math.round(hh/95));
+    const isHippoRiver = Math.random() < 0.4;
+    const maxCrocs = isHippoRiver ? 0 : Math.max(1, Math.round(hh/95));
     const nPts = 9;
     const topJag = Array.from({length:nPts}, () => (Math.random()-0.5)*24);
     const botJag = Array.from({length:nPts}, () => (Math.random()-0.5)*24);
-    waters.push({ y: -hh, hh, crocsSpawned:0, maxCrocs, ripplePhase: Math.random()*6.28, topJag, botJag, lifeSpawned:false });
+    waters.push({ y: -hh, hh, crocsSpawned:0, maxCrocs, ripplePhase: Math.random()*6.28, topJag, botJag, lifeSpawned:false, isHippoRiver, hippoSpawned:false });
   }
 
   // checks that placing a croc of radius r at x still leaves a gap wide enough
@@ -742,7 +757,7 @@
       ctx.beginPath(); ctx.arc(-7,-30,1.8,0,Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(7,-30,1.8,0,Math.PI*2); ctx.fill();
     }
-    if(boostActive){
+    if(boostActive && !superMode){
       // angry eyebrows while smashing (inner corners pulled down toward the eyes)
       ctx.strokeStyle = '#241708'; ctx.lineWidth = 2.2; ctx.lineCap='round';
       ctx.beginPath(); ctx.moveTo(-10,-24); ctx.lineTo(-4,-28); ctx.stroke();
@@ -864,11 +879,12 @@
     }
 
     // legs
+    const hogGallop = Math.floor(t/7) % 2 === 0 ? h.r*0.1 : -h.r*0.1;
     ctx.fillStyle = '#3f3226';
-    ctx.beginPath(); ctx.ellipse(-h.r*0.5, h.r*0.55, h.r*0.16, h.r*0.3, 0, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(h.r*0.5, h.r*0.55, h.r*0.16, h.r*0.3, 0, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(-h.r*0.45, -h.r*0.1, h.r*0.14, h.r*0.26, 0, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(h.r*0.45, -h.r*0.1, h.r*0.14, h.r*0.26, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-h.r*0.28, h.r*0.55+hogGallop, h.r*0.16, h.r*0.3, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(h.r*0.28, h.r*0.55-hogGallop, h.r*0.16, h.r*0.3, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-h.r*0.25, -h.r*0.1-hogGallop, h.r*0.14, h.r*0.26, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(h.r*0.25, -h.r*0.1+hogGallop, h.r*0.14, h.r*0.26, 0, 0, Math.PI*2); ctx.fill();
 
     // body
     ctx.fillStyle = '#8a7355';
@@ -970,6 +986,73 @@
       }
       ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  function drawHippoHazard(h){
+    if(h.state==='warning'){
+      // just the eyes, ears and nostrils poking above the surface so far
+      const bob = Math.sin(t*0.15+h.wob)*1.5;
+      ctx.save();
+      ctx.translate(h.x, h.y+bob);
+      ctx.fillStyle = 'rgba(20,50,60,0.2)';
+      ctx.beginPath(); ctx.ellipse(0, h.r*0.1, h.r*0.5, h.r*0.2, 0, 0, Math.PI*2); ctx.fill();
+      // ears
+      ctx.fillStyle = '#5c6b72';
+      ctx.beginPath(); ctx.ellipse(-h.r*0.22,-h.r*0.06,h.r*0.09,h.r*0.07,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(h.r*0.22,-h.r*0.06,h.r*0.09,h.r*0.07,0,0,Math.PI*2); ctx.fill();
+      // eyes
+      ctx.fillStyle = '#8a97a0';
+      ctx.beginPath(); ctx.ellipse(-h.r*0.14,0,h.r*0.07,h.r*0.06,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(h.r*0.14,0,h.r*0.07,h.r*0.06,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#241f1a';
+      ctx.beginPath(); ctx.arc(-h.r*0.14,0,h.r*0.025,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(h.r*0.14,0,h.r*0.025,0,Math.PI*2); ctx.fill();
+      // nostrils
+      ctx.fillStyle = '#3f4a50';
+      ctx.beginPath(); ctx.ellipse(-h.r*0.08,h.r*0.22,h.r*0.045,h.r*0.03,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(h.r*0.08,h.r*0.22,h.r*0.045,h.r*0.03,0,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+      return;
+    }
+    const grow = h.state==='surge' ? Math.min(1, h.spawnT/14) : 1;
+    ctx.save();
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(20,50,60,0.28)';
+    ctx.ellipse(h.x, h.y+h.r*0.18*grow, h.r*1.05*grow, h.r*0.55*grow, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.translate(h.x, h.y);
+    ctx.scale(grow, grow);
+
+    // body — a large oval toward the rear
+    const bodyGrad = ctx.createRadialGradient(-h.r*0.15,h.r*0.35,h.r*0.2, 0,h.r*0.3,h.r*0.9);
+    bodyGrad.addColorStop(0,'#8a97a0'); bodyGrad.addColorStop(1,'#5c6b72');
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath(); ctx.ellipse(0, h.r*0.32, h.r*0.82, h.r*0.58, 0, 0, Math.PI*2); ctx.fill();
+
+    // head — a distinct, smaller rounded shape toward the front, overlapping the body
+    const headGrad = ctx.createRadialGradient(-h.r*0.15,-h.r*0.55,h.r*0.12, 0,-h.r*0.42,h.r*0.55);
+    headGrad.addColorStop(0,'#94a1a9'); headGrad.addColorStop(1,'#657277');
+    ctx.fillStyle = headGrad;
+    ctx.beginPath(); ctx.ellipse(0, -h.r*0.42, h.r*0.56, h.r*0.46, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle='rgba(30,40,45,0.3)'; ctx.lineWidth=h.r*0.025;
+    ctx.beginPath(); ctx.ellipse(0, -h.r*0.42, h.r*0.56, h.r*0.46, 0, 0, Math.PI*2); ctx.stroke();
+
+    // ears, on the head
+    ctx.fillStyle = '#4f5c62';
+    ctx.beginPath(); ctx.ellipse(-h.r*0.34,-h.r*0.78,h.r*0.13,h.r*0.11,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(h.r*0.34,-h.r*0.78,h.r*0.13,h.r*0.11,0,0,Math.PI*2); ctx.fill();
+    // eyes, on the head
+    ctx.fillStyle = '#241f1a';
+    ctx.beginPath(); ctx.arc(-h.r*0.28,-h.r*0.56,h.r*0.055,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(h.r*0.28,-h.r*0.56,h.r*0.055,0,Math.PI*2); ctx.fill();
+    // nostrils, at the tip of the head
+    ctx.fillStyle = '#3f4a50';
+    ctx.beginPath(); ctx.ellipse(-h.r*0.12,-h.r*0.06,h.r*0.07,h.r*0.05,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(h.r*0.12,-h.r*0.06,h.r*0.07,h.r*0.05,0,0,Math.PI*2); ctx.fill();
+    // mouth hint, on the head
+    ctx.strokeStyle='rgba(30,25,20,0.4)'; ctx.lineWidth=h.r*0.03;
+    ctx.beginPath(); ctx.moveTo(-h.r*0.2,h.r*0.02); ctx.quadraticCurveTo(0,h.r*0.1,h.r*0.2,h.r*0.02); ctx.stroke();
     ctx.restore();
   }
 
@@ -1203,6 +1286,17 @@
       }
     }
 
+    {
+      // hippo river: same warn+surge timing as a croc, one hippo per river, half the road
+      const travelFrames = 52 + 14;
+      const targetY = player.y - travelFrames*curSpeed;
+      const hCandidate = waters.find(w => w.isHippoRiver && !w.hippoSpawned && targetY > w.y-w.hh*0.4 && targetY < w.y+w.hh*0.4);
+      if(hCandidate){
+        hCandidate.hippoSpawned = true;
+        spawnHippoIn(hCandidate, targetY);
+      }
+    }
+
     chiliTimer -= diff;
     if(chiliTimer<=0){
       spawnChili();
@@ -1278,6 +1372,28 @@
       if(hit && invuln<=0 && !superMode){
         c.state = 'active'; c.spawnT = 999; // snap to full size, don't freeze mid-emerge
         burst(player.x, player.y, '#3f5c30', 22);
+        shake = 24;
+        endGame();
+        return;
+      }
+    }
+
+    for(let i=hippos.length-1;i>=0;i--){
+      const h = hippos[i];
+      h.y += curSpeed;
+      if(h.y - h.r > H+20){ hippos.splice(i,1); score += 1; continue; }
+
+      if(h.state==='warning'){
+        h.warnT++;
+        if(h.warnT>=52){ h.state='surge'; h.spawnT=0; burst(h.x, h.y, '#8a97a0', 16); shake=6; }
+        continue; // just eyes/ears/nostrils poking above the water so far
+      }
+      if(h.state==='surge'){ h.spawnT++; if(h.spawnT>=14) h.state='active'; }
+
+      const hit2 = circleRectHit(h.x, h.y, h.r*0.75, player.x, player.y, player.w, player.h);
+      if(hit2 && invuln<=0 && !superMode){
+        h.state = 'active'; h.spawnT = 999;
+        burst(player.x, player.y, '#5c6b72', 22);
         shake = 24;
         endGame();
         return;
@@ -1455,6 +1571,7 @@
     for(const rk of rocks) drawRock(rk);
     for(const h of (hogs||[])) drawHog(h);
     for(const c of (crocs||[])) drawCroc(c);
+    for(const h of (hippos||[])) drawHippoHazard(h);
     if(state!=='idle') drawRhino();
     const sceneryList = scenery||[];
     for(const s of sceneryList){ if(s.kind==='grassPatch') drawGrassPatch(s.x, s.y, s.size, s.seed); }
