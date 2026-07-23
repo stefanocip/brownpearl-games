@@ -788,6 +788,9 @@
       ctx.fillStyle = '#241708';
       ctx.beginPath(); ctx.arc(-7,-30,1.8,0,Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(7,-30,1.8,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(-5.7,-30.7,0.6,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(8.3,-30.7,0.6,0,Math.PI*2); ctx.fill();
     }
     if(boostActive){
       // angry eyebrows while smashing (inner corners pulled down toward the eyes)
@@ -1033,13 +1036,13 @@
       ctx.fillStyle = '#5c6b72';
       ctx.beginPath(); ctx.ellipse(-h.r*0.22,-h.r*0.06,h.r*0.09,h.r*0.07,0,0,Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.ellipse(h.r*0.22,-h.r*0.06,h.r*0.09,h.r*0.07,0,0,Math.PI*2); ctx.fill();
-      // eyes
-      ctx.fillStyle = '#8a97a0';
-      ctx.beginPath(); ctx.ellipse(-h.r*0.14,0,h.r*0.07,h.r*0.06,0,0,Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(h.r*0.14,0,h.r*0.07,h.r*0.06,0,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#241f1a';
-      ctx.beginPath(); ctx.arc(-h.r*0.14,0,h.r*0.025,0,Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(h.r*0.14,0,h.r*0.025,0,Math.PI*2); ctx.fill();
+      // eyes: black dot with a little highlight, same style as everything else
+      ctx.fillStyle = '#1c1a17';
+      ctx.beginPath(); ctx.arc(-h.r*0.14,0,h.r*0.045,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(h.r*0.14,0,h.r*0.045,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(-h.r*0.12,-h.r*0.02,h.r*0.015,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(h.r*0.16,-h.r*0.02,h.r*0.015,0,Math.PI*2); ctx.fill();
       // nostrils
       ctx.fillStyle = '#3f4a50';
       ctx.beginPath(); ctx.ellipse(-h.r*0.08,h.r*0.22,h.r*0.045,h.r*0.03,0,0,Math.PI*2); ctx.fill();
@@ -1089,10 +1092,13 @@
     ctx.beginPath(); ctx.arc(-5*s,-45*s,1.8*s,0,Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.arc(5*s,-45*s,1.8*s,0,Math.PI*2); ctx.fill();
 
-    // eyes
+    // eyes: black dot with a little highlight
     ctx.fillStyle = '#1c1a17';
     ctx.beginPath(); ctx.arc(-7*s,-30*s,1.8*s,0,Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.arc(7*s,-30*s,1.8*s,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-5.7*s,-30.7*s,0.6*s,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(8.3*s,-30.7*s,0.6*s,0,Math.PI*2); ctx.fill();
     ctx.restore();
   }
 
