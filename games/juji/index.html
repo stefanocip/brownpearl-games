@@ -847,7 +847,7 @@
 
   // ---------- pointer interaction: grab the piece from its tray and drag it onto the grid ----------
 
-  const CLEARANCE = 24; // px of guaranteed empty gap kept between the piece's bottom edge and the finger
+  const CLEARANCE = 62; // px of guaranteed empty gap kept between the piece's bottom edge and the finger
 
   let dragging = false;
   let floatingEl = null;
@@ -953,7 +953,7 @@
 
   function initPointerHandling(){
     const previewFrame = document.getElementById('piecePreviewFrame');
-    const TAP_THRESHOLD = 10; // px of movement allowed before a press counts as a drag instead of a tap
+    const TAP_THRESHOLD = 2; // px of movement allowed before a press counts as a drag instead of a tap
     let pointerDownPos = null;
 
     // iOS Safari (15+) can show its long-press magnifying-glass loupe during the brief
