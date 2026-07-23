@@ -71,56 +71,55 @@
   }
   #calibFill { height:100%; width:0%; background:#7fbf3f; transition:width 0.1s linear; }
 
-  #weaponSwitch {
-    position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
-    display:flex; gap:14px; z-index:6;
+  #actionBar {
+    position:absolute; bottom:0; left:0; width:100%; z-index:6;
+    display:flex; gap:6px; box-sizing:border-box;
+    padding:10px 8px 18px;
+    background:linear-gradient(to top, rgba(8,10,6,0.85), rgba(8,10,6,0));
   }
-  .weaponBtn {
-    width:56px; height:56px; border-radius:50%;
+  .actionSlot {
+    flex:1; aspect-ratio:1/1; max-height:58px;
     display:flex; align-items:center; justify-content:center;
-    font-size:26px; border:2px solid rgba(255,255,255,0.25);
-    background:rgba(20,26,14,0.7);
-    box-shadow:0 3px 10px rgba(0,0,0,0.5);
-    opacity:0.55;
+    position:relative;
+    font-size:24px; border-radius:10px;
+    border:2px solid rgba(255,255,255,0.18);
+    background:rgba(20,26,14,0.65);
+    box-shadow:0 3px 8px rgba(0,0,0,0.4);
+    opacity:0.35; filter:grayscale(1);
     touch-action:manipulation;
+    transition: opacity 0.2s ease, filter 0.2s ease;
   }
-  .weaponBtn.green.active { border-color:#7fbf3f; box-shadow:0 0 14px rgba(127,191,63,0.7); opacity:1; }
-  .weaponBtn.silver.active { border-color:#dfe6ea; box-shadow:0 0 14px rgba(223,230,234,0.7); opacity:1; }
-  .weaponBtn.scarab.active { border-color:#e0b23a; box-shadow:0 0 14px rgba(224,178,58,0.7); opacity:1; }
-  .weaponBtn.scarab.hidden { display:none !important; }
-  .weaponBtn.stake.active { border-color:#5a7fd6; box-shadow:0 0 14px rgba(90,127,214,0.7); opacity:1; }
-  .weaponBtn.stake.hidden { display:none !important; }
-  .weaponBtn.cross.active { border-color:#e8d060; box-shadow:0 0 14px rgba(232,208,96,0.7); opacity:1; }
-  .weaponBtn.cross.hidden { display:none !important; }
+  .actionSlot:not(.unlocked) { pointer-events:none; }
+  .actionSlot.unlocked { opacity:0.6; filter:none; }
+  .actionSlot.active { opacity:1; }
+  .actionSlot.green.active { border-color:#7fbf3f; box-shadow:0 0 14px rgba(127,191,63,0.7); }
+  .actionSlot.silver.active { border-color:#dfe6ea; box-shadow:0 0 14px rgba(223,230,234,0.7); }
+  .actionSlot.scarab.active { border-color:#e0b23a; box-shadow:0 0 14px rgba(224,178,58,0.7); }
+  .actionSlot.stake.active { border-color:#5a7fd6; box-shadow:0 0 14px rgba(90,127,214,0.7); }
+  .actionSlot.cross.active { border-color:#e8d060; box-shadow:0 0 14px rgba(232,208,96,0.7); }
 
-  #molotovBtn {
-    position:absolute; bottom:22px; right:20px; z-index:6;
-    width:58px; height:58px; border-radius:50%;
-    display:flex; align-items:center; justify-content:center;
-    font-size:26px; border:2px solid #e08a2a;
-    background:rgba(40,22,8,0.75);
-    box-shadow:0 0 16px rgba(224,138,42,0.6), 0 3px 10px rgba(0,0,0,0.5);
+  .actionSlot.molotov { border-color:rgba(224,138,42,0.4); }
+  .actionSlot.molotov.unlocked {
+    border-color:#e08a2a; opacity:1;
     animation: molotovPulse 1.4s ease-in-out infinite;
-    touch-action:manipulation;
   }
-  #molotovBtn.hidden { display:none !important; }
-  #molotovBtn.armed {
+  .actionSlot.molotov.armed {
     border-color:#ff3a3a;
-    box-shadow:0 0 22px rgba(255,58,58,0.9), 0 3px 10px rgba(0,0,0,0.5);
+    box-shadow:0 0 22px rgba(255,58,58,0.9);
     animation: molotovArmedPulse 0.7s ease-in-out infinite;
   }
   @keyframes molotovPulse {
     0%, 100% { transform:scale(1); }
-    50% { transform:scale(1.08); }
+    50% { transform:scale(1.06); }
   }
   @keyframes molotovArmedPulse {
     0%, 100% { transform:scale(1); }
-    50% { transform:scale(1.16); }
+    50% { transform:scale(1.14); }
   }
   #molotovCount {
     position:absolute; top:-6px; right:-6px;
-    background:#e05a4a; color:#fff; font-size:12px; font-weight:bold;
-    border-radius:50%; width:20px; height:20px;
+    background:#e05a4a; color:#fff; font-size:11px; font-weight:bold;
+    border-radius:50%; width:18px; height:18px;
     display:flex; align-items:center; justify-content:center;
     box-shadow:0 2px 4px rgba(0,0,0,0.5);
   }
@@ -156,15 +155,14 @@
   <div class="score" id="scoreDisplay">0</div>
 </div>
 
-<div id="weaponSwitch" class="hidden">
-  <button class="weaponBtn green active" id="weaponGreenBtn">🧟</button>
-  <button class="weaponBtn silver hidden" id="weaponSilverBtn">🐺</button>
-  <button class="weaponBtn scarab hidden" id="weaponScarabBtn">🪲</button>
-  <button class="weaponBtn stake hidden" id="weaponStakeBtn">🪵</button>
-  <button class="weaponBtn cross hidden" id="weaponCrossBtn">✝️</button>
+<div id="actionBar">
+  <button class="actionSlot green unlocked active" id="weaponGreenBtn">🧟</button>
+  <button class="actionSlot silver" id="weaponSilverBtn">🐺</button>
+  <button class="actionSlot scarab" id="weaponScarabBtn">🪲</button>
+  <button class="actionSlot stake" id="weaponStakeBtn">🪵</button>
+  <button class="actionSlot cross" id="weaponCrossBtn">✝️</button>
+  <button class="actionSlot molotov" id="molotovBtn">🔥<span id="molotovCount">0</span></button>
 </div>
-
-<button id="molotovBtn" class="hidden">🔥<span id="molotovCount">0</span></button>
 <div id="molotovHint">TAP ANYWHERE TO STRIKE</div>
 
 <div id="unlockToast"><span id="unlockToastMain">SILVER BULLET UNLOCKED</span><span class="sub" id="unlockToastSub">tap 🐺 to hit werewolves</span></div>
@@ -273,7 +271,6 @@
   const scoreDisplay = document.getElementById('scoreDisplay');
   const counterDisplay = document.getElementById('counterDisplay');
   const finalScoreText = document.getElementById('finalScoreText');
-  const weaponSwitch = document.getElementById('weaponSwitch');
   const weaponGreenBtn = document.getElementById('weaponGreenBtn');
   const weaponSilverBtn = document.getElementById('weaponSilverBtn');
   const weaponScarabBtn = document.getElementById('weaponScarabBtn');
@@ -321,9 +318,9 @@
 
   const PLAYER_Y_RATIO = 0.86;
   const PLAYER_SIZE = 26;
-  const BULLET_SPEED = 780;
-  const FIRE_RATE = 0.12; // seconds between shots
-  const BASE_ZOMBIE_SPEED = 40;
+  const BULLET_SPEED = 340;
+  const FIRE_RATE = 0.28; // seconds between shots
+  const BASE_ZOMBIE_SPEED = 32;
 
   const ZOMBIE_KILLS_TO_UNLOCK_WEREWOLVES = 10;
   const WEREWOLF_KILLS_TO_UNLOCK_MUMMIES = 15;
@@ -454,17 +451,12 @@
     playerX = 0.5;
     playerTargetX = 0.5;
     gameOverScreen.classList.add('hidden');
-    weaponSwitch.classList.add('hidden');
     unlockToast.classList.remove('show');
     weaponGreenBtn.classList.add('active');
-    weaponSilverBtn.classList.remove('active');
-    weaponSilverBtn.classList.add('hidden');
-    weaponScarabBtn.classList.remove('active');
-    weaponScarabBtn.classList.add('hidden');
-    weaponStakeBtn.classList.remove('active');
-    weaponStakeBtn.classList.add('hidden');
-    weaponCrossBtn.classList.remove('active');
-    weaponCrossBtn.classList.add('hidden');
+    weaponSilverBtn.classList.remove('active', 'unlocked');
+    weaponScarabBtn.classList.remove('active', 'unlocked');
+    weaponStakeBtn.classList.remove('active', 'unlocked');
+    weaponCrossBtn.classList.remove('active', 'unlocked');
     updateMolotovUI();
     startGame();
   }
@@ -487,7 +479,7 @@
 
   function updateMolotovUI(){
     molotovCountEl.textContent = molotovCount;
-    molotovBtn.classList.toggle('hidden', molotovCount <= 0);
+    molotovBtn.classList.toggle('unlocked', molotovCount > 0);
   }
 
   function registerKill(){
@@ -556,7 +548,6 @@
   weaponCrossBtn.addEventListener('click', (e) => { e.stopPropagation(); setWeapon('cross'); });
 
   function showUnlockToast(mainText, subText){
-    weaponSwitch.classList.remove('hidden');
     unlockToastMain.textContent = mainText;
     unlockToastSub.textContent = subText;
     unlockToast.classList.add('show');
@@ -567,7 +558,7 @@
     zombieKillCount++;
     if (!werewolfUnlocked && zombieKillCount >= ZOMBIE_KILLS_TO_UNLOCK_WEREWOLVES) {
       werewolfUnlocked = true;
-      weaponSilverBtn.classList.remove('hidden');
+      weaponSilverBtn.classList.add('unlocked');
       showUnlockToast("SILVER BULLET UNLOCKED", "tap 🐺 to hit werewolves");
     }
   }
@@ -576,7 +567,7 @@
     werewolfKillCount++;
     if (!mummyUnlocked && werewolfKillCount >= WEREWOLF_KILLS_TO_UNLOCK_MUMMIES) {
       mummyUnlocked = true;
-      weaponScarabBtn.classList.remove('hidden');
+      weaponScarabBtn.classList.add('unlocked');
       showUnlockToast("SACRED SCARAB UNLOCKED", "tap 🪲 to hit mummies");
     }
   }
@@ -585,7 +576,7 @@
     mummyKillCount++;
     if (!vampireUnlocked && mummyKillCount >= MUMMY_KILLS_TO_UNLOCK_VAMPIRES) {
       vampireUnlocked = true;
-      weaponStakeBtn.classList.remove('hidden');
+      weaponStakeBtn.classList.add('unlocked');
       showUnlockToast("WOODEN STAKE UNLOCKED", "tap 🪵 to hit vampires");
     }
   }
@@ -594,7 +585,7 @@
     vampireKillCount++;
     if (!impUnlocked && vampireKillCount >= VAMPIRE_KILLS_TO_UNLOCK_IMPS) {
       impUnlocked = true;
-      weaponCrossBtn.classList.remove('hidden');
+      weaponCrossBtn.classList.add('unlocked');
       showUnlockToast("HOLY CROSS UNLOCKED", "tap ✝️ to hit imps");
     }
   }
@@ -661,9 +652,9 @@
   function spawnZombieNormal(){
     const types = ['walker','walker','walker','runner','brute'];
     const type = types[Math.floor(Math.random()*types.length)];
-    let speedMul = 1, hp = 1, size = 22;
-    if (type === 'runner') { speedMul = 1.2; hp = 1; size = 19; }
-    if (type === 'brute')  { speedMul = 0.55; hp = 3; size = 30; }
+    let speedMul = 0.75, hp = 2, size = 22;
+    if (type === 'runner') { speedMul = 0.95; hp = 2; size = 19; }
+    if (type === 'brute')  { speedMul = 0.45; hp = 2; size = 30; }
     const color = GREEN_SHADES[Math.floor(Math.random()*GREEN_SHADES.length)];
     zombies.push({
       x: Math.random(),
@@ -684,8 +675,8 @@
     zombies.push({
       x: 0.15 + Math.random()*0.7,   // target position once it steps onto the road
       y: 0.03 + Math.random()*0.10,
-      speed: BASE_ZOMBIE_SPEED * 0.95 * difficultyMul(),
-      hp: 2, maxHp: 2, size: 25, color, type: 'werewolf',
+      speed: BASE_ZOMBIE_SPEED * 1.35 * difficultyMul(),
+      hp: 1, maxHp: 1, size: 25, color, type: 'werewolf',
       weaponType: 'silver',
       wobble: Math.random()*Math.PI*2,
       state: 'entering',
