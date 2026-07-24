@@ -1116,12 +1116,25 @@
     const wob = Math.sin(t*0.15 + c.wob)*0.08;
     ctx.rotate(wob);
 
-    // legs, peeking out from the sides
-    ctx.fillStyle = '#3f5c30';
-    ctx.beginPath(); ctx.ellipse(-c.r*0.52, c.r*0.15, c.r*0.14, c.r*0.24, 0.3, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(c.r*0.52, c.r*0.15, c.r*0.14, c.r*0.24, -0.3, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(-c.r*0.48, -c.r*0.55, c.r*0.12, c.r*0.2, 0.3, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(c.r*0.48, -c.r*0.55, c.r*0.12, c.r*0.2, -0.3, 0, Math.PI*2); ctx.fill();
+    // legs — a little triangle with its tip toward the body and a webbed,
+    // 3-toed base fanning out at the outer end
+    // legs — a simple slim little limb angled obliquely off the spine, ending in 3 toes
+    // legs — just 3 webbed toes attached straight to the body, no arm segment
+    function crocLeg(x, y, angle, w){
+      ctx.strokeStyle = '#3f5c30'; ctx.lineCap='round'; ctx.lineWidth = w;
+      const toeLen = w*3.2;
+      for(let i=-1;i<=1;i++){
+        const a = angle + i*0.4;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x+Math.cos(a)*toeLen, y+Math.sin(a)*toeLen);
+        ctx.stroke();
+      }
+    }
+    crocLeg(-c.r*0.5, c.r*0.55, Math.PI*1.35, c.r*0.13);
+    crocLeg(c.r*0.5, c.r*0.55, Math.PI*1.65, c.r*0.13);
+    crocLeg(-c.r*0.46, -c.r*0.15, Math.PI*1.35, c.r*0.11);
+    crocLeg(c.r*0.46, -c.r*0.15, Math.PI*1.65, c.r*0.11);
 
     // tail
     ctx.fillStyle = '#4a6b3a';
