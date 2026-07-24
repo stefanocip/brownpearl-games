@@ -20,7 +20,7 @@
     --blue: #3e7089;
     --yellow: #d9a441;
     --green: #57815e;
-    --err: #d1615a;
+    --invalid: #8a5a9e;
     --radius: 6px;
     --shadow: 0 6px 18px rgba(0,0,0,0.35);
   }
@@ -176,7 +176,7 @@
     background: color-mix(in srgb, var(--ink) 30%, transparent);
     box-shadow: inset 0 0 0 2px var(--accent);
   }
-  .cell.ghost-bad{ background: rgba(209,97,90,0.35); box-shadow: inset 0 0 0 2px var(--err); }
+  .cell.ghost-bad{ background: rgba(138,90,158,0.4); box-shadow: inset 0 0 0 2px var(--invalid); }
 
   @keyframes cellPop{
     0%   { transform: scale(1);    opacity: 1; filter: brightness(1); }
