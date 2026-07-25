@@ -247,15 +247,17 @@
 
   function generateFog(){
     fog = [];
-    const count = 14;
+    const count = 8;
     for (let i = 0; i < count; i++){
+      const bandBottom = H*0.32 + Math.random()*H*0.1;
+      const bandTop = -H*0.08;
       fog.push({
         x: Math.random()*W,
-        y: -20 + Math.random()*H*0.28,
-        r: W*(0.28 + Math.random()*0.3),
-        speed: 5 + Math.random()*9,
-        dir: Math.random() < 0.5 ? 1 : -1,
-        opacity: 0.18 + Math.random()*0.16
+        y: bandTop + Math.random()*(bandBottom - bandTop),
+        bandTop, bandBottom,
+        r: W*(0.16 + Math.random()*0.14),
+        riseSpeed: 10 + Math.random()*14,
+        baseOpacity: 0.09 + Math.random()*0.08
       });
     }
   }
@@ -320,7 +322,7 @@
   const PLAYER_SIZE = 26;
   const BULLET_SPEED = 340;
   const FIRE_RATE = 0.28; // seconds between shots
-  const BASE_ZOMBIE_SPEED = 32;
+  const BASE_ZOMBIE_SPEED = 21;
 
   const ZOMBIE_KILLS_TO_UNLOCK_WEREWOLVES = 10;
   const WEREWOLF_KILLS_TO_UNLOCK_MUMMIES = 15;
@@ -599,13 +601,13 @@
 
   // difficulty ramps up the longer you survive: easy start, noticeably harder later
   function difficultyMul(){
-    return 1 + Math.min(elapsed / 15, 6) * 0.14;
+    return 1 + Math.min(elapsed / 20, 6) * 0.09;
   }
   function currentSpawnInterval(){
-    return Math.max(0.6, 2.3 - Math.min(elapsed / 8, 16) * 0.09);
+    return Math.max(0.75, 2.4 - Math.min(elapsed / 10, 14) * 0.07);
   }
   function currentMaxOnScreen(){
-    return Math.min(4 + Math.floor(elapsed / 25), 8);
+    return Math.min(4 + Math.floor(elapsed / 35), 7);
   }
 
   function zombiePos(z){
@@ -778,11 +780,13 @@
   function update(dt){
     elapsed += dt;
 
-    // drifting fog
+    // rising fog — drifts up from the ground near the graves and loops
     for (const f of fog) {
-      f.x += f.speed * f.dir * dt;
-      if (f.x > W + f.r) f.x = -f.r;
-      if (f.x < -f.r) f.x = W + f.r;
+      f.y -= f.riseSpeed * dt;
+      if (f.y < f.bandTop) {
+        f.y = f.bandBottom;
+        f.x = Math.random()*W;
+      }
     }
 
     // player movement
@@ -915,13 +919,13 @@
         explosion = { x: blastX, y: blastY, radius: blastRadius, t: 0, duration: 0.5 };
         molotovThrow = null;
 
-        // hit every creature within the blast radius with a single blast (like one bullet each)
+        // hit every creature within the blast radius with a double blast (2 hits each)
         for (let i = zombies.length - 1; i >= 0; i--) {
           const z = zombies[i];
           const pos = zombiePos(z);
           const ddx = pos.px - blastX, ddy = pos.py - blastY;
           if (ddx*ddx + ddy*ddy <= blastRadius*blastRadius) {
-            z.hp--;
+            z.hp -= 2;
             spawnParticles(pos.px, pos.py, '#ff8a3a');
             if (z.hp <= 0) {
               zombies.splice(i, 1);
@@ -1298,11 +1302,14 @@
       ctx.fill();
     }
 
-    // drifting ground fog
+    // rising ground fog — fades in from the ground and dissipates near the top
     for (const f of fog) {
+      const progress = (f.y - f.bandTop) / (f.bandBottom - f.bandTop);
+      const fade = Math.sin(Math.max(0, Math.min(1, progress)) * Math.PI);
+      const opacity = f.baseOpacity * fade;
       const grad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r);
-      grad.addColorStop(0, 'rgba(215,222,215,' + f.opacity + ')');
-      grad.addColorStop(0.55, 'rgba(215,222,215,' + (f.opacity*0.55) + ')');
+      grad.addColorStop(0, 'rgba(215,222,215,' + opacity + ')');
+      grad.addColorStop(0.55, 'rgba(215,222,215,' + (opacity*0.55) + ')');
       grad.addColorStop(1, 'rgba(215,222,215,0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
