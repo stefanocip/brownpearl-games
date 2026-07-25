@@ -169,7 +169,7 @@
       Tilt your phone <b>left/right</b> to move the rhino.<br><br>
       <b>Light rocks</b> break if you hit them while pressing <b>SMASH</b> (which also gives you a burst of speed).<br><br>
       <b>Dark boulders</b> must always be avoided: they never break.<br><br>
-      <b>Warthogs</b> trot slowly down the road — smash them and they go flying!<br><br>
+      <b>Warthogs</b> trot slowly down the road — harmless either way: squash them at normal speed, or smash them flying!<br><br>
       Watch for <b>water</b> — crocodiles, or a huge hippo blocking one side, can surge out at the last second.<br><br>
       A rare <b>chili</b> sets you on fire for a very long time.
     </p>
@@ -222,6 +222,7 @@
   // lock the page down to just tilt/touch movement + the smash button —
   // no selection, no zoom, no context menus, no image/element dragging
   document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('selectstart', e => e.preventDefault());
   document.addEventListener('dragstart', e => e.preventDefault());
   document.addEventListener('gesturestart', e => e.preventDefault());
   document.addEventListener('gesturechange', e => e.preventDefault());
@@ -897,6 +898,29 @@
   }
 
   function drawHog(h){
+    if(h.state==='sinking'){
+      const p = Math.min(1, (h.sinkT||0)/40);
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 0.6*(1-p));
+      ctx.fillStyle = '#5c6b72';
+      ctx.beginPath(); ctx.ellipse(h.x, h.y, h.r*0.8*(1-p*0.6), h.r*0.4*(1-p*0.6), 0, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+      return;
+    }
+    if(h.state==='squashed'){
+      ctx.save();
+      ctx.translate(h.x, h.y);
+      ctx.fillStyle = 'rgba(40,26,12,0.2)';
+      ctx.beginPath(); ctx.ellipse(h.r*0.08, h.r*0.35, h.r*1.05, h.r*0.5, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#7a6248';
+      ctx.beginPath(); ctx.ellipse(0, 0, h.r*0.95, h.r*0.42, 0.1, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(60,45,30,0.4)';
+      ctx.beginPath(); ctx.ellipse(-h.r*0.2, -h.r*0.05, h.r*0.35, h.r*0.14, 0.15, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#5c4a36';
+      ctx.beginPath(); ctx.ellipse(h.r*0.55, -h.r*0.02, h.r*0.16, h.r*0.09, 0.2, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+      return;
+    }
     ctx.save();
     ctx.beginPath();
     ctx.fillStyle = 'rgba(40,26,12,0.22)';
@@ -1527,6 +1551,20 @@
         if(h.life<=0 || h.y>H+80 || h.x<-80 || h.x>W+80){ hogs.splice(i,1); }
         continue;
       }
+      if(h.state==='squashed'){
+        h.y += curSpeed;
+        if(h.y - h.r > H+20){ hogs.splice(i,1); }
+        continue;
+      }
+      if(h.state==='sinking'){
+        h.y += curSpeed;
+        h.sinkT = (h.sinkT||0)+1;
+        if(t%6===0){
+          dust.push({x:h.x+(Math.random()-0.5)*h.r*0.8, y:h.y, size:3+Math.random()*3, life:24, color:'rgba(225,245,240,0.8)'});
+        }
+        if(h.sinkT>=40 || h.y - h.r > H+20){ hogs.splice(i,1); }
+        continue;
+      }
       h.y += curSpeed * 0.35; // tracks the world's speed-ups (smash/fire) but at a fraction of the rate
       h.x = h.cx;
       if(h.y - h.r > H+20){ hogs.splice(i,1); score += 1; continue; }
@@ -1552,13 +1590,18 @@
           score += 20;
           hogsSquashed++;
           shake = 18;
-        } else if(invuln>0){
-          // brief grace period after Fire ends
         } else {
-          burst(player.x, player.y, '#e2762f', 22, 60);
-          shake = 24;
-          endGame();
-          return;
+          // squashed underfoot at normal speed — harmless. Sinks with bubbles if in water, otherwise left flattened on the road
+          if(hogInWater){
+            burst(h.x, h.y, '#8a97a0', 10);
+            h.state = 'sinking'; h.sinkT = 0;
+          } else {
+            burst(h.x, h.y, '#6b5540', 8);
+            h.state = 'squashed';
+          }
+          score += 6;
+          hogsSquashed++;
+          shake = 8;
         }
       }
     }
@@ -1687,8 +1730,10 @@
       const x = ev.touches[0].clientX;
       tiltX = Math.max(-1, Math.min(1, (x - W/2)/(W/2-60)));
     }, {passive:true});
+    canvas.addEventListener('mousedown', (ev)=>{ ev.preventDefault(); });
     window.addEventListener('mousemove', (ev)=>{
       if(ev.buttons!==1) return;
+      ev.preventDefault();
       tiltX = Math.max(-1, Math.min(1, (ev.clientX - W/2)/(W/2-60)));
     });
     window.addEventListener('keydown', (ev)=>{
