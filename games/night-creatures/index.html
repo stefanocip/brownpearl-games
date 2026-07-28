@@ -59,11 +59,28 @@
     text-shadow:0 2px 4px rgba(0,0,0,0.8);
     pointer-events:none;
   }
-  #hud .lives { color:#e05a4a; letter-spacing:2px; }
   #hud .score { color:#7fbf3f; }
   #hud .wave { color:#c0a848; font-size:13px; }
   #hud .counter { color:#9fd6ff; font-size:13px; }
   .hidden { display:none !important; }
+  #barrierBar {
+    position:absolute; top:44px; left:50%; transform:translateX(-50%);
+    width:74%; max-width:340px; z-index:5;
+    text-align:center; pointer-events:none;
+  }
+  #barrierBar .label {
+    color:#c9a24a; font-size:11px; font-weight:bold; letter-spacing:3px;
+    text-shadow:0 2px 4px rgba(0,0,0,0.8); margin-bottom:3px;
+  }
+  #barrierBarTrack {
+    display:flex; gap:4px; width:100%;
+  }
+  .barrierSegTrack {
+    flex:1; height:8px; background:rgba(0,0,0,0.5);
+    border:1px solid rgba(201,162,74,0.6); border-radius:3px; overflow:hidden;
+  }
+  .barrierSegFill { height:100%; width:100%; background:#c9a24a; transition:width 0.15s linear; }
+  .barrierSegTrack.broken { border-color:rgba(120,80,60,0.4); }
   #calibBar {
     position:absolute; bottom:18px; left:50%; transform:translateX(-50%);
     width:70%; max-width:280px; height:6px; background:rgba(255,255,255,0.15);
@@ -150,9 +167,13 @@
 <canvas id="gameCanvas"></canvas>
 
 <div id="hud" class="hidden">
-  <div class="lives" id="livesDisplay">♥♥♥</div>
-  <div class="counter" id="counterDisplay">ZOMBIE 0/20</div>
+  <div class="counter" id="counterDisplay">KILLS 0</div>
   <div class="score" id="scoreDisplay">0</div>
+</div>
+
+<div id="barrierBar">
+  <div class="label">BARRIER</div>
+  <div id="barrierBarTrack"></div>
 </div>
 
 <div id="actionBar">
@@ -269,10 +290,10 @@
   const startScreen = document.getElementById('startScreen');
   const gameOverScreen = document.getElementById('gameOverScreen');
   const hud = document.getElementById('hud');
-  const livesDisplay = document.getElementById('livesDisplay');
   const scoreDisplay = document.getElementById('scoreDisplay');
   const counterDisplay = document.getElementById('counterDisplay');
   const finalScoreText = document.getElementById('finalScoreText');
+  const barrierBarTrack = document.getElementById('barrierBarTrack');
   const weaponGreenBtn = document.getElementById('weaponGreenBtn');
   const weaponSilverBtn = document.getElementById('weaponSilverBtn');
   const weaponScarabBtn = document.getElementById('weaponScarabBtn');
@@ -289,7 +310,12 @@
   let tiltInput = 0;        // -1..1
   let playerX = 0;          // 0..1 across road
   let playerTargetX = 0.5;
-  let lives = 3;
+  const BARRIER_SEGMENTS = 5;
+  const BARRIER_SEG_MAX_HP = 55;
+  const BARRIER_Y_NORM = 0.5;
+  const BARRIER_DPS = { walker:3, runner:4, brute:6, werewolf:5, mummy:4, vampire:6, imp:7 };
+  let barrier = []; // array of {hp, alive} per segment, built in resetGame once ROAD_WIDTH is known
+  const barrierSegFillEls = [];
   let score = 0;
   let running = false;
   let lastTime = 0;
@@ -306,6 +332,10 @@
   let vampireUnlocked = false;
   let vampireKillCount = 0;
   let impUnlocked = false;
+  let impKillCount = 0;
+  let clownUnlocked = false;
+  let clownKillCount = 0;
+  let alienUnlocked = false;
   let activeWeapon = 'green'; // 'green' | 'silver' | 'scarab' | 'stake' | 'cross'
 
   let killCount = 0;        // total kills, drives the molotov every-10 reward
@@ -313,6 +343,16 @@
   let molotovArmed = false;
   let molotovThrow = null;  // {t, duration, fromX, fromY, toX, toY} while in flight
   let explosion = null;     // {y, t, duration} while the fire sweep is visible
+
+  // power-ups
+  const powerups = [];
+  let powerupTimer = 30;
+  let tripleGunActive = false;
+  let tripleGunTimer = 0;
+  let flameWeaponActive = false;
+  let flameWeaponTimer = 0;
+  let flameStreamParticleTimer = 0;
+  let lightningBolts = [];  // [{x, y, t, duration}] visual bolts from the 3-strike power
 
   const bullets = [];
   const zombies = [];
@@ -322,12 +362,19 @@
   const PLAYER_SIZE = 26;
   const BULLET_SPEED = 340;
   const FIRE_RATE = 0.28; // seconds between shots
+  const FIRE_RATE_TRIPLE = 0.16; // faster while the triple-gun power is active
+  const TRIPLE_GUN_DURATION = 6;
+  const FLAME_WEAPON_DURATION = 7;
+  const FLAME_DPS = 4;
+  const MOLOTOV_MAX = 3;
   const BASE_ZOMBIE_SPEED = 21;
 
   const ZOMBIE_KILLS_TO_UNLOCK_WEREWOLVES = 10;
   const WEREWOLF_KILLS_TO_UNLOCK_MUMMIES = 15;
   const MUMMY_KILLS_TO_UNLOCK_VAMPIRES = 20;
   const VAMPIRE_KILLS_TO_UNLOCK_IMPS = 25;
+  const IMP_KILLS_TO_UNLOCK_CLOWNS = 25;
+  const CLOWN_KILLS_TO_UNLOCK_ALIENS = 25;
 
   // ---------- GYROSCOPE ----------
   let gyroBaseline = null;
@@ -428,7 +475,6 @@
   document.getElementById('retryBtn').addEventListener('click', resetGame);
 
   function resetGame(){
-    lives = 3;
     score = 0;
     elapsed = 0;
     zombieKillCount = 0;
@@ -439,6 +485,10 @@
     vampireUnlocked = false;
     vampireKillCount = 0;
     impUnlocked = false;
+    impKillCount = 0;
+    clownUnlocked = false;
+    clownKillCount = 0;
+    alienUnlocked = false;
     activeWeapon = 'green';
     killCount = 0;
     molotovCount = 0;
@@ -447,6 +497,13 @@
     explosion = null;
     molotovBtn.classList.remove('armed');
     molotovHint.classList.remove('show');
+    powerups.length = 0;
+    powerupTimer = 30;
+    tripleGunActive = false;
+    tripleGunTimer = 0;
+    flameWeaponActive = false;
+    flameWeaponTimer = 0;
+    lightningBolts.length = 0;
     bullets.length = 0;
     zombies.length = 0;
     particles.length = 0;
@@ -464,6 +521,7 @@
   }
 
   function startGame(){
+    resetBarrier();
     startScreen.classList.add('hidden');
     gameOverScreen.classList.add('hidden');
     hud.classList.remove('hidden');
@@ -474,9 +532,44 @@
   }
 
   function updateHud(){
-    livesDisplay.textContent = '♥'.repeat(Math.max(0,lives));
     scoreDisplay.textContent = score;
     counterDisplay.textContent = 'KILLS ' + killCount;
+  }
+
+  function resetBarrier(){
+    barrier = [];
+    for (let i = 0; i < BARRIER_SEGMENTS; i++){
+      barrier.push({ hp: BARRIER_SEG_MAX_HP, alive: true });
+    }
+    if (barrierSegFillEls.length === 0) {
+      barrierBarTrack.innerHTML = '';
+      for (let i = 0; i < BARRIER_SEGMENTS; i++){
+        const track = document.createElement('div');
+        track.className = 'barrierSegTrack';
+        const fill = document.createElement('div');
+        fill.className = 'barrierSegFill';
+        track.appendChild(fill);
+        barrierBarTrack.appendChild(track);
+        barrierSegFillEls.push({ track, fill });
+      }
+    }
+    updateBarrierBar();
+  }
+
+  function barrierSegmentAt(px){
+    const frac = Math.max(0, Math.min(0.9999, (px - ROAD_LEFT) / ROAD_WIDTH));
+    return Math.floor(frac * BARRIER_SEGMENTS);
+  }
+
+  function updateBarrierBar(){
+    for (let i = 0; i < BARRIER_SEGMENTS; i++){
+      const seg = barrier[i];
+      const els = barrierSegFillEls[i];
+      if (!seg || !els) continue;
+      const pct = Math.max(0, (seg.hp / BARRIER_SEG_MAX_HP) * 100);
+      els.fill.style.width = pct + '%';
+      els.track.classList.toggle('broken', !seg.alive);
+    }
   }
 
   function updateMolotovUI(){
@@ -487,7 +580,7 @@
   function registerKill(){
     killCount++;
     updateHud();
-    if (killCount % 10 === 0) {
+    if (killCount % 10 === 0 && molotovCount < MOLOTOV_MAX) {
       molotovCount++;
       updateMolotovUI();
     }
@@ -592,11 +685,27 @@
     }
   }
 
+  function registerImpKill(){
+    impKillCount++;
+    if (!clownUnlocked && impKillCount >= IMP_KILLS_TO_UNLOCK_CLOWNS) {
+      clownUnlocked = true;
+      showUnlockToast("KILLER CLOWNS INCOMING", "any weapon hurts them — 5 hits");
+    }
+  }
+
+  function registerClownKill(){
+    clownKillCount++;
+    if (!alienUnlocked && clownKillCount >= CLOWN_KILLS_TO_UNLOCK_ALIENS) {
+      alienUnlocked = true;
+      showUnlockToast("ALIENS INCOMING", "any weapon hurts them — 7 hits");
+    }
+  }
+
   // ---------- ENTITIES ----------
   const GREEN_SHADES = ['#4a7a2f', '#5a8a35', '#3f6e28', '#63893c'];
   const BROWN_SHADES = ['#7a5230', '#8a6238', '#6a4526', '#96703f'];
   const MUMMY_SHADES = ['#d8c88a', '#e6dcb8', '#c9b878', '#ded4a8'];
-  const VAMPIRE_SHADES = ['#2a3a7a', '#334a8a', '#22326a', '#3a4d96'];
+  const VAMPIRE_SHADES = ['#a8c8cc', '#b4d2d4', '#9ec0c4', '#aac8ca'];
   const IMP_SHADES = ['#a01818', '#c02a20', '#8a1010', '#b83a28'];
 
   // difficulty ramps up the longer you survive: easy start, noticeably harder later
@@ -604,10 +713,10 @@
     return 1 + Math.min(elapsed / 20, 6) * 0.09;
   }
   function currentSpawnInterval(){
-    return Math.max(0.75, 2.4 - Math.min(elapsed / 10, 14) * 0.07);
+    return Math.max(0.55, 2.4 - Math.min(elapsed / 8, 18) * 0.09);
   }
   function currentMaxOnScreen(){
-    return Math.min(4 + Math.floor(elapsed / 35), 7);
+    return Math.min(4 + Math.floor(elapsed / 25), 9);
   }
 
   function zombiePos(z){
@@ -621,32 +730,24 @@
       const ease = t*t*(3 - 2*t); // smoothstep
       return { px: startPx + (targetPx - startPx) * ease, py: z.y * H };
     }
-    const wobbleOffset = z.state === 'active' ? Math.sin(z.wobble) * 4 : 0;
+    const wobbleOffset = (z.state === 'active' || z.state === 'atBarrier') ? Math.sin(z.wobble) * 4 : 0;
     return { px: ROAD_LEFT + z.x * ROAD_WIDTH + wobbleOffset, py: z.y * H };
   }
 
   function spawnEnemy(){
-    const roll = Math.random();
-    if (werewolfUnlocked && mummyUnlocked && vampireUnlocked && impUnlocked) {
-      if (roll < 0.20) spawnWerewolf();
-      else if (roll < 0.40) spawnMummy();
-      else if (roll < 0.60) spawnVampire();
-      else if (roll < 0.80) spawnImp();
-      else spawnZombieNormal();
-    } else if (werewolfUnlocked && mummyUnlocked && vampireUnlocked) {
-      if (roll < 0.26) spawnWerewolf();
-      else if (roll < 0.52) spawnMummy();
-      else if (roll < 0.78) spawnVampire();
-      else spawnZombieNormal();
-    } else if (werewolfUnlocked && mummyUnlocked) {
-      if (roll < 0.34) spawnWerewolf();
-      else if (roll < 0.68) spawnMummy();
-      else spawnZombieNormal();
-    } else if (werewolfUnlocked) {
-      if (roll < 0.45) spawnWerewolf();
-      else spawnZombieNormal();
-    } else {
-      spawnZombieNormal();
+    const pool = [{ fn: spawnZombieNormal, w: 1.0 }];
+    if (werewolfUnlocked) pool.push({ fn: spawnWerewolf, w: 0.7 });
+    if (mummyUnlocked) pool.push({ fn: spawnMummy, w: 0.7 });
+    if (vampireUnlocked) pool.push({ fn: spawnVampire, w: 0.7 });
+    if (impUnlocked) pool.push({ fn: spawnImp, w: 0.6 });
+    if (clownUnlocked) pool.push({ fn: spawnClown, w: 0.5 });
+    if (alienUnlocked) pool.push({ fn: spawnAlien, w: 0.5 });
+
+    const total = pool.reduce((s, p) => s + p.w, 0);
+    let roll = Math.random() * total;
+    for (const p of pool) {
+      if (roll < p.w) { p.fn(); break; }
+      roll -= p.w;
     }
     updateHud();
   }
@@ -746,10 +847,91 @@
     spawnParticles(ROAD_LEFT + xNorm*ROAD_WIDTH, yNorm*H, '#ff5a1a');
   }
 
-  function fireBullet(){
-    const px = ROAD_LEFT + playerX * ROAD_WIDTH;
+  const CLOWN_SHADES = ['#e8e0d8', '#f0e8dc', '#e0d8cc'];
+  function spawnClown(){
+    const color = CLOWN_SHADES[Math.floor(Math.random()*CLOWN_SHADES.length)];
+    const xNorm = 0.1 + Math.random()*0.8;
+    const yNorm = 0.02 + Math.random()*0.08;
+    zombies.push({
+      x: xNorm,
+      y: yNorm,
+      speed: BASE_ZOMBIE_SPEED * 1.0 * difficultyMul(),
+      hp: 5, maxHp: 5, size: 24, color, type: 'clown',
+      weaponType: 'any',
+      wobble: Math.random()*Math.PI*2,
+      state: 'materializing',
+      materializeT: 0,
+      materializeDuration: 0.35
+    });
+    spawnParticles(ROAD_LEFT + xNorm*ROAD_WIDTH, yNorm*H, '#e8455a');
+  }
+
+  const ALIEN_SHADES = ['#7ad68a', '#5ab876', '#8ae09a'];
+  function spawnAlien(){
+    const color = ALIEN_SHADES[Math.floor(Math.random()*ALIEN_SHADES.length)];
+    const xNorm = 0.1 + Math.random()*0.8;
+    const yNorm = 0.02 + Math.random()*0.08;
+    zombies.push({
+      x: xNorm,
+      y: yNorm,
+      speed: BASE_ZOMBIE_SPEED * 1.1 * difficultyMul(),
+      hp: 5, maxHp: 5, size: 22, color, type: 'alien',
+      weaponType: 'any',
+      wobble: Math.random()*Math.PI*2,
+      state: 'materializing',
+      materializeT: 0,
+      materializeDuration: 0.35
+    });
+    spawnParticles(ROAD_LEFT + xNorm*ROAD_WIDTH, yNorm*H, '#9dffb0');
+  }
+
+  function fireBullet(offsetX){
+    const px = ROAD_LEFT + playerX * ROAD_WIDTH + (offsetX || 0);
     const py = H * PLAYER_Y_RATIO - PLAYER_SIZE*0.6;
     bullets.push({x: px, y: py, weapon: activeWeapon});
+  }
+
+  const POWERUP_TYPES = ['triple', 'flame', 'lightning', 'barrier'];
+  function spawnPowerup(){
+    const type = POWERUP_TYPES[Math.floor(Math.random()*POWERUP_TYPES.length)];
+    const fromLeft = Math.random() < 0.5;
+    powerups.push({
+      x: fromLeft ? ROAD_LEFT - 30 : ROAD_RIGHT + 30,
+      y: H*0.18 + Math.random()*H*0.45,
+      vx: (fromLeft ? 1 : -1) * (80 + Math.random()*30),
+      size: 22,
+      type,
+      wobble: Math.random()*Math.PI*2
+    });
+  }
+
+  function activatePowerup(type, x, y){
+    if (type === 'triple') {
+      tripleGunActive = true;
+      tripleGunTimer = TRIPLE_GUN_DURATION;
+    } else if (type === 'flame') {
+      flameWeaponActive = true;
+      flameWeaponTimer = FLAME_WEAPON_DURATION;
+    } else if (type === 'lightning') {
+      const radius = Math.max(W, H) * 0.4;
+      for (let k = 0; k < 3; k++){
+        const bx = ROAD_LEFT + Math.random()*ROAD_WIDTH;
+        const by = H*0.15 + Math.random()*H*0.6;
+        lightningBolts.push({ x: bx, y: by, t: 0, duration: 0.35 });
+        applyBlastDamage(bx, by, radius, 1, '#cfe0ff');
+      }
+      updateHud();
+    } else if (type === 'barrier') {
+      let target = barrier.find(s => !s.alive);
+      if (!target) {
+        target = barrier.reduce((min, s) => (s.hp < min.hp ? s : min), barrier[0]);
+      }
+      if (target) {
+        target.hp = BARRIER_SEG_MAX_HP;
+        target.alive = true;
+        updateBarrierBar();
+      }
+    }
   }
 
   function spawnParticles(x, y, color){
@@ -762,6 +944,67 @@
         color
       });
     }
+  }
+
+  const ALIEN_SMALL_SHADES = ['#7ad68a', '#5ab876', '#8ae09a'];
+  function spawnAlienSmall(x, y){
+    const xNorm = Math.max(0, Math.min(0.999, (x - ROAD_LEFT) / ROAD_WIDTH));
+    const yNorm = Math.max(0, y / H);
+    const color = ALIEN_SMALL_SHADES[Math.floor(Math.random()*ALIEN_SMALL_SHADES.length)];
+    zombies.push({
+      x: xNorm,
+      y: yNorm,
+      speed: BASE_ZOMBIE_SPEED * 1.2 * difficultyMul(),
+      hp: 3, maxHp: 3, size: 16, color, type: 'alien_small',
+      weaponType: 'any',
+      wobble: Math.random()*Math.PI*2,
+      state: 'active'
+    });
+  }
+
+  function scoreAndRegisterKill(z, px, py){
+    registerKill();
+    if (z.type === 'werewolf') { registerWerewolfKill(); score += 20; }
+    else if (z.type === 'mummy') { registerMummyKill(); score += 25; }
+    else if (z.type === 'vampire') { registerVampireKill(); score += 30; }
+    else if (z.type === 'imp') { registerImpKill(); score += 35; }
+    else if (z.type === 'clown') { registerClownKill(); score += 45; }
+    else if (z.type === 'alien') {
+      score += 60;
+      if (px !== undefined && py !== undefined) {
+        spawnAlienSmall(px - 14, py);
+        spawnAlienSmall(px + 14, py);
+      }
+    }
+    else if (z.type === 'alien_small') { score += 25; }
+    else { registerZombieKill(); score += (z.type==='brute'?30:z.type==='runner'?15:10); }
+  }
+
+  function applyBlastDamage(x, y, radius, damage, color){
+    for (let i = zombies.length - 1; i >= 0; i--) {
+      const z = zombies[i];
+      const pos = zombiePos(z);
+      const ddx = pos.px - x, ddy = pos.py - y;
+      if (ddx*ddx + ddy*ddy <= radius*radius) {
+        z.hp -= damage;
+        spawnParticles(pos.px, pos.py, color);
+        if (z.hp <= 0) {
+          zombies.splice(i, 1);
+          scoreAndRegisterKill(z, pos.px, pos.py);
+        }
+      }
+    }
+  }
+
+  function killAllOnScreen(color){
+    for (let i = zombies.length - 1; i >= 0; i--) {
+      const z = zombies[i];
+      const pos = zombiePos(z);
+      spawnParticles(pos.px, pos.py, color);
+      zombies.splice(i, 1);
+      scoreAndRegisterKill(z, pos.px, pos.py);
+    }
+    updateHud();
   }
 
   // ---------- LOOP ----------
@@ -797,10 +1040,21 @@
     playerX += (playerTargetX - playerX) * Math.min(1, dt*8);
 
     // firing
+    if (tripleGunActive) {
+      tripleGunTimer -= dt;
+      if (tripleGunTimer <= 0) tripleGunActive = false;
+    }
     fireTimer -= dt;
-    if (fireTimer <= 0) {
-      fireBullet();
-      fireTimer = FIRE_RATE;
+    if (fireTimer <= 0 && !flameWeaponActive) {
+      if (tripleGunActive) {
+        fireBullet(-18);
+        fireBullet(0);
+        fireBullet(18);
+        fireTimer = FIRE_RATE_TRIPLE;
+      } else {
+        fireBullet(0);
+        fireTimer = FIRE_RATE;
+      }
     }
 
     // spawning — starts sparse and slow, ramps up the longer you survive
@@ -808,6 +1062,67 @@
     if (spawnTimer <= 0 && zombies.length < currentMaxOnScreen()) {
       spawnEnemy();
       spawnTimer = currentSpawnInterval();
+    }
+
+    // power-up spawning — rarer now
+    powerupTimer -= dt;
+    if (powerupTimer <= 0) {
+      spawnPowerup();
+      powerupTimer = 32 + Math.random()*18;
+    }
+
+    // power-up movement (horizontal drift — harder to line up a shot), collection by bullets, missed despawn
+    for (let i = powerups.length-1; i>=0; i--){
+      const p = powerups[i];
+      p.x += p.vx * dt;
+      p.wobble += dt*3;
+      if (p.x < ROAD_LEFT - 60 || p.x > ROAD_RIGHT + 60) { powerups.splice(i,1); continue; }
+      for (let bi = bullets.length-1; bi >= 0; bi--){
+        const b = bullets[bi];
+        const ddx = b.x - p.x, ddy = b.y - p.y;
+        if (ddx*ddx + ddy*ddy < (p.size*0.9)*(p.size*0.9)) {
+          bullets.splice(bi,1);
+          activatePowerup(p.type, p.x, p.y);
+          spawnParticles(p.x, p.y, '#ffe066');
+          powerups.splice(i,1);
+          break;
+        }
+      }
+    }
+
+    // lightning bolt visuals fade out
+    for (let i = lightningBolts.length-1; i>=0; i--){
+      lightningBolts[i].t += dt;
+      if (lightningBolts[i].t >= lightningBolts[i].duration) lightningBolts.splice(i,1);
+    }
+
+    // flamethrower weapon buff — continuous burn instead of bullets while active
+    if (flameWeaponActive) {
+      flameWeaponTimer -= dt;
+      if (flameWeaponTimer <= 0) {
+        flameWeaponActive = false;
+      } else {
+        const px = ROAD_LEFT + playerX * ROAD_WIDTH;
+        const range = ROAD_WIDTH * 0.22;
+        for (let i = zombies.length - 1; i >= 0; i--) {
+          const z = zombies[i];
+          if (z.state !== 'active' && z.state !== 'atBarrier') continue;
+          const pos = zombiePos(z);
+          if (Math.abs(pos.px - px) <= range && pos.py < H * PLAYER_Y_RATIO) {
+            z.hp -= FLAME_DPS * dt;
+            if (z.hp <= 0) {
+              zombies.splice(i, 1);
+              scoreAndRegisterKill(z, pos.px, pos.py);
+              updateHud();
+            }
+          }
+        }
+        flameStreamParticleTimer -= dt;
+        if (flameStreamParticleTimer <= 0) {
+          spawnParticles(px + (Math.random()-0.5)*range, H*PLAYER_Y_RATIO - Math.random()*H*0.3, '#ff8a3a');
+          flameStreamParticleTimer = 0.05;
+        }
+      }
     }
 
     // bullets
@@ -818,9 +1133,6 @@
     }
 
     // zombies
-    const playerPx = ROAD_LEFT + playerX * ROAD_WIDTH;
-    const playerPy = H * PLAYER_Y_RATIO;
-
     for (let i = zombies.length-1; i>=0; i--){
       const z = zombies[i];
 
@@ -842,25 +1154,42 @@
         continue;
       }
 
-      z.y += (z.speed/H) * dt;
-      z.wobble += dt*4;
-      const { px: zpx, py: zpy } = zombiePos(z);
-
-      // reached player row -> damage
-      if (z.y > PLAYER_Y_RATIO - 0.02) {
-        const dx = zpx - playerPx;
-        if (Math.abs(dx) < (z.size + PLAYER_SIZE)*0.7) {
-          zombies.splice(i,1);
-          lives--;
-          flashTimer = 0.25;
-          updateHud();
-          if (lives <= 0) { gameOver(); return; }
+      if (z.state === 'atBarrier') {
+        const seg = barrier[z.barrierSeg];
+        if (!seg || !seg.alive) {
+          z.state = 'active';
+        } else {
+          const dps = BARRIER_DPS[z.type] || 4;
+          seg.hp -= dps * dt;
+          z.wobble += dt*4;
+          if (seg.hp <= 0) {
+            seg.hp = 0;
+            seg.alive = false;
+            flashTimer = 0.3;
+          }
+          updateBarrierBar();
           continue;
         }
       }
-      if (z.y > 1.08) {
-        zombies.splice(i,1);
-        continue;
+
+      z.y += (z.speed/H) * dt;
+      z.wobble += dt*4;
+
+      if (z.y >= BARRIER_Y_NORM) {
+        const { px: zpx } = zombiePos(z);
+        const segIdx = barrierSegmentAt(zpx);
+        const seg = barrier[segIdx];
+        if (seg && seg.alive) {
+          z.y = BARRIER_Y_NORM;
+          z.barrierSeg = segIdx;
+          z.state = 'atBarrier';
+          continue;
+        }
+      }
+
+      if (z.y > 1.0) {
+        gameOver();
+        return;
       }
     }
 
@@ -869,7 +1198,7 @@
       const b = bullets[i];
       for (let j = zombies.length-1; j>=0; j--){
         const z = zombies[j];
-        if (z.weaponType !== b.weapon) continue; // wrong ammo, passes through
+        if (z.weaponType !== 'any' && z.weaponType !== b.weapon) continue; // wrong ammo, passes through
         const { px: zpx, py: zpy } = zombiePos(z);
         const dx = b.x - zpx, dy = b.y - zpy;
         if (dx*dx + dy*dy < (z.size*0.75)*(z.size*0.75)) {
@@ -878,22 +1207,7 @@
           if (z.hp <= 0) {
             spawnParticles(zpx, zpy, z.color);
             zombies.splice(j,1);
-            registerKill();
-            if (z.type === 'werewolf') {
-              score += 20;
-              registerWerewolfKill();
-            } else if (z.type === 'mummy') {
-              score += 25;
-              registerMummyKill();
-            } else if (z.type === 'vampire') {
-              score += 30;
-              registerVampireKill();
-            } else if (z.type === 'imp') {
-              score += 35;
-            } else {
-              score += (z.type==='brute'?30:z.type==='runner'?15:10);
-              registerZombieKill();
-            }
+            scoreAndRegisterKill(z, zpx, zpy);
             updateHud();
           }
           break;
@@ -915,29 +1229,10 @@
       if (molotovThrow.t >= molotovThrow.duration) {
         const blastX = molotovThrow.toX;
         const blastY = molotovThrow.toY;
-        const blastRadius = Math.max(W, H) * 0.45;
+        const blastRadius = Math.max(W, H) * 0.26;
         explosion = { x: blastX, y: blastY, radius: blastRadius, t: 0, duration: 0.5 };
         molotovThrow = null;
-
-        // hit every creature within the blast radius with a double blast (2 hits each)
-        for (let i = zombies.length - 1; i >= 0; i--) {
-          const z = zombies[i];
-          const pos = zombiePos(z);
-          const ddx = pos.px - blastX, ddy = pos.py - blastY;
-          if (ddx*ddx + ddy*ddy <= blastRadius*blastRadius) {
-            z.hp -= 2;
-            spawnParticles(pos.px, pos.py, '#ff8a3a');
-            if (z.hp <= 0) {
-              zombies.splice(i, 1);
-              registerKill();
-              if (z.type === 'werewolf') { registerWerewolfKill(); score += 20; }
-              else if (z.type === 'mummy') { registerMummyKill(); score += 25; }
-              else if (z.type === 'vampire') { registerVampireKill(); score += 30; }
-              else if (z.type === 'imp') { score += 35; }
-              else { registerZombieKill(); score += (z.type==='brute'?30:z.type==='runner'?15:10); }
-            }
-          }
-        }
+        applyBlastDamage(blastX, blastY, blastRadius, 2, '#ff8a3a');
         updateHud();
       }
     }
@@ -1024,7 +1319,7 @@
       }
       ctx.restore();
     }
-    for (const t of trees){ drawSpectralTree(t); }
+    // trees are drawn after zombies (see below) so they always overlay the monsters
 
     // a scattering of old tombstones along the top of the road
     for (const g of graveyard){
@@ -1052,6 +1347,8 @@
       ctx.stroke();
       ctx.restore();
     }
+
+    // barrier is drawn after zombies (see below) so it always overlays the monsters
 
     // zombies
     for (const z of zombies){
@@ -1119,6 +1416,27 @@
       ctx.beginPath();
       ctx.ellipse(0, z.size*0.55, z.size*0.5, z.size*0.18, 0, 0, Math.PI*2);
       ctx.fill();
+      if (z.type === 'walker' || z.type === 'runner' || z.type === 'brute') {
+        // half-lidded eyes — flat eyelid on top, white showing only below
+        ctx.fillStyle = '#f0f0e8';
+        ctx.beginPath();
+        ctx.arc(-z.size*0.18, -z.size*0.28, z.size*0.15, 0, Math.PI);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(z.size*0.18, -z.size*0.28, z.size*0.15, 0, Math.PI);
+        ctx.fill();
+        // bean-shaped open mouth — wider
+        ctx.fillStyle = '#1a1410';
+        ctx.beginPath();
+        ctx.ellipse(0, z.size*0.05, z.size*0.24, z.size*0.11, 0, 0, Math.PI*2);
+        ctx.fill();
+        // 2 teeth on top, 2 on bottom
+        ctx.fillStyle = '#e8e2d0';
+        for (const t of [-1, 1]) {
+          ctx.fillRect(t*z.size*0.14 - z.size*0.025, -z.size*0.03, z.size*0.05, z.size*0.055);
+          ctx.fillRect(t*z.size*0.14 - z.size*0.025, z.size*0.075, z.size*0.05, z.size*0.055);
+        }
+      }
       if (z.type === 'werewolf') {
         // pointed ears and snout to distinguish from zombies
         ctx.fillStyle = z.color;
@@ -1128,9 +1446,31 @@
         ctx.beginPath();
         ctx.moveTo(z.size*0.4, -z.size*0.5); ctx.lineTo(z.size*0.55, -z.size*0.95); ctx.lineTo(z.size*0.15, -z.size*0.55);
         ctx.fill();
-        ctx.fillStyle = '#2a1c10';
+        // glowing red eyes — bigger, each drawn independently with its own dark red rim
+        const eyeRX = z.size*0.075, eyeRY = z.size*0.085, eyeY = -z.size*0.42;
+        for (const ex of [-z.size*0.15, z.size*0.15]) {
+          ctx.fillStyle = '#e02020';
+          ctx.beginPath();
+          ctx.ellipse(ex, eyeY, eyeRX, eyeRY, 0, 0, Math.PI*2);
+          ctx.fill();
+          ctx.strokeStyle = '#5a0a0a';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.ellipse(ex, eyeY, eyeRX, eyeRY, 0, 0, Math.PI*2);
+          ctx.stroke();
+        }
+        // small dark nose
+        ctx.fillStyle = '#1a1210';
         ctx.beginPath();
-        ctx.ellipse(0, -z.size*0.25, z.size*0.16, z.size*0.12, 0, 0, Math.PI*2);
+        ctx.ellipse(0, -z.size*0.16, z.size*0.07, z.size*0.05, 0, 0, Math.PI*2);
+        ctx.fill();
+        // fangs poking down, no dark mouth line
+        ctx.fillStyle = '#f0ece0';
+        ctx.beginPath();
+        ctx.moveTo(-z.size*0.13, -z.size*0.03); ctx.lineTo(-z.size*0.08, z.size*0.1); ctx.lineTo(-z.size*0.04, -z.size*0.03);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(z.size*0.13, -z.size*0.03); ctx.lineTo(z.size*0.08, z.size*0.1); ctx.lineTo(z.size*0.04, -z.size*0.03);
         ctx.fill();
       }
       if (z.type === 'mummy') {
@@ -1150,32 +1490,37 @@
         ctx.fill();
       }
       if (z.type === 'vampire') {
-        // popped cape collar
-        ctx.fillStyle = '#1a1220';
+        // hint of dark under-eye circles
+        ctx.fillStyle = 'rgba(60,40,70,0.45)';
         ctx.beginPath();
-        ctx.moveTo(-z.size*0.5, -z.size*0.35); ctx.lineTo(-z.size*0.15, -z.size*0.75); ctx.lineTo(0, -z.size*0.4);
+        ctx.ellipse(-z.size*0.15, -z.size*0.3, z.size*0.1, z.size*0.055, 0, 0, Math.PI*2);
+        ctx.ellipse(z.size*0.15, -z.size*0.3, z.size*0.1, z.size*0.055, 0, 0, Math.PI*2);
         ctx.fill();
+        // glowing red eyes — bigger, like the werewolf's, with a dark rim
+        const vEyeRX = z.size*0.075, vEyeRY = z.size*0.085, vEyeY = -z.size*0.42;
+        for (const ex of [-z.size*0.15, z.size*0.15]) {
+          ctx.fillStyle = '#e04040';
+          ctx.beginPath();
+          ctx.ellipse(ex, vEyeY, vEyeRX, vEyeRY, 0, 0, Math.PI*2);
+          ctx.fill();
+          ctx.strokeStyle = '#5a1030';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.ellipse(ex, vEyeY, vEyeRX, vEyeRY, 0, 0, Math.PI*2);
+          ctx.stroke();
+        }
+        // wide open mouth
+        ctx.fillStyle = '#2a0e14';
         ctx.beginPath();
-        ctx.moveTo(z.size*0.5, -z.size*0.35); ctx.lineTo(z.size*0.15, -z.size*0.75); ctx.lineTo(0, -z.size*0.4);
+        ctx.ellipse(0, z.size*0.05, z.size*0.24, z.size*0.11, 0, 0, Math.PI*2);
         ctx.fill();
-        // pale face patch
-        ctx.fillStyle = '#e8dce8';
-        ctx.beginPath();
-        ctx.ellipse(0, -z.size*0.28, z.size*0.32, z.size*0.28, 0, 0, Math.PI*2);
-        ctx.fill();
-        // glowing red eyes
-        ctx.fillStyle = '#e04040';
-        ctx.beginPath();
-        ctx.ellipse(-z.size*0.13, -z.size*0.3, z.size*0.055, z.size*0.04, 0, 0, Math.PI*2);
-        ctx.ellipse(z.size*0.13, -z.size*0.3, z.size*0.055, z.size*0.04, 0, 0, Math.PI*2);
-        ctx.fill();
-        // sharp fangs
+        // canines at the sides of the mouth
         ctx.fillStyle = '#fff';
         ctx.beginPath();
-        ctx.moveTo(-z.size*0.1, -z.size*0.16); ctx.lineTo(-z.size*0.06, -z.size*0.02); ctx.lineTo(-z.size*0.02, -z.size*0.16);
+        ctx.moveTo(-z.size*0.28, -z.size*0.02); ctx.lineTo(-z.size*0.235, z.size*0.12); ctx.lineTo(-z.size*0.19, -z.size*0.02);
         ctx.fill();
         ctx.beginPath();
-        ctx.moveTo(z.size*0.1, -z.size*0.16); ctx.lineTo(z.size*0.06, -z.size*0.02); ctx.lineTo(z.size*0.02, -z.size*0.16);
+        ctx.moveTo(z.size*0.28, -z.size*0.02); ctx.lineTo(z.size*0.235, z.size*0.12); ctx.lineTo(z.size*0.19, -z.size*0.02);
         ctx.fill();
       }
       if (z.type === 'imp') {
@@ -1200,10 +1545,163 @@
         ctx.ellipse(z.size*0.13, -z.size*0.32, z.size*0.05, z.size*0.05, 0, 0, Math.PI*2);
         ctx.fill();
       }
+      if (z.type === 'clown') {
+        // ruff collar
+        ctx.strokeStyle = '#3a1a4a';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(0, z.size*0.1, z.size*0.55, 0.1*Math.PI, 0.9*Math.PI);
+        ctx.stroke();
+        // red nose
+        ctx.fillStyle = '#e0242a';
+        ctx.beginPath();
+        ctx.arc(0, -z.size*0.2, z.size*0.14, 0, Math.PI*2);
+        ctx.fill();
+        // wide painted grin
+        ctx.strokeStyle = '#c0202a';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, -z.size*0.05, z.size*0.28, 0.1*Math.PI, 0.9*Math.PI);
+        ctx.stroke();
+        // dark eye sockets
+        ctx.fillStyle = '#1a1010';
+        ctx.beginPath();
+        ctx.ellipse(-z.size*0.16, -z.size*0.35, z.size*0.06, z.size*0.08, 0, 0, Math.PI*2);
+        ctx.ellipse(z.size*0.16, -z.size*0.35, z.size*0.06, z.size*0.08, 0, 0, Math.PI*2);
+        ctx.fill();
+      }
+      if (z.type === 'alien' || z.type === 'alien_small') {
+        // big black almond eyes
+        ctx.fillStyle = '#0a1410';
+        ctx.beginPath();
+        ctx.ellipse(-z.size*0.18, -z.size*0.32, z.size*0.16, z.size*0.22, -0.2, 0, Math.PI*2);
+        ctx.ellipse(z.size*0.18, -z.size*0.32, z.size*0.16, z.size*0.22, 0.2, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(157,255,176,0.5)';
+        ctx.beginPath();
+        ctx.ellipse(-z.size*0.18, -z.size*0.36, z.size*0.05, z.size*0.07, 0, 0, Math.PI*2);
+        ctx.ellipse(z.size*0.18, -z.size*0.36, z.size*0.05, z.size*0.07, 0, 0, Math.PI*2);
+        ctx.fill();
+        if (z.type === 'alien') {
+          // full alien: two antennae
+          ctx.strokeStyle = '#3a6a4a';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(-z.size*0.1, -z.size*0.68); ctx.lineTo(-z.size*0.18, -z.size*0.95);
+          ctx.moveTo(z.size*0.1, -z.size*0.68); ctx.lineTo(z.size*0.18, -z.size*0.95);
+          ctx.stroke();
+          ctx.fillStyle = '#9dffb0';
+          ctx.beginPath();
+          ctx.arc(-z.size*0.18, -z.size*0.95, 2.5, 0, Math.PI*2);
+          ctx.arc(z.size*0.18, -z.size*0.95, 2.5, 0, Math.PI*2);
+          ctx.fill();
+        } else {
+          // split offspring: a single centered antenna
+          ctx.strokeStyle = '#3a6a4a';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(0, -z.size*0.68); ctx.lineTo(0, -z.size*0.98);
+          ctx.stroke();
+          ctx.fillStyle = '#9dffb0';
+          ctx.beginPath();
+          ctx.arc(0, -z.size*0.98, 2.5, 0, Math.PI*2);
+          ctx.fill();
+        }
+      }
       if (z.hp < z.maxHp) {
         ctx.fillStyle = '#e05a4a';
         ctx.fillRect(-z.size*0.5, -z.size*0.9, z.size*(z.hp/z.maxHp), 4);
       }
+      ctx.restore();
+    }
+
+    // trees overlay the monsters (drawn after them on purpose)
+    for (const t of trees){ drawSpectralTree(t); }
+
+    // barrier — 5 barbed-wire spans between posts; breaking one opens a gap
+    {
+      const by = BARRIER_Y_NORM * H;
+      const segW = ROAD_WIDTH / BARRIER_SEGMENTS;
+      for (let s = 0; s < BARRIER_SEGMENTS; s++){
+        const seg = barrier[s];
+        const x0 = ROAD_LEFT + s * segW;
+        const gap = 3;
+        const bw = segW - gap*2;
+
+        ctx.save();
+        ctx.translate(x0 + gap, by);
+
+        // posts at each end of the span
+        ctx.fillStyle = '#2a2420';
+        ctx.fillRect(-2, -18, 4, 26);
+        ctx.fillRect(bw - 2, -18, 4, 26);
+
+        if (!seg || !seg.alive) {
+          // destroyed — wire snapped, dangling loose from each post
+          ctx.strokeStyle = 'rgba(60,60,60,0.8)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(0, -14);
+          ctx.quadraticCurveTo(bw*0.18, 2, bw*0.1, 10);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(bw, -14);
+          ctx.quadraticCurveTo(bw*0.82, 2, bw*0.9, 10);
+          ctx.stroke();
+          ctx.restore();
+          continue;
+        }
+
+        const integrity = Math.max(0, seg.hp / BARRIER_SEG_MAX_HP);
+        const strands = integrity > 0.6 ? 2 : 1;
+        ctx.strokeStyle = 'rgba(70,70,70,0.9)';
+        ctx.lineWidth = 1.5;
+        for (let st = 0; st < strands; st++){
+          const wireY = -14 + st*10;
+          ctx.beginPath();
+          ctx.moveTo(0, wireY);
+          for (let k = 0; k <= 6; k++){
+            ctx.lineTo((bw/6)*k, wireY + (k % 2 === 0 ? -3 : 3));
+          }
+          ctx.stroke();
+          // barb thorns along the strand
+          ctx.strokeStyle = 'rgba(45,45,45,0.9)';
+          for (let k = 1; k < 6; k += 2){
+            const tx = (bw/6)*k;
+            ctx.beginPath();
+            ctx.moveTo(tx - 3, wireY - 3); ctx.lineTo(tx + 3, wireY + 3);
+            ctx.moveTo(tx + 3, wireY - 3); ctx.lineTo(tx - 3, wireY + 3);
+            ctx.stroke();
+          }
+          ctx.strokeStyle = 'rgba(70,70,70,0.9)';
+        }
+        ctx.restore();
+      }
+    }
+
+    // power-ups
+    for (const p of powerups){
+      const bob = Math.sin(p.wobble) * 4;
+      ctx.save();
+      ctx.translate(p.x, p.y + bob);
+      let glow = '#ffe066', icon = '🔫';
+      if (p.type === 'flame') { glow = '#ff7a2a'; icon = '🔥'; }
+      else if (p.type === 'lightning') { glow = '#8ab4ff'; icon = '⚡'; }
+      else if (p.type === 'barrier') { glow = '#c9a24a'; icon = '🧱'; }
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = 'rgba(20,20,20,0.5)';
+      ctx.beginPath();
+      ctx.arc(0, 0, p.size*0.85, 0, Math.PI*2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = glow;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.font = (p.size*1.1) + 'px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(icon, 0, 1);
       ctx.restore();
     }
 
@@ -1315,6 +1813,58 @@
       ctx.beginPath();
       ctx.arc(f.x, f.y, f.r, 0, Math.PI*2);
       ctx.fill();
+    }
+
+    // flamethrower weapon: a billowing cloud of fire climbing all the way to the top
+    if (flameWeaponActive) {
+      const px = ROAD_LEFT + playerX * ROAD_WIDTH;
+      const baseY = H * PLAYER_Y_RATIO;
+      const range = ROAD_WIDTH * 0.22;
+      const now = performance.now();
+      const blobCount = 9;
+      for (let bIdx = 0; bIdx < blobCount; bIdx++){
+        const frac = bIdx / (blobCount - 1); // 0 at player, 1 at very top
+        const by = baseY - frac * baseY;
+        const drift = Math.sin(now/220 + bIdx*1.7) * range * (0.4 + frac*0.5);
+        const bx = px + drift;
+        const wobbleSize = 1 + Math.sin(now/160 + bIdx*2.3) * 0.18;
+        const radius = (range*0.85) * (1 - frac*0.35) * wobbleSize;
+        const flicker = 0.6 + Math.sin(now/70 + bIdx*3.1) * 0.25;
+        const fade = 1 - frac*0.75; // dims as it rises and disperses
+        const grad = ctx.createRadialGradient(bx, by, 0, bx, by, radius);
+        grad.addColorStop(0, 'rgba(255,230,160,' + (0.75*flicker*fade) + ')');
+        grad.addColorStop(0.45, 'rgba(255,140,50,' + (0.55*flicker*fade) + ')');
+        grad.addColorStop(1, 'rgba(255,70,20,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(bx, by, radius, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    // lightning power-up: jagged bolts striking down to each blast point
+    for (const bolt of lightningBolts){
+      const p = bolt.t / bolt.duration;
+      const alpha = 1 - p;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(210,225,255,' + alpha + ')';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = 'rgba(160,190,255,0.9)';
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.moveTo(bolt.x + (Math.random()-0.5)*30, 0);
+      let cy = 0;
+      while (cy < bolt.y) {
+        cy += 30 + Math.random()*20;
+        ctx.lineTo(bolt.x + (Math.random()-0.5)*26, Math.min(cy, bolt.y));
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(220,235,255,' + (alpha*0.7) + ')';
+      ctx.beginPath();
+      ctx.arc(bolt.x, bolt.y, 16*(1-p) + 4, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
     }
 
     // damage flash
