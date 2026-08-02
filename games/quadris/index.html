@@ -47,16 +47,21 @@
     gap:8px;
   }
   .title{
-    display:flex; align-items:baseline; justify-content:space-between;
+    display:flex; align-items:center; justify-content:space-between;
     flex-shrink:0;
+    gap:10px;
   }
   .title h1{
-    font-size:26px; letter-spacing:4px; margin:0;
+    font-size: clamp(19px, 6.5vw, 26px);
+    letter-spacing:2px;
+    margin:0;
     font-weight:800;
-    text-shadow: 0 0 18px rgba(58,134,255,.45);
+    white-space:nowrap;
+    overflow:hidden;
+    text-shadow: 0 0 10px rgba(58,134,255,.45);
+    min-width:0;
   }
-  .title h1 span{ color: var(--c-yellow); text-shadow:0 0 18px rgba(255,204,51,.5); }
-  .title small{ color:var(--dim); font-size:11px; letter-spacing:2px;}
+  .title h1 span{ color: var(--c-yellow); text-shadow:0 0 10px rgba(255,204,51,.5); }
 
   .hud{
     display:flex; justify-content:space-between;
@@ -175,16 +180,6 @@
     color:#fff;
   }
 
-  .yellow{ background: var(--c-yellow); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(255,204,51,.35);}
-  .red{    background: var(--c-red); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(255,71,87,.35);}
-  .green{  background: var(--c-green); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(46,213,115,.35);}
-  .blue{   background: var(--c-blue); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(58,134,255,.35);}
-  .orange{ background: var(--c-orange); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(255,140,26,.35);}
-  .purple{ background: var(--c-purple); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(162,89,255,.35);}
-  .gray{   background: var(--c-gray); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(154,163,184,.35);}
-  .flame{  background: radial-gradient(circle at 50% 30%, #ffe066, #ff5e1a 55%, #b3230a 100%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.3), 0 0 14px rgba(255,94,26,.6);}
-  .bomb{   background: radial-gradient(circle at 35% 30%, #7a8194, #262a36 70%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 12px rgba(0,0,0,.6);}
-
   .controls{
     flex-shrink:0;
   }
@@ -212,6 +207,7 @@
   .next-piece{
     width:34px; height:34px; border-radius:7px;
     flex-shrink:0;
+    background:#232838;
     box-shadow: inset 0 0 0 1px rgba(255,255,255,.15);
     display:flex; align-items:center; justify-content:center;
     font-size:18px; line-height:1;
@@ -295,6 +291,17 @@
     letter-spacing:1px; cursor:pointer; font-family:inherit;
     touch-action:manipulation;
   }
+
+  /* le regole colore stanno per ultime: vincono sempre sulla cascata */
+  .yellow{ background: var(--c-yellow); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(255,204,51,.35);}
+  .red{    background: var(--c-red); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(255,71,87,.35);}
+  .green{  background: var(--c-green); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(46,213,115,.35);}
+  .blue{   background: var(--c-blue); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(58,134,255,.35);}
+  .orange{ background: var(--c-orange); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(255,140,26,.35);}
+  .purple{ background: var(--c-purple); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(162,89,255,.35);}
+  .gray{   background: var(--c-gray); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 10px rgba(154,163,184,.35);}
+  .flame{  background: radial-gradient(circle at 50% 30%, #ffe066, #ff5e1a 55%, #b3230a 100%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.3), 0 0 14px rgba(255,94,26,.6);}
+  .bomb{   background: radial-gradient(circle at 35% 30%, #7a8194, #262a36 70%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 0 12px rgba(0,0,0,.6);}
 </style>
 </head>
 <body>
