@@ -21,8 +21,14 @@
     --c-gray: #9aa3b8;
   }
   *{box-sizing:border-box;}
-  html,body{
+  html{
     margin:0;
+    height:100%;
+    overflow:hidden;
+  }
+  body{
+    margin:0;
+    width:100%;
     height:100vh;
     height:100dvh;
     background:
@@ -39,12 +45,12 @@
     -webkit-tap-highlight-color:transparent;
   }
   .stage{
-    width:100%; max-width:480px;
+    width:100%; max-width:720px;
     height:100%;
-    padding:14px 14px 16px;
+    padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
     display:flex;
     flex-direction:column;
-    gap:8px;
+    gap:5px;
   }
   .title{
     display:flex; align-items:center; justify-content:space-between;
@@ -63,41 +69,54 @@
   }
   .title h1 span{ color: var(--c-yellow); text-shadow:0 0 10px rgba(255,204,51,.5); }
 
-  .hud{
-    display:flex; justify-content:space-between;
-    border:1px solid var(--line);
-    background:var(--panel);
-    border-radius:10px;
-    padding:8px 14px;
-    font-size:12px;
-    letter-spacing:1px;
-    flex-shrink:0;
-  }
-  .hud .stat{ color:var(--dim); }
-  .hud .stat b{ color:var(--ink); font-size:15px; display:block; margin-top:2px;}
-  .hud .stat.warn b{ color: var(--danger); }
-
   .board-wrap{
     position:relative;
     border:1px solid var(--line);
     background:
       linear-gradient(180deg, #10131c 0%, #0d0f17 100%);
     border-radius:14px;
-    padding:10px;
+    padding:8px;
     flex:1 1 auto;
     min-height:0;
     display:flex;
+    flex-direction:column;
     align-items:center;
-    justify-content:center;
   }
+  .score-badge{
+    position:absolute;
+    top:8px; right:8px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:4px 12px;
+    text-align:center;
+    z-index:10;
+  }
+  .score-label{ font-size:9px; color:var(--dim); letter-spacing:1px; }
+  .score-value{ font-size:16px; font-weight:800; color:var(--ink); line-height:1.2; }
+
+  .queue-bar{
+    width:100%;
+    display:flex; align-items:flex-end; justify-content:center; gap:12px;
+    padding:2px 0 8px;
+    flex-shrink:0;
+  }
+  .queue-piece-wrap{ display:flex; flex-direction:column; align-items:center; gap:2px; }
+  .queue-bar .shots-track{
+    flex:0 1 90px;
+    display:flex; gap:4px;
+    margin-bottom:6px;
+  }
+
   .board-frame{
     position:relative;
+    flex:0 0 auto;
   }
   .board{
     display:grid;
     grid-template-columns: repeat(6, 1fr);
     grid-template-rows: repeat(10, 1fr);
-    gap:5px;
+    gap:3px;
     position:absolute;
     inset:0;
     cursor:pointer;
@@ -180,49 +199,18 @@
     color:#fff;
   }
 
-  .controls{
-    flex-shrink:0;
-  }
-  .current-row{
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    gap:3px;
-    margin-bottom:6px;
-  }
-
-  .cannon-row{
-    display:flex; align-items:center; gap:14px;
-    border:1px solid var(--line);
-    background:var(--panel);
-    border-radius:10px;
-    padding:8px 14px;
-  }
-  .next-block{ flex-shrink:0; }
-  .next-label{ font-size:11px; color:var(--dim); letter-spacing:2px; }
-  .next-info{
-    display:flex; align-items:center; gap:8px;
-    margin-top:4px;
-  }
+  .next-label{ font-size:9px; color:var(--dim); letter-spacing:1px; }
   .next-piece{
-    width:34px; height:34px; border-radius:7px;
+    width:30px; height:30px; border-radius:7px;
     flex-shrink:0;
     background:#232838;
     box-shadow: inset 0 0 0 1px rgba(255,255,255,.15);
     display:flex; align-items:center; justify-content:center;
-    font-size:18px; line-height:1;
+    font-size:16px; line-height:1;
   }
-  .next-piece.small{ width:24px; height:24px; font-size:13px; }
-  .next-name{
-    font-size:12px; color:var(--dim); letter-spacing:1px;
-    white-space:nowrap;
-  }
-  .shots-track{
-    flex:1;
-    display:flex; gap:6px;
-  }
+  .next-piece.small{ width:22px; height:22px; font-size:12px; }
   .shot-dot{
-    height:6px; flex:1; border-radius:3px; background:#232a3d;
+    height:5px; flex:1; border-radius:3px; background:#232a3d;
   }
   .shot-dot.on{ background: var(--c-blue); box-shadow:0 0 8px rgba(58,134,255,.6);}
 
@@ -247,14 +235,14 @@
     letter-spacing:1px; cursor:pointer; font-family:inherit;
     touch-action:manipulation;
   }  .help-btn{
-    width:28px; height:28px;
+    width:24px; height:24px;
     border-radius:50%;
     border:1px solid var(--line);
     background:var(--panel);
     color:var(--dim);
     font-family:inherit;
     font-weight:800;
-    font-size:14px;
+    font-size:13px;
     cursor:pointer;
     touch-action:manipulation;
   }
@@ -311,13 +299,24 @@
     <button id="helpBtn" class="help-btn" aria-label="How to play">?</button>
   </div>
 
-  <div class="hud">
-    <div class="stat">SCORE<b id="score">0</b></div>
-    <div class="stat">SHOTS<b id="shotsTotal">0</b></div>
-    <div class="stat warn">NEXT DROP<b id="untilDrop">5</b></div>
-  </div>
-
   <div class="board-wrap">
+    <div class="score-badge">
+      <div class="score-label">SCORE</div>
+      <div class="score-value" id="score">0</div>
+    </div>
+
+    <div class="queue-bar">
+      <div class="queue-piece-wrap">
+        <span class="next-label">LOADED</span>
+        <div class="next-piece" id="currentPiece"></div>
+      </div>
+      <div class="shots-track" id="shotsTrack"></div>
+      <div class="queue-piece-wrap">
+        <span class="next-label">NEXT</span>
+        <div class="next-piece small" id="nextPiece"></div>
+      </div>
+    </div>
+
     <div class="board-frame">
       <div class="board" id="board"></div>
       <div class="shot-layer" id="shotLayer"></div>
@@ -327,22 +326,6 @@
       <h2>STACK REACHED</h2>
       <p id="finalScore">Final score: 0</p>
       <button id="restartBtn">PLAY AGAIN</button>
-    </div>
-  </div>
-
-  <div class="controls">
-    <div class="current-row">
-      <span class="next-label">LOADED</span>
-      <div class="next-piece" id="currentPiece"></div>
-    </div>
-    <div class="cannon-row">
-      <div class="next-block">
-        <div class="next-label">NEXT</div>
-        <div class="next-info">
-          <div class="next-piece small" id="nextPiece"></div>
-        </div>
-      </div>
-      <div class="shots-track" id="shotsTrack"></div>
     </div>
   </div>
 </div>
@@ -371,8 +354,6 @@
 
   const boardEl = document.getElementById('board');
   const scoreEl = document.getElementById('score');
-  const shotsTotalEl = document.getElementById('shotsTotal');
-  const untilDropEl = document.getElementById('untilDrop');
   const currentPieceEl = document.getElementById('currentPiece');
   const nextPieceEl = document.getElementById('nextPiece');
   const shotsTrackEl = document.getElementById('shotsTrack');
@@ -431,10 +412,13 @@
   function fitBoard(){
     const wrap = document.querySelector('.board-wrap');
     const frame = document.querySelector('.board-frame');
+    const queueBar = document.querySelector('.queue-bar');
     if(!wrap || !frame) return;
-    const GAP = 5;
-    const availW = wrap.clientWidth - 20;  // minus 10px padding each side
-    const availH = wrap.clientHeight - 20;
+    const GAP = 3;
+    const PAD = 8; // board-wrap padding, each side
+    const queueH = queueBar ? queueBar.getBoundingClientRect().height : 0;
+    const availW = wrap.clientWidth - PAD * 2;
+    const availH = wrap.clientHeight - PAD * 2 - queueH;
     let cell = Math.min(
       (availW - GAP * (COLS - 1)) / COLS,
       (availH - GAP * (ROWS - 1)) / ROWS
@@ -442,6 +426,7 @@
     cell = Math.max(cell, 10);
     frame.style.width = (cell * COLS + GAP * (COLS - 1)) + 'px';
     frame.style.height = (cell * ROWS + GAP * (ROWS - 1)) + 'px';
+    frame.style.flex = '0 0 auto';
   }
   window.addEventListener('resize', fitBoard);
 
@@ -479,8 +464,6 @@
       }
     }
     scoreEl.textContent = score;
-    shotsTotalEl.textContent = totalShots;
-    untilDropEl.textContent = (DROP_INTERVAL - shotsSinceDrop);
     nextPieceEl.className = 'next-piece small ' + nextColor;
     nextPieceEl.textContent = pieceEmoji(nextColor);
     currentPieceEl.className = 'next-piece ' + currentColor;
