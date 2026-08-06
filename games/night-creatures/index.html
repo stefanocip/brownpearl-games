@@ -5,12 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Night Creatures</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  * {
+    margin:0; padding:0; box-sizing:border-box;
+    -webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none; -moz-user-select:none; -ms-user-select:none; user-select:none;
+    -webkit-touch-callout:none;
+    -webkit-user-drag:none; user-drag:none;
+  }
   html, body {
     width:100%; height:100%; overflow:hidden;
     background:#0a0e08;
     font-family: 'Courier New', monospace;
     touch-action:none;
+    overscroll-behavior:none;
   }
   #gameCanvas {
     display:block;
@@ -88,6 +95,12 @@
   }
   #calibFill { height:100%; width:0%; background:#7fbf3f; transition:width 0.1s linear; }
 
+  #weaponLabel {
+    position:absolute; bottom:90px; left:12px; z-index:6;
+    color:#e8d8b0; font-size:12px; font-weight:bold; letter-spacing:1.5px;
+    text-shadow:0 2px 5px rgba(0,0,0,0.9);
+    pointer-events:none;
+  }
   #actionBar {
     position:absolute; bottom:0; left:0; width:100%; z-index:6;
     display:flex; gap:6px; box-sizing:border-box;
@@ -176,6 +189,7 @@
   <div id="barrierBarTrack"></div>
 </div>
 
+<div id="weaponLabel">ZOMBLASTER</div>
 <div id="actionBar">
   <button class="actionSlot green unlocked active" id="weaponGreenBtn">🧟</button>
   <button class="actionSlot silver" id="weaponSilverBtn">🐺</button>
@@ -206,6 +220,19 @@
 
 <script>
 (function(){
+  // belt-and-braces: block context menu, text selection, and iOS pinch/double-tap zoom gestures
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('selectstart', e => e.preventDefault());
+  document.addEventListener('gesturestart', e => e.preventDefault());
+  document.addEventListener('gesturechange', e => e.preventDefault());
+  document.addEventListener('dragstart', e => e.preventDefault());
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) e.preventDefault();
+    lastTouchEnd = now;
+  }, { passive: false });
+
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
   let W, H, ROAD_LEFT, ROAD_RIGHT, ROAD_WIDTH;
@@ -233,7 +260,7 @@
       const step = 55 + Math.random()*45;
       // left side — big, bare, spectral trees
       trees.push({
-        x: Math.random() * (ROAD_LEFT * 0.85),
+        x: Math.random() * (ROAD_LEFT * 0.95),
         y: y + Math.random()*20,
         size: 34 + Math.random()*28,
         seed: Math.random()*1000,
@@ -241,7 +268,7 @@
       });
       // right side
       trees.push({
-        x: ROAD_RIGHT + Math.random() * (ROAD_LEFT * 0.9),
+        x: ROAD_RIGHT + Math.random() * (ROAD_LEFT * 1.0),
         y: y + Math.random()*20,
         size: 34 + Math.random()*28,
         seed: Math.random()*1000,
@@ -294,6 +321,7 @@
   const counterDisplay = document.getElementById('counterDisplay');
   const finalScoreText = document.getElementById('finalScoreText');
   const barrierBarTrack = document.getElementById('barrierBarTrack');
+  const weaponLabel = document.getElementById('weaponLabel');
   const weaponGreenBtn = document.getElementById('weaponGreenBtn');
   const weaponSilverBtn = document.getElementById('weaponSilverBtn');
   const weaponScarabBtn = document.getElementById('weaponScarabBtn');
@@ -336,6 +364,7 @@
   let clownUnlocked = false;
   let clownKillCount = 0;
   let alienUnlocked = false;
+  let alienKillCount = 0;
   let activeWeapon = 'green'; // 'green' | 'silver' | 'scarab' | 'stake' | 'cross'
 
   let killCount = 0;        // total kills, drives the molotov every-10 reward
@@ -369,12 +398,12 @@
   const MOLOTOV_MAX = 3;
   const BASE_ZOMBIE_SPEED = 21;
 
-  const ZOMBIE_KILLS_TO_UNLOCK_WEREWOLVES = 10;
-  const WEREWOLF_KILLS_TO_UNLOCK_MUMMIES = 15;
-  const MUMMY_KILLS_TO_UNLOCK_VAMPIRES = 20;
-  const VAMPIRE_KILLS_TO_UNLOCK_IMPS = 25;
-  const IMP_KILLS_TO_UNLOCK_CLOWNS = 25;
-  const CLOWN_KILLS_TO_UNLOCK_ALIENS = 25;
+  const ZOMBIE_KILLS_TO_UNLOCK_WEREWOLVES = 5;
+  const WEREWOLF_KILLS_TO_UNLOCK_MUMMIES = 7;
+  const MUMMY_KILLS_TO_UNLOCK_VAMPIRES = 10;
+  const VAMPIRE_KILLS_TO_UNLOCK_IMPS = 10;
+  const IMP_KILLS_TO_UNLOCK_CLOWNS = 10;
+  const CLOWN_KILLS_TO_UNLOCK_ALIENS = 10;
 
   // ---------- GYROSCOPE ----------
   let gyroBaseline = null;
@@ -489,7 +518,9 @@
     clownUnlocked = false;
     clownKillCount = 0;
     alienUnlocked = false;
+    alienKillCount = 0;
     activeWeapon = 'green';
+    weaponLabel.textContent = WEAPON_NAMES.green;
     killCount = 0;
     molotovCount = 0;
     molotovArmed = false;
@@ -627,6 +658,14 @@
     gameOverScreen.classList.remove('hidden');
   }
 
+  const WEAPON_NAMES = {
+    green: 'ZOMBLASTER',
+    silver: 'SILVER BULLETS',
+    scarab: 'SACRED SCARAB',
+    stake: 'WOODEN STAKE',
+    cross: 'HOLY CROSS'
+  };
+
   function setWeapon(weapon){
     activeWeapon = weapon;
     weaponGreenBtn.classList.toggle('active', weapon === 'green');
@@ -634,6 +673,7 @@
     weaponScarabBtn.classList.toggle('active', weapon === 'scarab');
     weaponStakeBtn.classList.toggle('active', weapon === 'stake');
     weaponCrossBtn.classList.toggle('active', weapon === 'cross');
+    weaponLabel.textContent = WEAPON_NAMES[weapon] || '';
   }
 
   weaponGreenBtn.addEventListener('click', (e) => { e.stopPropagation(); setWeapon('green'); });
@@ -699,6 +739,18 @@
       alienUnlocked = true;
       showUnlockToast("ALIENS INCOMING", "any weapon hurts them — 7 hits");
     }
+  }
+
+  function registerAlienKill(){
+    alienKillCount++;
+    if (alienKillCount % 10 === 0) {
+      triggerSuperSpawn();
+    }
+  }
+
+  function triggerSuperSpawn(){
+    showUnlockToast("SUPER SPAWN!", "a swarm breaks through");
+    for (let i = 0; i < 8; i++) spawnEnemy();
   }
 
   // ---------- ENTITIES ----------
@@ -971,6 +1023,7 @@
     else if (z.type === 'clown') { registerClownKill(); score += 45; }
     else if (z.type === 'alien') {
       score += 60;
+      registerAlienKill();
       if (px !== undefined && py !== undefined) {
         spawnAlienSmall(px - 14, py);
         spawnAlienSmall(px + 14, py);
@@ -1297,7 +1350,7 @@
         const startY = -s*0.9*(0.3 + rnd*0.55);
         const side = (i % 2 === 0) ? 1 : -1;
         const angle = side * (0.4 + rnd2*0.55);
-        const len = s*(0.4 + rnd*0.4);
+        const len = s*(0.5 + rnd*0.55);
         const endX = Math.sin(angle)*len;
         const endY = startY - Math.cos(angle)*len*0.85;
         ctx.lineWidth = s*0.06;
@@ -1615,8 +1668,7 @@
       ctx.restore();
     }
 
-    // trees overlay the monsters (drawn after them on purpose)
-    for (const t of trees){ drawSpectralTree(t); }
+    // trees are drawn after the player too, see below (both sit "under" the trees)
 
     // barrier — 5 barbed-wire spans between posts; breaking one opens a gap
     {
@@ -1742,26 +1794,80 @@
     }
     ctx.globalAlpha = 1;
 
-    // player
+    // player — a small hooded, mysterious figure
     const px = ROAD_LEFT + playerX*ROAD_WIDTH;
     const py = H * PLAYER_Y_RATIO;
     ctx.save();
     ctx.translate(px, py);
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.beginPath();
-    ctx.ellipse(0, PLAYER_SIZE*0.55, PLAYER_SIZE*0.55, PLAYER_SIZE*0.2, 0, 0, Math.PI*2);
+    ctx.ellipse(0, PLAYER_SIZE*0.58, PLAYER_SIZE*0.55, PLAYER_SIZE*0.2, 0, 0, Math.PI*2);
     ctx.fill();
-    ctx.fillStyle = '#3a5a2a';
+    // long coat — tapered, hem flutters in the wind
+    const flutterT = performance.now() / 260;
+    const flutterL = Math.sin(flutterT) * PLAYER_SIZE*0.09;
+    const flutterR = Math.sin(flutterT + 0.7) * PLAYER_SIZE*0.09;
+    ctx.fillStyle = '#2c2620';
     ctx.beginPath();
-    ctx.ellipse(0, 0, PLAYER_SIZE*0.4, PLAYER_SIZE*0.55, 0, 0, Math.PI*2);
+    ctx.moveTo(-PLAYER_SIZE*0.4 + flutterL, PLAYER_SIZE*0.55);
+    ctx.quadraticCurveTo(-PLAYER_SIZE*0.5 + flutterL*0.6, PLAYER_SIZE*0.1, -PLAYER_SIZE*0.26, -PLAYER_SIZE*0.18);
+    ctx.quadraticCurveTo(0, -PLAYER_SIZE*0.3, PLAYER_SIZE*0.26, -PLAYER_SIZE*0.18);
+    ctx.quadraticCurveTo(PLAYER_SIZE*0.5 + flutterR*0.6, PLAYER_SIZE*0.1, PLAYER_SIZE*0.4 + flutterR, PLAYER_SIZE*0.55);
+    ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = '#d8b088';
+    // coat collar, popped up — same solid color as the coat
     ctx.beginPath();
-    ctx.arc(0, -PLAYER_SIZE*0.62, PLAYER_SIZE*0.28, 0, Math.PI*2);
+    ctx.moveTo(-PLAYER_SIZE*0.24, -PLAYER_SIZE*0.14); ctx.lineTo(-PLAYER_SIZE*0.1, -PLAYER_SIZE*0.35); ctx.lineTo(0, -PLAYER_SIZE*0.12);
     ctx.fill();
-    ctx.fillStyle = '#222';
-    ctx.fillRect(-4, -PLAYER_SIZE*0.3, 8, PLAYER_SIZE*0.55);
+    ctx.beginPath();
+    ctx.moveTo(PLAYER_SIZE*0.24, -PLAYER_SIZE*0.14); ctx.lineTo(PLAYER_SIZE*0.1, -PLAYER_SIZE*0.35); ctx.lineTo(0, -PLAYER_SIZE*0.12);
+    ctx.fill();
+    // sliver of neck just under the hat brim (mostly hidden, not a big patch on the coat)
+    ctx.fillStyle = 'rgba(8,10,16,0.92)';
+    ctx.beginPath();
+    ctx.ellipse(0, -PLAYER_SIZE*0.38, PLAYER_SIZE*0.13, PLAYER_SIZE*0.07, 0, 0, Math.PI*2);
+    ctx.fill();
+    // wide-brimmed hunter's hat
+    ctx.fillStyle = '#1a1510';
+    ctx.beginPath();
+    ctx.ellipse(0, -PLAYER_SIZE*0.44, PLAYER_SIZE*0.5, PLAYER_SIZE*0.14, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#231c14';
+    ctx.beginPath();
+    ctx.arc(0, -PLAYER_SIZE*0.5, PLAYER_SIZE*0.26, Math.PI, 0);
+    ctx.quadraticCurveTo(PLAYER_SIZE*0.22, -PLAYER_SIZE*0.38, 0, -PLAYER_SIZE*0.36);
+    ctx.quadraticCurveTo(-PLAYER_SIZE*0.22, -PLAYER_SIZE*0.38, -PLAYER_SIZE*0.26, -PLAYER_SIZE*0.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#4a3020';
+    ctx.fillRect(-PLAYER_SIZE*0.26, -PLAYER_SIZE*0.42, PLAYER_SIZE*0.52, PLAYER_SIZE*0.05);
+    // weapon held at the side, not a center seam down the coat
+    ctx.save();
+    ctx.translate(PLAYER_SIZE*0.34, PLAYER_SIZE*0.1);
+    ctx.rotate(-0.25);
+    ctx.fillStyle = '#3a3a3a';
+    ctx.fillRect(-2.5, -PLAYER_SIZE*0.22, 5, PLAYER_SIZE*0.34);
+    ctx.fillStyle = 'rgba(200,220,255,0.5)';
+    ctx.fillRect(-1, -PLAYER_SIZE*0.22, 2, PLAYER_SIZE*0.1);
     ctx.restore();
+    // two little feet stepping in place under the coat hem
+    const walkT = performance.now() / 220;
+    const stepL = Math.sin(walkT) * PLAYER_SIZE*0.1;
+    const stepR = Math.sin(walkT + Math.PI) * PLAYER_SIZE*0.1;
+    ctx.fillStyle = '#1c1712';
+    ctx.beginPath();
+    ctx.ellipse(-PLAYER_SIZE*0.16, PLAYER_SIZE*0.56 + Math.max(0, stepL)*0.3, PLAYER_SIZE*0.1, PLAYER_SIZE*0.06, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(PLAYER_SIZE*0.16, PLAYER_SIZE*0.56 + Math.max(0, stepR)*0.3, PLAYER_SIZE*0.1, PLAYER_SIZE*0.06, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    // trees drawn again here so they overlay the player, same as they do the monsters
+    for (const t of trees){ drawSpectralTree(t); }
 
     // molotov in flight
     if (molotovThrow) {
@@ -1828,9 +1934,9 @@
         const drift = Math.sin(now/220 + bIdx*1.7) * range * (0.4 + frac*0.5);
         const bx = px + drift;
         const wobbleSize = 1 + Math.sin(now/160 + bIdx*2.3) * 0.18;
-        const radius = (range*0.85) * (1 - frac*0.35) * wobbleSize;
+        const radius = (range*0.85) * (0.28 + frac*0.72) * wobbleSize;
         const flicker = 0.6 + Math.sin(now/70 + bIdx*3.1) * 0.25;
-        const fade = 1 - frac*0.75; // dims as it rises and disperses
+        const fade = 1 - frac*0.5; // dims a little as it disperses, but stays visible while it grows
         const grad = ctx.createRadialGradient(bx, by, 0, bx, by, radius);
         grad.addColorStop(0, 'rgba(255,230,160,' + (0.75*flicker*fade) + ')');
         grad.addColorStop(0.45, 'rgba(255,140,50,' + (0.55*flicker*fade) + ')');
