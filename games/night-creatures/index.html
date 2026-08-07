@@ -365,6 +365,7 @@
   let clownKillCount = 0;
   let alienUnlocked = false;
   let alienKillCount = 0;
+  let superSpawnActive = false;
   let activeWeapon = 'green'; // 'green' | 'silver' | 'scarab' | 'stake' | 'cross'
 
   let killCount = 0;        // total kills, drives the molotov every-10 reward
@@ -519,6 +520,7 @@
     clownKillCount = 0;
     alienUnlocked = false;
     alienKillCount = 0;
+    superSpawnActive = false;
     activeWeapon = 'green';
     weaponLabel.textContent = WEAPON_NAMES.green;
     killCount = 0;
@@ -743,14 +745,11 @@
 
   function registerAlienKill(){
     alienKillCount++;
-    if (alienKillCount % 10 === 0) {
-      triggerSuperSpawn();
+    if (!superSpawnActive && alienKillCount >= 10) {
+      superSpawnActive = true;
+      showUnlockToast("SUPER SPAWN!", "monsters keep pouring in now");
+      for (let i = 0; i < 6; i++) spawnEnemy();
     }
-  }
-
-  function triggerSuperSpawn(){
-    showUnlockToast("SUPER SPAWN!", "a swarm breaks through");
-    for (let i = 0; i < 8; i++) spawnEnemy();
   }
 
   // ---------- ENTITIES ----------
@@ -765,9 +764,11 @@
     return 1 + Math.min(elapsed / 20, 6) * 0.09;
   }
   function currentSpawnInterval(){
+    if (superSpawnActive) return 0.2;
     return Math.max(0.55, 2.4 - Math.min(elapsed / 8, 18) * 0.09);
   }
   function currentMaxOnScreen(){
+    if (superSpawnActive) return 16;
     return Math.min(4 + Math.floor(elapsed / 25), 9);
   }
 
