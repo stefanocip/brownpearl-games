@@ -433,7 +433,7 @@
     } else if(falling){
       elapsed += dt/1000;
       fallSpeed = baseFallSpeed + elapsed*0.045; // gradually speeds up
-      fallSpeed = Math.min(fallSpeed, baseFallSpeed*4.5);
+      fallSpeed = Math.min(fallSpeed, baseFallSpeed*10);
       falling.y += fallSpeed * (dt/1000);
       const gc = screenToGridCol(falling.screenCol);
       const topRow = colHeightTop(gc);
