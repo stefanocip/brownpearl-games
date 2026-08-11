@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Scroll Drop</title>
+<style>
+  * {
+    margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent;
+    user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; -webkit-user-drag:none;
+  }
+  html, body {
+    height:100%; overflow:hidden; overscroll-behavior:none; background:#14121a; touch-action:none;
+    position:fixed; inset:0; width:100%;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #wrap {
+    height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  }
+  #hud {
+    width:100%; max-width:520px; display:flex; justify-content:space-between; align-items:center;
+    padding:10px 16px; color:#e9e4f0;
+  }
+  #hud .label { font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#8a80a0; }
+  #hud .value { font-size:22px; font-weight:700; }
+  #stage { position:relative; }
+  canvas { display:block; border-radius:14px; box-shadow:0 10px 40px rgba(0,0,0,0.5); background:#1c1826; touch-action:none; }
+  #overlay {
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:rgba(10,8,16,0.86); border-radius:14px; color:#f2eefa; text-align:center; padding:24px;
+  }
+  #overlay.hidden { display:none; }
+  #overlay h1 { font-size:26px; margin-bottom:8px; }
+  #overlay p { font-size:14px; color:#b3a8c9; margin-bottom:18px; line-height:1.5; max-width:280px; }
+  #overlay .big { font-size:40px; font-weight:800; margin-bottom:4px; color:#ffd166; }
+  button#startBtn {
+    background:linear-gradient(135deg,#7c5cff,#c060f0); color:white; border:none; padding:14px 34px;
+    font-size:16px; font-weight:700; border-radius:30px; box-shadow:0 6px 20px rgba(124,92,255,0.5);
+  }
+  #shareRow { display:flex; gap:10px; margin-top:14px; }
+  #shareRow.hidden { display:none; }
+  #shareRow button {
+    display:flex; align-items:center; gap:6px; border:none; border-radius:22px;
+    padding:10px 16px; font-size:13px; font-weight:700; color:white;
+  }
+  #shareWhatsapp { background:#25D366; }
+  #shareGeneric { background:#3a3350; color:#f2eefa; }
+  #shareRow button svg { width:16px; height:16px; }
+  #adSlot {
+    margin-top:16px; width:100%; max-width:300px; min-height:50px;
+    border:1px dashed #4a4260; border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:10px; letter-spacing:1px; text-transform:uppercase; color:#5c5476;
+  }
+  #adSlot.hidden { display:none; }
+  #hint { position:absolute; bottom:8px; left:0; right:0; text-align:center; font-size:11px; color:#6d6285; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <div><div class="label">Score</div><div class="value" id="scoreVal">0</div></div>
+    <div><div class="label">Best</div><div class="value" id="bestVal">0</div></div>
+    <div><div class="label">Speed</div><div class="value" id="speedVal">1.0x</div></div>
+  </div>
+  <div id="stage">
+    <canvas id="game"></canvas>
+    <div id="overlay">
+      <h1 id="overlayTitle">Scroll Drop</h1>
+      <p id="overlayText">Drag left/right to wrap the grid and line up 3+ matching colors under the falling block. It gets faster as you go!</p>
+      <div class="big hidden" id="finalScore"></div>
+      <button id="startBtn">Start</button>
+      <div id="shareRow" class="hidden">
+        <button id="shareWhatsapp" type="button">
+          <svg viewBox="0 0 24 24" fill="white"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.29-1.39a9.9 9.9 0 0 0 4.75 1.21h.01c5.46 0 9.9-4.45 9.9-9.91 0-2.65-1.03-5.14-2.9-7.01A9.85 9.85 0 0 0 12.04 2m0 1.67c2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.24-8.24 8.24a8.2 8.2 0 0 1-4.19-1.15l-.3-.18-3.14.82.84-3.06-.2-.32a8.15 8.15 0 0 1-1.26-4.37c0-4.54 3.7-8.22 8.26-8.22"/></svg>
+          WhatsApp
+        </button>
+        <button id="shareGeneric" type="button">Share</button>
+      </div>
+      <div id="adSlot" class="hidden">Ad space · 300×50</div>
+    </div>
+  </div>
+  <div id="hint">Hold &amp; drag horizontally to scroll the grid</div>
+</div>
+
+<script>
+(function(){
+  const COLS = 6, ROWS = 10;
+  const COLORS = [
+    { name:'red',    fill:'#ff5d73', dark:'#b23448' },
+    { name:'blue',   fill:'#4dabf7', dark:'#2f6fa3' },
+    { name:'green',  fill:'#51cf66', dark:'#308a3d' },
+    { name:'yellow', fill:'#ffd43b', dark:'#b3941f' },
+    { name:'purple', fill:'#cc5de8', dark:'#8a3aa3' },
+  ];
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const overlay = document.getElementById('overlay');
+  const overlayTitle = document.getElementById('overlayTitle');
+  const overlayText = document.getElementById('overlayText');
+  const finalScoreEl = document.getElementById('finalScore');
+  const startBtn = document.getElementById('startBtn');
+  const scoreVal = document.getElementById('scoreVal');
+  const bestVal = document.getElementById('bestVal');
+  const speedVal = document.getElementById('speedVal');
+  const shareRow = document.getElementById('shareRow');
+  const shareWhatsapp = document.getElementById('shareWhatsapp');
+  const shareGeneric = document.getElementById('shareGeneric');
+  const adSlot = document.getElementById('adSlot');
+
+  // Hard-lock the page: no pull-to-refresh, no page scroll/bounce, no text selection.
+  document.addEventListener('touchmove', (e)=>{ e.preventDefault(); }, { passive:false });
+  document.addEventListener('gesturestart', (e)=>{ e.preventDefault(); });
+  document.addEventListener('contextmenu', (e)=>{ e.preventDefault(); });
+  document.addEventListener('selectstart', (e)=>{ e.preventDefault(); });
+  document.addEventListener('dragstart', (e)=>{ e.preventDefault(); });
+
+  let CELL = 52;
+  function resize(){
+    const maxW = Math.min(window.innerWidth - 24, 420);
+    CELL = Math.floor(maxW / COLS);
+    canvas.width = CELL * COLS;
+    canvas.height = CELL * ROWS;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  let best = 0;
+  try { best = parseInt(localStorage.getItem('scrollDropBest') || '0', 10); } catch(e) { best = 0; }
+  bestVal.textContent = best;
+
+  let grid, offsetPx, dragging, dragStartX, dragAccum, falling, score, gameOver, running;
+  let fallSpeed, baseFallSpeed, elapsed, lastTime, spawnCooldown;
+  let clearing; // array of {r,c} currently animating clear
+  let clearTimer;
+  let combo = 0, comboPopup = null;
+  let shakeT = 0;
+
+  function randColor(){ return Math.floor(Math.random()*COLORS.length); }
+
+  function colorAt(r,c){
+    return grid[r][c];
+  }
+
+  // check if placing color at r,c would immediately create a 3+ run (horiz wrap or vert)
+  function wouldMatch(r,c,color,tempGrid){
+    const g = tempGrid || grid;
+    // horizontal (wrap)
+    let count = 1;
+    for(let d=1; d<COLS; d++){
+      const cc = ((c-d)%COLS+COLS)%COLS;
+      if(g[r][cc]===color) count++; else break;
+    }
+    for(let d=1; d<COLS; d++){
+      const cc = ((c+d)%COLS+COLS)%COLS;
+      if(g[r][cc]===color) count++; else break;
+    }
+    if(count>=3) return true;
+    // vertical (no wrap)
+    count = 1;
+    for(let d=1; r-d>=0; d++){ if(g[r-d][c]===color) count++; else break; }
+    for(let d=1; r+d<ROWS; d++){ if(g[r+d][c]===color) count++; else break; }
+    return count>=3;
+  }
+
+  function initGrid(){
+    grid = [];
+    for(let r=0;r<ROWS;r++) grid.push(new Array(COLS).fill(-1));
+    const startRow = ROWS - 5; // fill bottom half
+    for(let r=startRow;r<ROWS;r++){
+      for(let c=0;c<COLS;c++){
+        let color, tries=0;
+        do { color = randColor(); tries++; } while(wouldMatch(r,c,color) && tries<20);
+        grid[r][c] = color;
+      }
+    }
+    // Straight-line avoidance above doesn't catch clustered (e.g. L-shaped) groups
+    // that the runtime flood-fill match rule considers a match. Reroll any such
+    // pre-existing groups so nothing clears itself before the player does anything.
+    for(let pass=0; pass<40; pass++){
+      const matched = findAllMatches();
+      if(matched.length===0) break;
+      for(const [r,c] of matched){
+        grid[r][c] = randColor();
+      }
+    }
+  }
+
+  function colHeightTop(c){
+    // returns topmost occupied row index for column c, or ROWS if empty
+    for(let r=0;r<ROWS;r++){ if(grid[r][c] !== -1) return r; }
+    return ROWS;
+  }
+
+  function currentShift(){
+    return Math.round(offsetPx / CELL);
+  }
+  function screenToGridCol(s){
+    const shift = currentShift();
+    return ((s + shift) % COLS + COLS) % COLS;
+  }
+
+  function spawnPiece(){
+    const screenCol = Math.floor(Math.random()*COLS);
+    falling = {
+      screenCol: screenCol,
+      color: randColor(),
+      y: -1, // in row units, fractional
+    };
+  }
+
+  function reset(){
+    grid = null;
+    offsetPx = 0;
+    dragging = false;
+    score = 0;
+    gameOver = false;
+    running = true;
+    baseFallSpeed = 1.6; // rows per second
+    fallSpeed = baseFallSpeed;
+    elapsed = 0;
+    clearing = null;
+    clearTimer = 0;
+    combo = 0;
+    comboPopup = null;
+    initGrid();
+    spawnPiece();
+    updateHud();
+    lastTime = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function updateHud(){
+    scoreVal.textContent = score;
+    bestVal.textContent = best;
+    speedVal.textContent = (fallSpeed/baseFallSpeed).toFixed(1) + 'x';
+  }
+
+  // ---- input: horizontal drag to wrap-scroll ----
+  function pointerX(e){
+    return (e.touches ? e.touches[0].clientX : e.clientX);
+  }
+  canvas.addEventListener('pointerdown', (e)=>{
+    if(!running) return;
+    dragging = true;
+    dragStartX = e.clientX;
+    dragAccum = 0;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e)=>{
+    if(!dragging) return;
+    const delta = e.clientX - dragStartX;
+    dragStartX = e.clientX;
+    dragAccum -= delta; // drag right -> reveals columns from left
+    const total = CELL*COLS;
+    const SNAP_THRESHOLD = CELL; // higher = more drag distance needed per column step
+    while(dragAccum >= SNAP_THRESHOLD){
+      offsetPx = ((offsetPx + CELL) % total + total) % total;
+      dragAccum -= SNAP_THRESHOLD;
+    }
+    while(dragAccum <= -SNAP_THRESHOLD){
+      offsetPx = ((offsetPx - CELL) % total + total) % total;
+      dragAccum += SNAP_THRESHOLD;
+    }
+  });
+  function endDrag(e){ dragging = false; }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('pointerleave', endDrag);
+
+  startBtn.addEventListener('click', ()=>{
+    overlay.classList.add('hidden');
+    finalScoreEl.classList.add('hidden');
+    shareRow.classList.add('hidden');
+    adSlot.classList.add('hidden');
+    reset();
+  });
+
+  // ---- matching / clearing ----
+  function floodMatch(r,c,color,visited){
+    const stack = [[r,c]];
+    const group = [];
+    while(stack.length){
+      const [cr,cc] = stack.pop();
+      const key = cr+','+cc;
+      if(visited.has(key)) continue;
+      if(grid[cr][cc] !== color) continue;
+      visited.add(key);
+      group.push([cr,cc]);
+      const neighbors = [
+        [cr-1,cc],[cr+1,cc],
+        [cr,(cc-1+COLS)%COLS],[cr,(cc+1)%COLS]
+      ];
+      for(const [nr,nc] of neighbors){
+        if(nr<0||nr>=ROWS) continue;
+        const nkey = nr+','+nc;
+        if(!visited.has(nkey) && grid[nr][nc]===color) stack.push([nr,nc]);
+      }
+    }
+    return group;
+  }
+
+  function findAllMatches(){
+    const visited = new Set();
+    const toClear = [];
+    for(let r=0;r<ROWS;r++){
+      for(let c=0;c<COLS;c++){
+        if(grid[r][c]===-1) continue;
+        const key = r+','+c;
+        if(visited.has(key)) continue;
+        const group = floodMatch(r,c,grid[r][c],visited);
+        if(group.length>=3) toClear.push(...group);
+      }
+    }
+    return toClear;
+  }
+
+  function applyGravity(){
+    for(let c=0;c<COLS;c++){
+      let write = ROWS-1;
+      for(let r=ROWS-1;r>=0;r--){
+        if(grid[r][c] !== -1){
+          grid[write][c] = grid[r][c];
+          if(write!==r) grid[r][c] = -1;
+          write--;
+        }
+      }
+    }
+  }
+
+  function processMatchesLoop(){
+    const matched = findAllMatches();
+    if(matched.length===0){
+      combo = 0;
+      clearing = null;
+      checkGameOver();
+      spawnPiece();
+      return;
+    }
+    combo++;
+    clearing = matched;
+    clearTimer = 220; // ms of flash before removing
+    const base = matched.length * 10 + Math.max(0,(matched.length-3))*15;
+    const gained = base * combo;
+    score += gained;
+    if(combo > 1){
+      comboPopup = { text: 'x' + combo + ' COMBO!  +' + gained, timer: 900, life: 900 };
+    } else {
+      comboPopup = null;
+    }
+    if(score>best){ best = score; try{ localStorage.setItem('scrollDropBest', String(best)); }catch(e){} }
+    updateHud();
+  }
+
+  function finishClear(){
+    for(const [r,c] of clearing){ grid[r][c] = -1; }
+    applyGravity();
+    clearing = null;
+    processMatchesLoop();
+  }
+
+  function checkGameOver(){
+    for(let c=0;c<COLS;c++){
+      if(colHeightTop(c)===0){
+        endGame();
+        return;
+      }
+    }
+  }
+
+  function endGame(){
+    running = false;
+    gameOver = true;
+    overlayTitle.textContent = 'Game Over';
+    overlayText.textContent = 'The stack reached the top.';
+    finalScoreEl.textContent = score;
+    finalScoreEl.classList.remove('hidden');
+    startBtn.textContent = 'Try Again';
+    shareRow.classList.remove('hidden');
+    adSlot.classList.remove('hidden');
+    overlay.classList.remove('hidden');
+  }
+
+  function shareText(){
+    return 'I scored ' + score + ' points in Scroll Drop! Can you beat it?';
+  }
+
+  shareWhatsapp.addEventListener('click', ()=>{
+    const url = 'https://wa.me/?text=' + encodeURIComponent(shareText() + ' ' + location.href);
+    window.open(url, '_blank');
+  });
+
+  shareGeneric.addEventListener('click', async ()=>{
+    if(navigator.share){
+      try {
+        await navigator.share({ title:'Scroll Drop', text: shareText(), url: location.href });
+      } catch(e) { /* user cancelled */ }
+    } else {
+      try {
+        await navigator.clipboard.writeText(shareText() + ' ' + location.href);
+        shareGeneric.textContent = 'Copied!';
+        setTimeout(()=>{ shareGeneric.textContent = 'Share'; }, 1500);
+      } catch(e) {
+        window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(shareText()), '_blank');
+      }
+    }
+  });
+
+  function landPiece(){
+    const gc = screenToGridCol(falling.screenCol);
+    const topRow = colHeightTop(gc);
+    const landRow = topRow - 1;
+    if(landRow < 0){
+      grid[0][gc] = falling.color; // will trigger game over check
+    } else {
+      grid[landRow][gc] = falling.color;
+    }
+    falling = null;
+    combo = 0;
+    processMatchesLoop();
+  }
+
+  // ---- main loop ----
+  function loop(now){
+    if(!running){ return; }
+    const dt = Math.min(now - lastTime, 50);
+    lastTime = now;
+
+    if(clearing){
+      clearTimer -= dt;
+      if(clearTimer<=0) finishClear();
+    } else if(falling){
+      elapsed += dt/1000;
+      fallSpeed = baseFallSpeed + elapsed*0.045; // gradually speeds up
+      fallSpeed = Math.min(fallSpeed, baseFallSpeed*4.5);
+      falling.y += fallSpeed * (dt/1000);
+      const gc = screenToGridCol(falling.screenCol);
+      const topRow = colHeightTop(gc);
+      if(falling.y >= topRow - 1){
+        falling.y = topRow - 1;
+        landPiece();
+      }
+      updateHud();
+    }
+
+    if(comboPopup){
+      comboPopup.timer -= dt;
+      if(comboPopup.timer<=0) comboPopup = null;
+    }
+
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function drawCell(x,y,size,colorIdx,alpha){
+    if(colorIdx===-1) return;
+    const col = COLORS[colorIdx];
+    ctx.save();
+    ctx.globalAlpha = alpha===undefined?1:alpha;
+    const pad = 3;
+    const r = 8;
+    roundRect(x+pad, y+pad, size-pad*2, size-pad*2, r);
+    const grad = ctx.createLinearGradient(x,y,x,y+size);
+    grad.addColorStop(0, col.fill);
+    grad.addColorStop(1, col.dark);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  function draw(){
+    if(!grid) return; // nothing to draw before the first game starts
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    // background grid lines
+    ctx.fillStyle = '#1c1826';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    const shiftFrac = offsetPx % CELL; // sub-cell smooth offset within a column step
+    const shift = currentShift();
+
+    const flashOn = clearing && Math.floor(clearTimer/70)%2===0;
+    const clearSet = clearing ? new Set(clearing.map(([r,c])=>r+','+c)) : null;
+
+    for(let r=0;r<ROWS;r++){
+      for(let s=0;s<COLS;s++){
+        const gc = ((s+shift)%COLS+COLS)%COLS;
+        const x = s*CELL - (offsetPx - shift*CELL);
+        const y = r*CELL;
+        const colorIdx = grid[r][gc];
+        const isClearing = clearSet && clearSet.has(r+','+gc);
+        if(isClearing){
+          drawCell(x,y,CELL,colorIdx, flashOn?1:0.25);
+        } else {
+          drawCell(x,y,CELL,colorIdx,1);
+        }
+      }
+    }
+
+    // subtle column separators
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    for(let s=1;s<COLS;s++){
+      const x = s*CELL - (offsetPx - shift*CELL);
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke();
+    }
+
+    // falling piece
+    if(falling){
+      const x = falling.screenCol*CELL;
+      const y = falling.y*CELL;
+      drawCell(x,y,CELL,falling.color,1);
+      // ghost trail indicator at top
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = COLORS[falling.color].fill;
+      ctx.fillRect(x+CELL*0.42, 0, CELL*0.16, Math.max(0,y));
+      ctx.restore();
+    }
+
+    // combo popup
+    if(comboPopup){
+      const t = comboPopup.timer / comboPopup.life; // 1 -> 0
+      const alpha = Math.min(1, t*2.2);
+      const scale = 1 + (1-t)*0.35;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(canvas.width/2, canvas.height*0.32);
+      ctx.scale(scale, scale);
+      ctx.textAlign = 'center';
+      ctx.font = '800 ' + Math.round(CELL*0.5) + 'px -apple-system, sans-serif';
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'rgba(20,15,30,0.85)';
+      ctx.strokeText(comboPopup.text, 0, 0);
+      ctx.fillStyle = '#ffd166';
+      ctx.fillText(comboPopup.text, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  draw();
+})();
+</script>
+</body>
+</html>
