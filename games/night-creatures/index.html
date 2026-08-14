@@ -610,10 +610,10 @@
     molotovBtn.classList.toggle('unlocked', molotovCount > 0);
   }
 
-  function registerKill(){
+  function registerKill(countsForMolotov){
     killCount++;
     updateHud();
-    if (killCount % 10 === 0 && molotovCount < MOLOTOV_MAX) {
+    if (countsForMolotov !== false && killCount % 10 === 0 && molotovCount < MOLOTOV_MAX) {
       molotovCount++;
       updateMolotovUI();
     }
@@ -1015,8 +1015,8 @@
     });
   }
 
-  function scoreAndRegisterKill(z, px, py){
-    registerKill();
+  function scoreAndRegisterKill(z, px, py, countsForMolotov){
+    registerKill(countsForMolotov);
     if (z.type === 'werewolf') { registerWerewolfKill(); score += 20; }
     else if (z.type === 'mummy') { registerMummyKill(); score += 25; }
     else if (z.type === 'vampire') { registerVampireKill(); score += 30; }
@@ -1044,7 +1044,7 @@
         spawnParticles(pos.px, pos.py, color);
         if (z.hp <= 0) {
           zombies.splice(i, 1);
-          scoreAndRegisterKill(z, pos.px, pos.py);
+          scoreAndRegisterKill(z, pos.px, pos.py, false);
         }
       }
     }
