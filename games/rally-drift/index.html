@@ -261,10 +261,11 @@
       lastTX = nx; lastTY = ny;
       trackPoints.push({ x:nx, y:ny, distance:lastTrackDist, heading:trackHeading });
     }
-    // prune far behind current progress
-    if (progressIdx > 60){
-      trackPoints.splice(0, 40);
-      progressIdx -= 40;
+    // prune far behind current progress — keep a generous history so a distant
+    // loop-back (bridge) can still find its older section for rendering
+    if (progressIdx > 500){
+      trackPoints.splice(0, 300);
+      progressIdx -= 300;
     }
   }
 
@@ -286,8 +287,10 @@
     const needAheadDist = (trackPoints[progressIdx] ? trackPoints[progressIdx].distance : 0) + 2200;
     while (lastTreeDist < needAheadDist && trackPoints.length){
       lastTreeDist += 90 + Math.random()*110;
-      // find nearest track point to attach the tree to
-      let idx = Math.min(trackPoints.length-1, Math.floor(lastTreeDist/STEP));
+      // find nearest track point to attach the tree to (indices shift after pruning,
+      // so derive the offset from the first point's distance rather than assuming index 0 = distance 0)
+      const base = trackPoints[0].distance;
+      let idx = Math.min(trackPoints.length-1, Math.max(0, Math.round((lastTreeDist - base)/STEP)));
       const tp = trackPoints[idx] || trackPoints[trackPoints.length-1];
       const side = Math.random() < 0.5 ? -1 : 1;
       const kind = Math.random() < 0.72 ? 'tree' : 'bush';
@@ -295,10 +298,11 @@
       const px = Math.cos(tp.heading), py = Math.sin(tp.heading);
       treePoints.push({
         distance: lastTreeDist,
+        attachDistance: tp.distance,
         x: tp.x + px*side*off, y: tp.y + py*side*off
       });
     }
-    while (treePoints.length && treePoints[0].distance < lastTreeDist - 2600) treePoints.shift();
+    while (treePoints.length && treePoints[0].distance < lastTreeDist - 10000) treePoints.shift();
   }
 
   function spawnDust(sx, sy, offRoad){
@@ -344,13 +348,20 @@
     }
     roadWidth = currentRoadWidth();
 
-    if (steerLeft && !steerRight) car.angVel -= ANG_ACCEL * dt;
-    else if (steerRight && !steerLeft) car.angVel += ANG_ACCEL * dt;
+    // The faster you go, the less agile the car is — at top speed it turns roughly half
+    // as readily as at minimum speed, so tight curves genuinely force you to ease off.
+    const speedRatio = Math.max(0, Math.min(1, (speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED)));
+    const steerFactor = 1 - 0.58 * speedRatio;
+    const effAngAccel = ANG_ACCEL * steerFactor;
+    const effMaxAngVel = MAX_ANG_VEL * steerFactor;
+
+    if (steerLeft && !steerRight) car.angVel -= effAngAccel * dt;
+    else if (steerRight && !steerLeft) car.angVel += effAngAccel * dt;
     else {
       if (car.angVel > 0) car.angVel = Math.max(0, car.angVel - ANG_FRICTION*dt);
       else car.angVel = Math.min(0, car.angVel + ANG_FRICTION*dt);
     }
-    car.angVel = Math.max(-MAX_ANG_VEL, Math.min(MAX_ANG_VEL, car.angVel));
+    car.angVel = Math.max(-effMaxAngVel, Math.min(effMaxAngVel, car.angVel));
     car.heading += car.angVel * dt;
 
     car.wx += Math.sin(car.heading) * speed * dt;
@@ -437,44 +448,62 @@
 
     if (!trackPoints.length){ return; }
 
-    const lo = Math.max(0, progressIdx-15);
-    const hi = Math.min(trackPoints.length-1, progressIdx+110);
     const rw = roadWidth;
+    const EY = -16; // screen-space elevation offset for bridge decks / their roadside trees
+
+    // Select points by SPATIAL proximity to the car (not by track-index window). This is
+    // what lets an old, far-behind section of track keep rendering as long as it's still
+    // physically close on screen — e.g. the road you're currently driving over on a bridge.
+    const R = Math.hypot(W, H) / 2 + 120;
+    const R2 = R * R;
+    const visIdx = [];
+    for (let idx = 0; idx < trackPoints.length; idx++){
+      const p = trackPoints[idx];
+      const dx = p.x - car.wx, dy = p.y - car.wy;
+      if (dx*dx + dy*dy <= R2) visIdx.push(idx);
+    }
 
     // Detect real self-crossings only: a point counts as "elevated" (part of a bridge)
     // only if some much-later part of the track loops back close to it in space.
-    // Everything else stays flat, with no shadow at all.
     const GAP_MIN = 340;
     const PROX2 = (rw * 1.3) * (rw * 1.3);
-    const bridgeFlag = new Uint8Array(hi - lo + 1);
-    for (let ii = lo; ii <= hi; ii++){
-      const pi = trackPoints[ii];
-      for (let jj = ii + 18; jj <= hi; jj++){
-        const pj = trackPoints[jj];
+    const bridgeFlag = new Uint8Array(trackPoints.length);
+    const bridgeDistSet = new Set();
+    for (let a=0; a<visIdx.length; a++){
+      const ii = visIdx[a], pi = trackPoints[ii];
+      for (let b=a+1; b<visIdx.length; b++){
+        const jj = visIdx[b], pj = trackPoints[jj];
         if (pj.distance - pi.distance < GAP_MIN) continue;
         const dx = pj.x - pi.x, dy = pj.y - pi.y;
-        if (dx*dx + dy*dy < PROX2) bridgeFlag[jj - lo] = 1;
+        if (dx*dx + dy*dy < PROX2){ bridgeFlag[jj] = 1; bridgeDistSet.add(pj.distance); }
       }
     }
-    const isBridgeQuad = i => (bridgeFlag[i - lo] || bridgeFlag[i + 1 - lo]) ? true : false;
+    const isBridgeQuad = i => (bridgeFlag[i] || bridgeFlag[i+1]) ? true : false;
+    const visSet = new Set(visIdx);
 
     function drawRoadQuad(i, elevated){
       const a = trackPoints[i], b = trackPoints[i+1];
       const apx = Math.cos(a.heading), apy = Math.sin(a.heading);
       const bpx = Math.cos(b.heading), bpy = Math.sin(b.heading);
-      const aL = worldToScreen(a.x - apx*rw/2, a.y - apy*rw/2);
-      const aR = worldToScreen(a.x + apx*rw/2, a.y + apy*rw/2);
-      const bL = worldToScreen(b.x - bpx*rw/2, b.y - bpy*rw/2);
-      const bR = worldToScreen(b.x + bpx*rw/2, b.y + bpy*rw/2);
+      let aL = worldToScreen(a.x - apx*rw/2, a.y - apy*rw/2);
+      let aR = worldToScreen(a.x + apx*rw/2, a.y + apy*rw/2);
+      let bL = worldToScreen(b.x - bpx*rw/2, b.y - bpy*rw/2);
+      let bR = worldToScreen(b.x + bpx*rw/2, b.y + bpy*rw/2);
 
       if (elevated){
-        // soft drop shadow, only cast by genuine bridge sections
+        // soft drop shadow, cast at the TRUE (ground) position — this is what lands on
+        // the old road below and sells the "something is passing over it" look
         ctx.beginPath();
-        ctx.moveTo(aL.x, aL.y+8); ctx.lineTo(aR.x, aR.y+8);
-        ctx.lineTo(bR.x, bR.y+8); ctx.lineTo(bL.x, bL.y+8);
+        ctx.moveTo(aL.x, aL.y+6); ctx.lineTo(aR.x, aR.y+6);
+        ctx.lineTo(bR.x, bR.y+6); ctx.lineTo(bL.x, bL.y+6);
         ctx.closePath();
-        ctx.fillStyle = 'rgba(0,0,0,0.32)';
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
         ctx.fill();
+
+        // the deck itself is drawn shifted up on screen — this is what keeps the old
+        // road actually visible underneath instead of being fully painted over
+        aL = { x:aL.x, y:aL.y+EY }; aR = { x:aR.x, y:aR.y+EY };
+        bL = { x:bL.x, y:bL.y+EY }; bR = { x:bR.x, y:bR.y+EY };
       }
 
       ctx.beginPath();
@@ -485,11 +514,17 @@
       ctx.fill();
 
       if (elevated){
-        // light halo around the edges to read as "raised" pavement
+        // light halo around the edges to read as "raised" pavement, plus little support
+        // pillars dropping down to the ground to sell the elevation
         ctx.strokeStyle = 'rgba(255,255,255,0.35)';
         ctx.lineWidth = 2.5;
         ctx.beginPath(); ctx.moveTo(aL.x, aL.y); ctx.lineTo(bL.x, bL.y); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(aR.x, aR.y); ctx.lineTo(bR.x, bR.y); ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(60,50,45,0.6)';
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(aL.x, aL.y); ctx.lineTo(aL.x, aL.y-16); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(aR.x, aR.y); ctx.lineTo(aR.x, aR.y-16); ctx.stroke();
       }
 
       const stripeOn = Math.floor(a.distance / 34) % 2 === 0;
@@ -506,16 +541,22 @@
       }
     }
 
-    // 1) ground-level road (everything that isn't a bridge crossing over something else)
-    for (let i=lo; i<hi; i++){
-      if (!isBridgeQuad(i)) drawRoadQuad(i, false);
+    function drawTree(t, elevated){
+      const s = worldToScreen(t.x, t.y);
+      if (elevated) s.y += EY;
+      if (s.x < -60 || s.x > W+60 || s.y < -60 || s.y > H+60) return;
+      drawScenery(s.x, s.y, t.kind || 'tree', -cameraHeading);
     }
 
-    // trees / bushes
+    // 1) ground-level road (everything that isn't a bridge crossing over something else)
+    for (let i=0; i<trackPoints.length-1; i++){
+      if ((visSet.has(i) || visSet.has(i+1)) && !isBridgeQuad(i)) drawRoadQuad(i, false);
+    }
+
+    // 2) ground-level trees only — trees that belong to an elevated (bridge) stretch are
+    // held back so they don't show through/around the road passing above them
     for (const t of treePoints){
-      const s = worldToScreen(t.x, t.y);
-      if (s.x < -60 || s.x > W+60 || s.y < -60 || s.y > H+60) continue;
-      drawScenery(s.x, s.y, t.kind || 'tree', -cameraHeading);
+      if (!bridgeDistSet.has(t.attachDistance)) drawTree(t, false);
     }
 
     // dust particles (screen space)
@@ -525,15 +566,21 @@
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
     }
 
-    // 2) car — drawn at ground level, so a bridge section drawn afterwards can cover it
+    // 3) car — drawn at ground level, so a bridge section drawn afterwards can cover it
     if (state !== 'idle'){
       drawCar(W*CAR_SCREEN_X_RATIO, H*CAR_SCREEN_Y_RATIO, car.heading - cameraHeading);
     }
 
-    // 3) bridge sections last, on top of the ground road, scenery and the car —
-    // this is what makes the car (and the old road) actually pass underneath.
-    for (let i=lo; i<hi; i++){
-      if (isBridgeQuad(i)) drawRoadQuad(i, true);
+    // 4) bridge sections on top of the ground road, scenery and the car — this is what
+    // makes the car (and the old road) actually pass underneath.
+    for (let i=0; i<trackPoints.length-1; i++){
+      if ((visSet.has(i) || visSet.has(i+1)) && isBridgeQuad(i)) drawRoadQuad(i, true);
+    }
+
+    // 5) the bridge's own roadside trees, drawn last and shifted up with it so they read
+    // as standing alongside the elevated road instead of floating over the old one
+    for (const t of treePoints){
+      if (bridgeDistSet.has(t.attachDistance)) drawTree(t, true);
     }
   }
 
