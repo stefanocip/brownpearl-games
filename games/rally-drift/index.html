@@ -38,15 +38,26 @@
     display: flex; align-items: center; justify-content: center;
   }
 
-  .steer-btn {
-    position: fixed; bottom: 22px; width: 92px; height: 92px; border-radius: 50%;
-    background: rgba(255,255,255,0.14); border: 3px solid rgba(255,255,255,0.45);
-    color: #fff; font-size: 34px; display: flex; align-items: center; justify-content: center;
-    z-index: 15; pointer-events: auto; -webkit-tap-highlight-color: transparent;
+  #wheelZone {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    width: 132px; height: 132px; z-index: 15; touch-action: none;
   }
-  .steer-btn:active, .steer-btn.pressed { background: rgba(255,255,255,0.32); transform: scale(0.94); }
-  #leftBtn { left: 22px; }
-  #rightBtn { right: 22px; }
+  #wheel {
+    width: 100%; height: 100%; border-radius: 50%; position: relative;
+    border: 7px solid rgba(255,255,255,0.55); background: rgba(255,255,255,0.10);
+    transition: transform 0.45s cubic-bezier(.34,1.56,.64,1);
+  }
+  #wheel.dragging { transition: none; }
+  #wheel .spoke {
+    position: absolute; left: 50%; top: 50%; width: 7px; height: 46%;
+    background: rgba(255,255,255,0.5); margin-left: -3.5px;
+    transform-origin: 50% 0%; border-radius: 4px;
+  }
+  #wheel .wheel-hub {
+    position: absolute; left: 50%; top: 50%; width: 32px; height: 32px;
+    margin: -16px 0 0 -16px; border-radius: 50%;
+    background: rgba(255,255,255,0.35); border: 2px solid rgba(255,255,255,0.65);
+  }
 
   #overlay {
     position: fixed; inset: 0; display: flex; flex-direction: column;
@@ -78,12 +89,18 @@
 </div>
 
 <button id="muteBtn">🔊</button>
-<button class="steer-btn" id="leftBtn">◀</button>
-<button class="steer-btn" id="rightBtn">▶</button>
+<div id="wheelZone">
+  <div id="wheel">
+    <div class="spoke" style="transform:rotate(0deg)"></div>
+    <div class="spoke" style="transform:rotate(120deg)"></div>
+    <div class="spoke" style="transform:rotate(240deg)"></div>
+    <div class="wheel-hub"></div>
+  </div>
+</div>
 
 <div id="overlay">
   <h1 id="overlayTitle">RALLY DRIFT</h1>
-  <div class="tagline" id="overlayTagline">Top-down endless rally. Tilt your phone like a pedal — forward to speed up, back toward you to slow down — and use the arrows to steer.</div>
+  <div class="tagline" id="overlayTagline">Top-down endless rally. Tilt your phone like a pedal — forward to speed up, back toward you to slow down — and drag the wheel to steer.</div>
   <div id="resultStats" style="display:none;">
     <div class="bigStat" id="finalScore">0 m</div>
     <div class="stat" id="newBestTag" style="display:none; color:#ffd54a;">🏆 New Best!</div>
@@ -317,14 +334,47 @@
     }
   }
 
-  // ---------- Input ----------
-  function bindHold(el, onDown, onUp){
-    el.addEventListener('pointerdown', e => { e.preventDefault(); onDown(); el.classList.add('pressed'); initAudio(); });
-    ['pointerup','pointercancel','pointerleave'].forEach(ev =>
-      el.addEventListener(ev, () => { onUp(); el.classList.remove('pressed'); }));
+  // ---------- Input: center steering wheel (drag-to-angle, snap-turn like before) ----------
+  const wheelZone = document.getElementById('wheelZone');
+  const wheelEl = document.getElementById('wheel');
+  const WHEEL_MAX_DEG = 100;     // how far the wheel graphic can visually turn
+  const STEER_DEADZONE_DEG = 14; // must exceed this angle to trigger a full arcade turn
+  let wheelDragging = false, wheelPointerId = null;
+
+  function updateWheelFromPoint(clientX, clientY){
+    const rect = wheelZone.getBoundingClientRect();
+    const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+    const dx = clientX - cx, dy = clientY - cy;
+    let deg = Math.atan2(dx, -dy) * 180 / Math.PI; // 0 = up, positive = clockwise (right)
+    deg = Math.max(-WHEEL_MAX_DEG, Math.min(WHEEL_MAX_DEG, deg));
+    wheelEl.style.transform = `rotate(${deg}deg)`;
+    if (deg > STEER_DEADZONE_DEG){ steerRight = true; steerLeft = false; }
+    else if (deg < -STEER_DEADZONE_DEG){ steerLeft = true; steerRight = false; }
+    else { steerLeft = false; steerRight = false; }
   }
-  bindHold(document.getElementById('leftBtn'),  ()=>steerLeft=true,  ()=>steerLeft=false);
-  bindHold(document.getElementById('rightBtn'), ()=>steerRight=true, ()=>steerRight=false);
+
+  wheelEl.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    initAudio();
+    wheelDragging = true;
+    wheelPointerId = e.pointerId;
+    wheelEl.classList.add('dragging');
+    wheelEl.setPointerCapture(e.pointerId);
+    updateWheelFromPoint(e.clientX, e.clientY);
+  });
+  wheelEl.addEventListener('pointermove', e => {
+    if (!wheelDragging || e.pointerId !== wheelPointerId) return;
+    updateWheelFromPoint(e.clientX, e.clientY);
+  });
+  function releaseWheel(e){
+    if (e && e.pointerId !== wheelPointerId) return;
+    wheelDragging = false;
+    wheelEl.classList.remove('dragging');
+    wheelEl.style.transform = 'rotate(0deg)'; // spring back to center — CSS transition animates it
+    steerLeft = false; steerRight = false;
+  }
+  wheelEl.addEventListener('pointerup', releaseWheel);
+  wheelEl.addEventListener('pointercancel', releaseWheel);
 
   window.addEventListener('keydown', e => {
     if (e.key === 'ArrowLeft' || e.key === 'a') steerLeft = true;
