@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Rally Drift — Endless Top-Down Racer</title>
+<style>
+  * {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: none;
+  }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: #1a2e1a;
+    touch-action: none; -webkit-user-select: none; user-select: none;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    overscroll-behavior: none;
+  }
+  #gameCanvas { display: block; background: #3a6b3a; touch-action: none; }
+
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 14px 16px; pointer-events: none; color: #fff;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    z-index: 5;
+  }
+  #hud .score-block { font-size: 26px; font-weight: 800; letter-spacing: 1px; }
+  #hud .sub { font-size: 12px; font-weight: 500; opacity: 0.85; margin-top: 2px; }
+  #hud .best-block { text-align: right; font-size: 13px; font-weight: 600; opacity: 0.9; }
+
+  #muteBtn {
+    position: fixed; top: 14px; right: 14px; width: 38px; height: 38px;
+    border-radius: 50%; border: none; background: rgba(0,0,0,0.35);
+    color: #fff; font-size: 17px; z-index: 20; pointer-events: auto;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .steer-btn {
+    position: fixed; bottom: 22px; width: 92px; height: 92px; border-radius: 50%;
+    background: rgba(255,255,255,0.14); border: 3px solid rgba(255,255,255,0.45);
+    color: #fff; font-size: 34px; display: flex; align-items: center; justify-content: center;
+    z-index: 15; pointer-events: auto; -webkit-tap-highlight-color: transparent;
+  }
+  .steer-btn:active, .steer-btn.pressed { background: rgba(255,255,255,0.32); transform: scale(0.94); }
+  #leftBtn { left: 22px; }
+  #rightBtn { right: 22px; }
+
+  #overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: rgba(10, 20, 10, 0.72); color: #fff; z-index: 30; padding: 24px;
+  }
+  #overlay h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: 1px; }
+  #overlay .tagline { opacity: 0.85; margin-bottom: 22px; font-size: 14px; max-width: 280px; }
+  #overlay .stat { font-size: 15px; margin: 4px 0; opacity: 0.9; }
+  #overlay .bigStat { font-size: 40px; font-weight: 800; margin: 6px 0 14px; }
+  #startBtn {
+    margin-top: 18px; padding: 14px 38px; font-size: 18px; font-weight: 700;
+    background: linear-gradient(180deg,#ff5b3d,#d63a1f); border: none; border-radius: 30px;
+    color: #fff; box-shadow: 0 6px 16px rgba(0,0,0,0.4); letter-spacing: 0.5px;
+  }
+  #overlay.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="hud">
+  <div>
+    <div class="score-block" id="scoreDisplay">0 m</div>
+    <div class="sub" id="speedDisplay">0 km/h</div>
+  </div>
+  <div class="best-block">BEST<br><span id="bestDisplay">0</span> m</div>
+</div>
+
+<button id="muteBtn">🔊</button>
+<button class="steer-btn" id="leftBtn">◀</button>
+<button class="steer-btn" id="rightBtn">▶</button>
+
+<div id="overlay">
+  <h1 id="overlayTitle">RALLY DRIFT</h1>
+  <div class="tagline" id="overlayTagline">Top-down endless rally. Tilt your phone like a pedal — forward to speed up, back toward you to slow down — and use the arrows to steer.</div>
+  <div id="resultStats" style="display:none;">
+    <div class="bigStat" id="finalScore">0 m</div>
+    <div class="stat" id="newBestTag" style="display:none; color:#ffd54a;">🏆 New Best!</div>
+  </div>
+  <button id="startBtn">START</button>
+</div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, DPR;
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W * DPR; canvas.height = H * DPR;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // Kill long-press context menu, text selection, double-tap zoom and any residual browser gestures
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('selectstart', e => e.preventDefault());
+  document.addEventListener('dragstart', e => e.preventDefault());
+  document.addEventListener('gesturestart', e => e.preventDefault());
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) e.preventDefault();
+    lastTouchEnd = now;
+  }, { passive: false });
+  document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+  // ---------- Audio (simple procedural engine hum + crash noise) ----------
+  let actx = null, engineOsc = null, engineGain = null, muted = false;
+  function initAudio(){
+    if (actx) return;
+    try {
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      engineOsc = actx.createOscillator();
+      engineGain = actx.createGain();
+      engineOsc.type = 'sawtooth';
+      engineOsc.frequency.value = 60;
+      engineGain.gain.value = 0;
+      engineOsc.connect(engineGain).connect(actx.destination);
+      engineOsc.start();
+    } catch(e){ actx = null; }
+  }
+  function setEngine(speedRatio, running){
+    if (!actx || muted) return;
+    engineOsc.frequency.setTargetAtTime(55 + speedRatio*140, actx.currentTime, 0.08);
+    engineGain.gain.setTargetAtTime(running ? 0.045 : 0, actx.currentTime, 0.1);
+  }
+  function playCrash(){
+    if (!actx || muted) return;
+    const bufSize = actx.sampleRate * 0.35;
+    const buf = actx.createBuffer(1, bufSize, actx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i=0;i<bufSize;i++) data[i] = (Math.random()*2-1) * (1 - i/bufSize);
+    const src = actx.createBufferSource();
+    src.buffer = buf;
+    const g = actx.createGain(); g.gain.value = 0.35;
+    src.connect(g).connect(actx.destination);
+    src.start();
+  }
+  document.getElementById('muteBtn').addEventListener('click', () => {
+    muted = !muted;
+    document.getElementById('muteBtn').textContent = muted ? '🔇' : '🔊';
+    if (muted && engineGain) engineGain.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+  });
+
+  // ---------- Game state ----------
+  let state = 'idle'; // idle | playing | crashed
+  let distanceTraveled = 0;   // for scoring / difficulty ramp
+  const MIN_SPEED = 130, MAX_SPEED = 460;
+  let speed = 300;
+  let roadWidth = 240;
+  const STEP = 20; // world-unit spacing of generated track points
+
+  // Car lives in free 2D world space; screen position is always fixed.
+  const CAR_SCREEN_X_RATIO = 0.5, CAR_SCREEN_Y_RATIO = 0.74;
+  let car = { wx: 0, wy: 0, heading: 0, angVel: 0 };
+  let cameraHeading = 0;
+  const CAR_HALF_W = 16, CAR_LEN = 50;
+  const MAX_ANG_VEL = 2.1, ANG_ACCEL = 6.5, ANG_FRICTION = 5.5;
+  let steerLeft = false, steerRight = false;
+
+  // Track: array of {x,y,distance,heading}
+  let trackPoints = [];
+  let trackHeading = 0, curveRate = 0, curveTarget = 0, distToNextTarget = 550;
+  let lastTrackDist = 0, lastTX = 0, lastTY = 0;
+  let progressIdx = 0;
+
+  let treePoints = [];      // {distance, side, kind, jitter, x, y, heading}
+  let lastTreeDist = 0;
+
+  let particles = [];       // screen-space dust
+  let bestScore = parseInt(localStorage.getItem('rallyDriftBest') || '0', 10);
+  document.getElementById('bestDisplay').textContent = bestScore;
+
+  // ---------- Tilt-to-speed ("phone as pedal") ----------
+  let tiltAvailable = false, tiltCalibrated = false, neutralBeta = null, tiltSpeedFactor = 0;
+  const TILT_RANGE_DEG = 26; // degrees of tilt (from neutral) mapped to full min->max speed range
+
+  function handleOrientation(e){
+    if (e.beta === null || e.beta === undefined) return;
+    tiltAvailable = true;
+    if (!tiltCalibrated){ neutralBeta = e.beta; tiltCalibrated = true; return; }
+    // tilting the top of the phone forward/away lowers beta -> that should mean "accelerate"
+    const delta = neutralBeta - e.beta;
+    tiltSpeedFactor = Math.max(-1, Math.min(1, delta / TILT_RANGE_DEG));
+  }
+
+  function initTilt(){
+    tiltCalibrated = false; neutralBeta = null; tiltSpeedFactor = 0;
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+      DeviceOrientationEvent.requestPermission().then(res => {
+        if (res === 'granted') window.addEventListener('deviceorientation', handleOrientation);
+      }).catch(() => {});
+    } else if (typeof DeviceOrientationEvent !== 'undefined'){
+      window.addEventListener('deviceorientation', handleOrientation);
+    }
+  }
+
+  function rot(dx, dy, theta){
+    const c = Math.cos(theta), s = Math.sin(theta);
+    return { x: dx*c - dy*s, y: dx*s + dy*c };
+  }
+  function worldToScreen(wx, wy){
+    const d = rot(wx - car.wx, wy - car.wy, -cameraHeading);
+    return { x: W*CAR_SCREEN_X_RATIO + d.x, y: H*CAR_SCREEN_Y_RATIO + d.y };
+  }
+
+  function resetGame(){
+    distanceTraveled = 0;
+    speed = 300;
+    tiltCalibrated = false; neutralBeta = null; tiltSpeedFactor = 0;
+    car.wx = 0; car.wy = 0; car.heading = 0; car.angVel = 0;
+    cameraHeading = 0;
+    trackPoints = []; trackHeading = 0; curveRate = 0; curveTarget = 0; distToNextTarget = 550;
+    lastTrackDist = 0; lastTX = 0; lastTY = 0;
+    progressIdx = 0;
+    treePoints = []; lastTreeDist = 0;
+    particles = [];
+    roadWidth = 240;
+    trackPoints.push({ x:0, y:0, distance:0, heading:0 });
+    generateTrackAhead();
+    generateTreesAhead();
+  }
+
+  function currentRoadWidth(){
+    return Math.max(170, 240 - distanceTraveled * 0.006);
+  }
+
+  function generateTrackAhead(){
+    const needAheadDist = 2200; // keep this much track generated beyond current progress
+    const difficultyCurve = 0.0055 + Math.min(0.0075, (speed-MIN_SPEED)/(MAX_SPEED-MIN_SPEED)*0.0075);
+    const safeCurve = 1 / (roadWidth * 0.85); // caps curvature so the turn radius can't be tighter than the road itself
+    const maxCurve = Math.min(difficultyCurve, safeCurve);
+    while (lastTrackDist < (trackPoints[progressIdx] ? trackPoints[progressIdx].distance : 0) + needAheadDist){
+      distToNextTarget -= STEP;
+      if (distToNextTarget <= 0 && lastTrackDist > 340){
+        curveTarget = (Math.random()*2-1) * maxCurve;
+        distToNextTarget = 150 + Math.random()*170;
+      }
+      curveRate += (curveTarget - curveRate) * 0.11;
+      curveRate = Math.max(-maxCurve, Math.min(maxCurve, curveRate));
+      trackHeading += curveRate * STEP;
+      const nx = lastTX + Math.sin(trackHeading) * STEP;
+      const ny = lastTY - Math.cos(trackHeading) * STEP;
+      lastTrackDist += STEP;
+      lastTX = nx; lastTY = ny;
+      trackPoints.push({ x:nx, y:ny, distance:lastTrackDist, heading:trackHeading });
+    }
+    // prune far behind current progress
+    if (progressIdx > 60){
+      trackPoints.splice(0, 40);
+      progressIdx -= 40;
+    }
+  }
+
+  function updateProgress(){
+    // local search around progressIdx for nearest track point to car
+    let lo = Math.max(0, progressIdx-6), hi = Math.min(trackPoints.length-1, progressIdx+6);
+    let bestI = progressIdx, bestD = Infinity;
+    for (let i=lo;i<=hi;i++){
+      const p = trackPoints[i];
+      const dx = p.x-car.wx, dy = p.y-car.wy;
+      const d = dx*dx+dy*dy;
+      if (d < bestD){ bestD = d; bestI = i; }
+    }
+    progressIdx = bestI;
+    return Math.sqrt(bestD);
+  }
+
+  function generateTreesAhead(){
+    const needAheadDist = (trackPoints[progressIdx] ? trackPoints[progressIdx].distance : 0) + 2200;
+    while (lastTreeDist < needAheadDist && trackPoints.length){
+      lastTreeDist += 90 + Math.random()*110;
+      // find nearest track point to attach the tree to
+      let idx = Math.min(trackPoints.length-1, Math.floor(lastTreeDist/STEP));
+      const tp = trackPoints[idx] || trackPoints[trackPoints.length-1];
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const kind = Math.random() < 0.72 ? 'tree' : 'bush';
+      const off = roadWidth/2 + 30 + Math.random()*40;
+      const px = Math.cos(tp.heading), py = Math.sin(tp.heading);
+      treePoints.push({
+        distance: lastTreeDist,
+        x: tp.x + px*side*off, y: tp.y + py*side*off
+      });
+    }
+    while (treePoints.length && treePoints[0].distance < lastTreeDist - 2600) treePoints.shift();
+  }
+
+  function spawnDust(sx, sy, offRoad){
+    for (let i=0;i<2;i++){
+      particles.push({
+        x: sx + (Math.random()*10-5), y: sy + (Math.random()*6-3),
+        vx: (Math.random()*40-20), vy: 40 + Math.random()*40,
+        life: 0.5 + Math.random()*0.3, maxLife: 0.8,
+        r: 3 + Math.random()*4,
+        color: offRoad ? '150,110,60' : '210,210,210'
+      });
+    }
+  }
+
+  // ---------- Input ----------
+  function bindHold(el, onDown, onUp){
+    el.addEventListener('pointerdown', e => { e.preventDefault(); onDown(); el.classList.add('pressed'); initAudio(); });
+    ['pointerup','pointercancel','pointerleave'].forEach(ev =>
+      el.addEventListener(ev, () => { onUp(); el.classList.remove('pressed'); }));
+  }
+  bindHold(document.getElementById('leftBtn'),  ()=>steerLeft=true,  ()=>steerLeft=false);
+  bindHold(document.getElementById('rightBtn'), ()=>steerRight=true, ()=>steerRight=false);
+
+  window.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'a') steerLeft = true;
+    if (e.key === 'ArrowRight' || e.key === 'd') steerRight = true;
+  });
+  window.addEventListener('keyup', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'a') steerLeft = false;
+    if (e.key === 'ArrowRight' || e.key === 'd') steerRight = false;
+  });
+
+  // ---------- Update ----------
+  function update(dt){
+    if (state !== 'playing') return;
+
+    if (tiltAvailable && tiltCalibrated){
+      const target = MIN_SPEED + (tiltSpeedFactor + 1) / 2 * (MAX_SPEED - MIN_SPEED);
+      speed += (target - speed) * Math.min(1, dt * 4); // smooth out sensor jitter
+    } else {
+      // no tilt sensor (e.g. desktop testing): gentle automatic ramp as fallback
+      speed = Math.min(MAX_SPEED, 300 + distanceTraveled * 0.006);
+    }
+    roadWidth = currentRoadWidth();
+
+    if (steerLeft && !steerRight) car.angVel -= ANG_ACCEL * dt;
+    else if (steerRight && !steerLeft) car.angVel += ANG_ACCEL * dt;
+    else {
+      if (car.angVel > 0) car.angVel = Math.max(0, car.angVel - ANG_FRICTION*dt);
+      else car.angVel = Math.min(0, car.angVel + ANG_FRICTION*dt);
+    }
+    car.angVel = Math.max(-MAX_ANG_VEL, Math.min(MAX_ANG_VEL, car.angVel));
+    car.heading += car.angVel * dt;
+
+    car.wx += Math.sin(car.heading) * speed * dt;
+    car.wy -= Math.cos(car.heading) * speed * dt;
+    distanceTraveled += speed * dt;
+
+    // camera eases toward the car's heading -> road visibly rotates with a little lag
+    let diff = car.heading - cameraHeading;
+    while (diff > Math.PI) diff -= Math.PI*2;
+    while (diff < -Math.PI) diff += Math.PI*2;
+    cameraHeading += diff * Math.min(1, dt * 7.5);
+
+    generateTrackAhead();
+    generateTreesAhead();
+    const offset = updateProgress();
+
+    const rumbleW = 26;
+    let offRoadState = 'ok';
+    if (offset > roadWidth/2 + rumbleW) offRoadState = 'crash';
+    else if (offset > roadWidth/2) offRoadState = 'rumble';
+
+    const carScreenX = W*CAR_SCREEN_X_RATIO, carScreenY = H*CAR_SCREEN_Y_RATIO;
+    if (offRoadState === 'rumble'){
+      speed *= 0.992;
+      if (Math.random() < 0.6) spawnDust(carScreenX + (Math.random()*20-10), carScreenY + CAR_LEN*0.3, true);
+    } else if (Math.random() < 0.5) {
+      spawnDust(carScreenX, carScreenY + CAR_LEN*0.32, false);
+    }
+
+    if (offRoadState === 'crash'){
+      crash();
+      return;
+    }
+
+    for (let i=particles.length-1;i>=0;i--){
+      const p = particles[i];
+      p.x += p.vx*dt; p.y += p.vy*dt; p.life -= dt;
+      if (p.life <= 0) particles.splice(i,1);
+    }
+
+    setEngine((speed-MIN_SPEED)/(MAX_SPEED-MIN_SPEED), true);
+
+    const meters = Math.floor(distanceTraveled/9);
+    document.getElementById('scoreDisplay').textContent = meters + ' m';
+    document.getElementById('speedDisplay').textContent = Math.round(speed*0.42) + ' km/h';
+  }
+
+  function crash(){
+    state = 'crashed';
+    playCrash();
+    setEngine(0,false);
+    const meters = Math.floor(distanceTraveled/9);
+    const isBest = meters > bestScore;
+    if (isBest){ bestScore = meters; localStorage.setItem('rallyDriftBest', bestScore); }
+    document.getElementById('bestDisplay').textContent = bestScore;
+
+    document.getElementById('overlayTitle').textContent = 'CRASHED!';
+    document.getElementById('overlayTagline').style.display = 'none';
+    document.getElementById('resultStats').style.display = 'block';
+    document.getElementById('finalScore').textContent = meters + ' m';
+    document.getElementById('newBestTag').style.display = isBest ? 'block' : 'none';
+    document.getElementById('startBtn').textContent = 'RETRY';
+    document.getElementById('overlay').classList.remove('hidden');
+  }
+
+  // ---------- Draw ----------
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = '#3a6b3a';
+    ctx.fillRect(0,0,W,H);
+
+    // rotated scrolling grass stripes, drawn as bands perpendicular to track direction near the car
+    ctx.save();
+    ctx.translate(W*CAR_SCREEN_X_RATIO, H*CAR_SCREEN_Y_RATIO);
+    ctx.rotate(-cameraHeading);
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    const stripeH = 46;
+    const off = ((car.wy % (stripeH*2)) + stripeH*2) % (stripeH*2);
+    const span = Math.max(W,H)*1.6;
+    for (let y = -span + off; y < span; y += stripeH*2){
+      ctx.fillRect(-span, y - car.wy, span*2, stripeH);
+    }
+    ctx.restore();
+
+    if (!trackPoints.length){ return; }
+
+    const lo = Math.max(0, progressIdx-15);
+    const hi = Math.min(trackPoints.length-1, progressIdx+110);
+    const rw = roadWidth;
+
+    // Detect real self-crossings only: a point counts as "elevated" (part of a bridge)
+    // only if some much-later part of the track loops back close to it in space.
+    // Everything else stays flat, with no shadow at all.
+    const GAP_MIN = 340;
+    const PROX2 = (rw * 1.3) * (rw * 1.3);
+    const bridgeFlag = new Uint8Array(hi - lo + 1);
+    for (let ii = lo; ii <= hi; ii++){
+      const pi = trackPoints[ii];
+      for (let jj = ii + 18; jj <= hi; jj++){
+        const pj = trackPoints[jj];
+        if (pj.distance - pi.distance < GAP_MIN) continue;
+        const dx = pj.x - pi.x, dy = pj.y - pi.y;
+        if (dx*dx + dy*dy < PROX2) bridgeFlag[jj - lo] = 1;
+      }
+    }
+    const isBridgeQuad = i => (bridgeFlag[i - lo] || bridgeFlag[i + 1 - lo]) ? true : false;
+
+    function drawRoadQuad(i, elevated){
+      const a = trackPoints[i], b = trackPoints[i+1];
+      const apx = Math.cos(a.heading), apy = Math.sin(a.heading);
+      const bpx = Math.cos(b.heading), bpy = Math.sin(b.heading);
+      const aL = worldToScreen(a.x - apx*rw/2, a.y - apy*rw/2);
+      const aR = worldToScreen(a.x + apx*rw/2, a.y + apy*rw/2);
+      const bL = worldToScreen(b.x - bpx*rw/2, b.y - bpy*rw/2);
+      const bR = worldToScreen(b.x + bpx*rw/2, b.y + bpy*rw/2);
+
+      if (elevated){
+        // soft drop shadow, only cast by genuine bridge sections
+        ctx.beginPath();
+        ctx.moveTo(aL.x, aL.y+8); ctx.lineTo(aR.x, aR.y+8);
+        ctx.lineTo(bR.x, bR.y+8); ctx.lineTo(bL.x, bL.y+8);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0,0,0,0.32)';
+        ctx.fill();
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(aL.x, aL.y); ctx.lineTo(aR.x, aR.y);
+      ctx.lineTo(bR.x, bR.y); ctx.lineTo(bL.x, bL.y);
+      ctx.closePath();
+      ctx.fillStyle = '#5b5b5b';
+      ctx.fill();
+
+      if (elevated){
+        // light halo around the edges to read as "raised" pavement
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(aL.x, aL.y); ctx.lineTo(bL.x, bL.y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(aR.x, aR.y); ctx.lineTo(bR.x, bR.y); ctx.stroke();
+      }
+
+      const stripeOn = Math.floor(a.distance / 34) % 2 === 0;
+      ctx.strokeStyle = stripeOn ? '#e6473b' : '#f2f2f2';
+      ctx.lineWidth = 10;
+      ctx.beginPath(); ctx.moveTo(aL.x, aL.y); ctx.lineTo(bL.x, bL.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(aR.x, aR.y); ctx.lineTo(bR.x, bR.y); ctx.stroke();
+
+      if (Math.floor(a.distance / 40) % 2 === 0){
+        const aC = worldToScreen(a.x, a.y), bC = worldToScreen(b.x, b.y);
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(aC.x, aC.y); ctx.lineTo(bC.x, bC.y); ctx.stroke();
+      }
+    }
+
+    // 1) ground-level road (everything that isn't a bridge crossing over something else)
+    for (let i=lo; i<hi; i++){
+      if (!isBridgeQuad(i)) drawRoadQuad(i, false);
+    }
+
+    // trees / bushes
+    for (const t of treePoints){
+      const s = worldToScreen(t.x, t.y);
+      if (s.x < -60 || s.x > W+60 || s.y < -60 || s.y > H+60) continue;
+      drawScenery(s.x, s.y, t.kind || 'tree', -cameraHeading);
+    }
+
+    // dust particles (screen space)
+    for (const p of particles){
+      const a = Math.max(0, p.life / p.maxLife);
+      ctx.fillStyle = `rgba(${p.color},${a*0.55})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+    }
+
+    // 2) car — drawn at ground level, so a bridge section drawn afterwards can cover it
+    if (state !== 'idle'){
+      drawCar(W*CAR_SCREEN_X_RATIO, H*CAR_SCREEN_Y_RATIO, car.heading - cameraHeading);
+    }
+
+    // 3) bridge sections last, on top of the ground road, scenery and the car —
+    // this is what makes the car (and the old road) actually pass underneath.
+    for (let i=lo; i<hi; i++){
+      if (isBridgeQuad(i)) drawRoadQuad(i, true);
+    }
+  }
+
+  function drawScenery(x, y, kind, worldRot){
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.rotate(worldRot);
+    if (kind === 'tree'){
+      ctx.fillStyle = '#4a3222';
+      ctx.fillRect(-3, -4, 6, 14);
+      ctx.fillStyle = '#2f5e2a';
+      ctx.beginPath(); ctx.arc(0, -14, 15, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#376b32';
+      ctx.beginPath(); ctx.arc(-6, -9, 10, 0, Math.PI*2); ctx.fill();
+    } else {
+      ctx.fillStyle = '#2f5e2a';
+      ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#3f7a38';
+      ctx.beginPath(); ctx.arc(-5, 2, 6, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawCar(x, y, angle){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(2, 6, CAR_HALF_W+3, CAR_LEN/2+2, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    const grad = ctx.createLinearGradient(0,-CAR_LEN/2,0,CAR_LEN/2);
+    grad.addColorStop(0, '#ff6a3d');
+    grad.addColorStop(1, '#c93f1e');
+    ctx.fillStyle = grad;
+    roundRect(-CAR_HALF_W, -CAR_LEN/2, CAR_HALF_W*2, CAR_LEN, 8);
+    ctx.fill();
+
+    ctx.fillStyle = '#1c2733';
+    roundRect(-CAR_HALF_W+4, -6, CAR_HALF_W*2-8, 20, 4);
+    ctx.fill();
+
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(-3, -CAR_LEN/2+2, 6, CAR_LEN-4);
+
+    ctx.fillStyle = '#ffe9a8';
+    ctx.fillRect(-CAR_HALF_W+1, -CAR_LEN/2+1, 5, 5);
+    ctx.fillRect(CAR_HALF_W-6, -CAR_LEN/2+1, 5, 5);
+
+    ctx.fillStyle = '#161616';
+    ctx.fillRect(-CAR_HALF_W-3, -CAR_LEN/2+4, 5, 12);
+    ctx.fillRect(CAR_HALF_W-2, -CAR_LEN/2+4, 5, 12);
+    ctx.fillRect(-CAR_HALF_W-3, CAR_LEN/2-16, 5, 12);
+    ctx.fillRect(CAR_HALF_W-2, CAR_LEN/2-16, 5, 12);
+
+    ctx.restore();
+  }
+
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  // ---------- Loop ----------
+  let lastTs = null;
+  function loop(ts){
+    if (lastTs == null) lastTs = ts;
+    let dt = (ts - lastTs) / 1000;
+    dt = Math.min(dt, 0.033);
+    lastTs = ts;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  document.getElementById('startBtn').addEventListener('click', () => {
+    initAudio();
+    initTilt();
+    resetGame();
+    state = 'playing';
+    document.getElementById('overlay').classList.add('hidden');
+  });
+
+  resetGame();
+  draw();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
