@@ -348,18 +348,19 @@
     }
     roadWidth = currentRoadWidth();
 
-    // The faster you go, the less agile the car is — at top speed it turns roughly half
-    // as readily as at minimum speed, so tight curves genuinely force you to ease off.
+    // The faster you go, the less agile the car is — at top speed it barely turns and is
+    // slow to straighten out again, so tight curves genuinely force you to ease off.
     const speedRatio = Math.max(0, Math.min(1, (speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED)));
-    const steerFactor = 1 - 0.58 * speedRatio;
+    const steerFactor = 1 - 0.76 * speedRatio;
     const effAngAccel = ANG_ACCEL * steerFactor;
     const effMaxAngVel = MAX_ANG_VEL * steerFactor;
+    const effFriction = ANG_FRICTION * (1 - 0.4 * speedRatio);
 
     if (steerLeft && !steerRight) car.angVel -= effAngAccel * dt;
     else if (steerRight && !steerLeft) car.angVel += effAngAccel * dt;
     else {
-      if (car.angVel > 0) car.angVel = Math.max(0, car.angVel - ANG_FRICTION*dt);
-      else car.angVel = Math.min(0, car.angVel + ANG_FRICTION*dt);
+      if (car.angVel > 0) car.angVel = Math.max(0, car.angVel - effFriction*dt);
+      else car.angVel = Math.min(0, car.angVel + effFriction*dt);
     }
     car.angVel = Math.max(-effMaxAngVel, Math.min(effMaxAngVel, car.angVel));
     car.heading += car.angVel * dt;
@@ -378,7 +379,8 @@
     generateTreesAhead();
     const offset = updateProgress();
 
-    const rumbleW = 26;
+    // less forgiving off-road buffer at high speed — mistakes are punished harder
+    const rumbleW = 26 - 14 * speedRatio;
     let offRoadState = 'ok';
     if (offset > roadWidth/2 + rumbleW) offRoadState = 'crash';
     else if (offset > roadWidth/2) offRoadState = 'rumble';
