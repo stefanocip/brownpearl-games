@@ -32,31 +32,71 @@
   #hud .best-block { text-align: right; font-size: 13px; font-weight: 600; opacity: 0.9; }
 
   #muteBtn {
-    position: fixed; top: 14px; right: 14px; width: 38px; height: 38px;
+    position: fixed; top: 62px; right: 14px; width: 34px; height: 34px;
     border-radius: 50%; border: none; background: rgba(0,0,0,0.35);
-    color: #fff; font-size: 17px; z-index: 20; pointer-events: auto;
+    color: #fff; font-size: 15px; z-index: 20; pointer-events: auto;
     display: flex; align-items: center; justify-content: center;
   }
 
-  #wheelZone {
-    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
-    width: 132px; height: 132px; z-index: 15; touch-action: none;
+  #steerPad {
+    position: fixed; bottom: 22px; left: 18px; z-index: 15;
+    display: flex; gap: 8px;
   }
-  #wheel {
-    width: 100%; height: 100%; border-radius: 50%; position: relative;
-    border: 7px solid rgba(255,255,255,0.55); background: rgba(255,255,255,0.10);
-    transition: transform 0.45s cubic-bezier(.34,1.56,.64,1);
+  #steerPad.pad-right { left: auto; right: 18px; }
+  .steer-btn {
+    width: 72px; height: 92px; border-radius: 16px;
+    background: rgba(255,255,255,0.14); border: 3px solid rgba(255,255,255,0.45);
+    color: #fff; font-size: 30px; display: flex; align-items: center; justify-content: center;
+    z-index: 15; pointer-events: auto; -webkit-tap-highlight-color: transparent;
   }
-  #wheel.dragging { transition: none; }
-  #wheel .spoke {
-    position: absolute; left: 50%; top: 50%; width: 7px; height: 46%;
-    background: rgba(255,255,255,0.5); margin-left: -3.5px;
-    transform-origin: 50% 0%; border-radius: 4px;
+  .steer-btn:active, .steer-btn.pressed { background: rgba(255,255,255,0.32); transform: scale(0.94); }
+
+  #pedalBtn {
+    position: fixed; bottom: 26px; right: 18px; width: 78px; height: 118px;
+    border-radius: 16px; border: 3px solid rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.14); color: #fff; font-weight: 800; font-size: 15px;
+    letter-spacing: 1px; z-index: 15; pointer-events: auto;
+    -webkit-tap-highlight-color: transparent;
   }
-  #wheel .wheel-hub {
-    position: absolute; left: 50%; top: 50%; width: 32px; height: 32px;
-    margin: -16px 0 0 -16px; border-radius: 50%;
-    background: rgba(255,255,255,0.35); border: 2px solid rgba(255,255,255,0.65);
+  #pedalBtn.pressed {
+    background: linear-gradient(180deg,#ff8a3d,#e8452a);
+    border-color: rgba(255,255,255,0.8); transform: scale(0.96);
+  }
+  #pedalBtn.pedal-left { left: 18px; right: auto; }
+
+  #speedBar {
+    position: fixed; top: 106px; right: 16px; width: 12px; height: 100px; z-index: 15;
+    border-radius: 7px; border: 2px solid rgba(255,255,255,0.4);
+    background: rgba(0,0,0,0.35); overflow: hidden;
+  }
+  #speedBarFill {
+    position: absolute; bottom: 0; left: 0; width: 100%; height: 0%;
+    background: hsl(130,85%,50%); border-radius: 5px 5px 0 0;
+  }
+
+  #fuelBar {
+    position: fixed; top: 106px; left: 16px; width: 12px; height: 100px; z-index: 15;
+    border-radius: 7px; border: 2px solid rgba(255,255,255,0.4);
+    background: rgba(0,0,0,0.35); overflow: hidden;
+  }
+  #fuelBarFill {
+    position: absolute; bottom: 0; left: 0; width: 100%; height: 100%;
+    background: #ffb020; border-radius: 5px 5px 0 0; transition: background 0.3s;
+  }
+  #fuelBar.critical #fuelBarFill { animation: fuelBlink 0.6s infinite; }
+  @keyframes fuelBlink { 0%,100% { background:#ff3b30; } 50% { background:#ffb020; } }
+
+  #sideToggle {
+    display: flex; align-items: center; gap: 8px; margin-top: 4px; margin-bottom: 6px;
+  }
+  #sideToggle .sideLabel { font-size: 12px; opacity: 0.75; letter-spacing: 1px; }
+  #sideToggle .sideBtn {
+    padding: 7px 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.5px;
+    border-radius: 16px; border: 2px solid rgba(255,255,255,0.4);
+    background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.75);
+  }
+  #sideToggle .sideBtn.active {
+    background: rgba(255,255,255,0.85); color: #1a2e1a; border-color: rgba(255,255,255,0.85);
   }
 
   #overlay {
@@ -89,21 +129,25 @@
 </div>
 
 <button id="muteBtn">🔊</button>
-<div id="wheelZone">
-  <div id="wheel">
-    <div class="spoke" style="transform:rotate(0deg)"></div>
-    <div class="spoke" style="transform:rotate(120deg)"></div>
-    <div class="spoke" style="transform:rotate(240deg)"></div>
-    <div class="wheel-hub"></div>
-  </div>
+<div id="steerPad">
+  <button class="steer-btn" id="leftBtn">◀</button>
+  <button class="steer-btn" id="rightBtn">▶</button>
 </div>
+<button id="pedalBtn">GAS</button>
+<div id="speedBar"><div id="speedBarFill"></div></div>
+<div id="fuelBar"><div id="fuelBarFill"></div></div>
 
 <div id="overlay">
   <h1 id="overlayTitle">RALLY DRIFT</h1>
-  <div class="tagline" id="overlayTagline">Top-down endless rally. Tilt your phone like a pedal — forward to speed up, back toward you to slow down — and drag the wheel to steer.</div>
+  <div class="tagline" id="overlayTagline">Top-down endless rally. Hold GAS with one thumb, steer with the other — the arrows are together on one side so a single thumb can reach both.</div>
   <div id="resultStats" style="display:none;">
     <div class="bigStat" id="finalScore">0 m</div>
     <div class="stat" id="newBestTag" style="display:none; color:#ffd54a;">🏆 New Best!</div>
+  </div>
+  <div id="sideToggle">
+    <span class="sideLabel">GAS:</span>
+    <button class="sideBtn" data-side="left">LEFT</button>
+    <button class="sideBtn" data-side="right">RIGHT</button>
   </div>
   <button id="startBtn">START</button>
 </div>
@@ -140,7 +184,10 @@
   // ---------- Audio (simple procedural engine hum + crash noise) ----------
   let actx = null, engineOsc = null, engineGain = null, muted = false;
   function initAudio(){
-    if (actx) return;
+    if (actx){
+      if (actx.state === 'suspended') actx.resume().catch(()=>{});
+      return;
+    }
     try {
       actx = new (window.AudioContext || window.webkitAudioContext)();
       engineOsc = actx.createOscillator();
@@ -150,6 +197,7 @@
       engineGain.gain.value = 0;
       engineOsc.connect(engineGain).connect(actx.destination);
       engineOsc.start();
+      if (actx.state === 'suspended') actx.resume().catch(()=>{});
     } catch(e){ actx = null; }
   }
   function setEngine(speedRatio, running){
@@ -168,6 +216,19 @@
     const g = actx.createGain(); g.gain.value = 0.35;
     src.connect(g).connect(actx.destination);
     src.start();
+  }
+  function playRefuel(){
+    if (!actx || muted) return;
+    [660, 880].forEach((freq, i) => {
+      const osc = actx.createOscillator(), g = actx.createGain();
+      osc.type = 'sine'; osc.frequency.value = freq;
+      const t0 = actx.currentTime + i*0.08;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.25, t0+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+0.18);
+      osc.connect(g).connect(actx.destination);
+      osc.start(t0); osc.stop(t0+0.2);
+    });
   }
   document.getElementById('muteBtn').addEventListener('click', () => {
     muted = !muted;
@@ -189,7 +250,6 @@
   let cameraHeading = 0;
   const CAR_HALF_W = 16, CAR_LEN = 50;
   const MAX_ANG_VEL = 2.1, ANG_ACCEL = 6.5, ANG_FRICTION = 5.5;
-  let steerLeft = false, steerRight = false;
 
   // Track: array of {x,y,distance,heading}
   let trackPoints = [];
@@ -200,33 +260,17 @@
   let treePoints = [];      // {distance, side, kind, jitter, x, y, heading}
   let lastTreeDist = 0;
 
+  let fuelCans = [];        // {distance, x, y}
+  let lastFuelDist = 0;
+  let fuel = 100;
+  const FUEL_MAX = 100, FUEL_REFILL = 38, FUEL_PICKUP_R = 42;
+
   let particles = [];       // screen-space dust
   let bestScore = parseInt(localStorage.getItem('rallyDriftBest') || '0', 10);
   document.getElementById('bestDisplay').textContent = bestScore;
 
-  // ---------- Tilt-to-speed ("phone as pedal") ----------
-  let tiltAvailable = false, tiltCalibrated = false, neutralBeta = null, tiltSpeedFactor = 0;
-  const TILT_RANGE_DEG = 26; // degrees of tilt (from neutral) mapped to full min->max speed range
-
-  function handleOrientation(e){
-    if (e.beta === null || e.beta === undefined) return;
-    tiltAvailable = true;
-    if (!tiltCalibrated){ neutralBeta = e.beta; tiltCalibrated = true; return; }
-    // tilting the top of the phone forward/away lowers beta -> that should mean "accelerate"
-    const delta = neutralBeta - e.beta;
-    tiltSpeedFactor = Math.max(-1, Math.min(1, delta / TILT_RANGE_DEG));
-  }
-
-  function initTilt(){
-    tiltCalibrated = false; neutralBeta = null; tiltSpeedFactor = 0;
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
-      DeviceOrientationEvent.requestPermission().then(res => {
-        if (res === 'granted') window.addEventListener('deviceorientation', handleOrientation);
-      }).catch(() => {});
-    } else if (typeof DeviceOrientationEvent !== 'undefined'){
-      window.addEventListener('deviceorientation', handleOrientation);
-    }
-  }
+  // ---------- Pedal-to-speed: held = accelerate toward max, released = ease toward min ----------
+  let pedalHeld = false;
 
   function rot(dx, dy, theta){
     const c = Math.cos(theta), s = Math.sin(theta);
@@ -240,18 +284,21 @@
   function resetGame(){
     distanceTraveled = 0;
     speed = 300;
-    tiltCalibrated = false; neutralBeta = null; tiltSpeedFactor = 0;
+    pedalHeld = false;
+    fuel = FUEL_MAX;
     car.wx = 0; car.wy = 0; car.heading = 0; car.angVel = 0;
     cameraHeading = 0;
     trackPoints = []; trackHeading = 0; curveRate = 0; curveTarget = 0; distToNextTarget = 550;
     lastTrackDist = 0; lastTX = 0; lastTY = 0;
     progressIdx = 0;
     treePoints = []; lastTreeDist = 0;
+    fuelCans = []; lastFuelDist = 500; // no can right at the start line
     particles = [];
     roadWidth = 240;
     trackPoints.push({ x:0, y:0, distance:0, heading:0 });
     generateTrackAhead();
     generateTreesAhead();
+    generateFuelCansAhead();
   }
 
   function currentRoadWidth(){
@@ -269,20 +316,42 @@
         curveTarget = (Math.random()*2-1) * maxCurve;
         distToNextTarget = 150 + Math.random()*170;
       }
+      const headingBeforeStep = trackHeading; // heading at the start of this iteration
       curveRate += (curveTarget - curveRate) * 0.11;
       curveRate = Math.max(-maxCurve, Math.min(maxCurve, curveRate));
-      trackHeading += curveRate * STEP;
-      const nx = lastTX + Math.sin(trackHeading) * STEP;
-      const ny = lastTY - Math.cos(trackHeading) * STEP;
+      trackHeading = headingBeforeStep + curveRate * STEP;
+      let nx = lastTX + Math.sin(trackHeading) * STEP;
+      let ny = lastTY - Math.cos(trackHeading) * STEP;
+
+      // Actively avoid self-crossing: if this new point would land too close to a much
+      // older stretch of the same track, steer hard away from it and retry once. This
+      // stops tornanti from ever looping back onto themselves, instead of trying to
+      // patch it up visually afterwards.
+      const SAFE_GAP = 750, SAFE_DIST2 = (roadWidth * 1.15) * (roadWidth * 1.15);
+      let tooClose = false;
+      for (let k = 0; k < trackPoints.length; k++){
+        const op = trackPoints[k];
+        if (lastTrackDist + STEP - op.distance < SAFE_GAP) continue;
+        const ddx = nx - op.x, ddy = ny - op.y;
+        if (ddx*ddx + ddy*ddy < SAFE_DIST2){ tooClose = true; break; }
+      }
+      if (tooClose){
+        curveTarget = -Math.sign(curveRate || 1) * maxCurve;
+        curveRate = curveTarget; // snap hard the other way, no easing delay
+        trackHeading = headingBeforeStep + curveRate * STEP;
+        nx = lastTX + Math.sin(trackHeading) * STEP;
+        ny = lastTY - Math.cos(trackHeading) * STEP;
+        distToNextTarget = 200 + Math.random()*180; // hold this new direction for a bit
+      }
+
       lastTrackDist += STEP;
       lastTX = nx; lastTY = ny;
       trackPoints.push({ x:nx, y:ny, distance:lastTrackDist, heading:trackHeading });
     }
-    // prune far behind current progress — keep a generous history so a distant
-    // loop-back (bridge) can still find its older section for rendering
-    if (progressIdx > 500){
-      trackPoints.splice(0, 300);
-      progressIdx -= 300;
+    // prune far behind current progress
+    if (progressIdx > 60){
+      trackPoints.splice(0, 40);
+      progressIdx -= 40;
     }
   }
 
@@ -319,7 +388,25 @@
         x: tp.x + px*side*off, y: tp.y + py*side*off
       });
     }
-    while (treePoints.length && treePoints[0].distance < lastTreeDist - 10000) treePoints.shift();
+    while (treePoints.length && treePoints[0].distance < lastTreeDist - 2600) treePoints.shift();
+  }
+
+  function generateFuelCansAhead(){
+    const needAheadDist = (trackPoints[progressIdx] ? trackPoints[progressIdx].distance : 0) + 2200;
+    while (lastFuelDist < needAheadDist && trackPoints.length){
+      lastFuelDist += 420 + Math.random()*260;
+      const base = trackPoints[0].distance;
+      let idx = Math.min(trackPoints.length-1, Math.max(0, Math.round((lastFuelDist - base)/STEP)));
+      const tp = trackPoints[idx] || trackPoints[trackPoints.length-1];
+      // sits inside the road, offset a bit off-center so you have to steer slightly for it
+      const lateral = (Math.random()*2-1) * roadWidth * 0.28;
+      const px = Math.cos(tp.heading), py = Math.sin(tp.heading);
+      fuelCans.push({
+        distance: lastFuelDist,
+        x: tp.x + px*lateral, y: tp.y + py*lateral
+      });
+    }
+    while (fuelCans.length && fuelCans[0].distance < lastFuelDist - 2600) fuelCans.shift();
   }
 
   function spawnDust(sx, sy, offRoad){
@@ -334,73 +421,85 @@
     }
   }
 
-  // ---------- Input: center steering wheel (drag-to-angle, snap-turn like before) ----------
-  const wheelZone = document.getElementById('wheelZone');
-  const wheelEl = document.getElementById('wheel');
-  const WHEEL_MAX_DEG = 100;     // how far the wheel graphic can visually turn
-  const STEER_DEADZONE_DEG = 14; // must exceed this angle to trigger a full arcade turn
-  let wheelDragging = false, wheelPointerId = null;
-
-  function updateWheelFromPoint(clientX, clientY){
-    const rect = wheelZone.getBoundingClientRect();
-    const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
-    const dx = clientX - cx, dy = clientY - cy;
-    let deg = Math.atan2(dx, -dy) * 180 / Math.PI; // 0 = up, positive = clockwise (right)
-    deg = Math.max(-WHEEL_MAX_DEG, Math.min(WHEEL_MAX_DEG, deg));
-    wheelEl.style.transform = `rotate(${deg}deg)`;
-    if (deg > STEER_DEADZONE_DEG){ steerRight = true; steerLeft = false; }
-    else if (deg < -STEER_DEADZONE_DEG){ steerLeft = true; steerRight = false; }
-    else { steerLeft = false; steerRight = false; }
+  function spawnRefuelBurst(sx, sy){
+    for (let i=0;i<14;i++){
+      const ang = Math.random()*Math.PI*2, spd = 60 + Math.random()*90;
+      particles.push({
+        x: sx, y: sy,
+        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 30,
+        life: 0.4 + Math.random()*0.3, maxLife: 0.7,
+        r: 2 + Math.random()*3,
+        color: Math.random() < 0.5 ? '255,176,32' : '120,230,120'
+      });
+    }
   }
 
-  wheelEl.addEventListener('pointerdown', e => {
-    e.preventDefault();
-    initAudio();
-    wheelDragging = true;
-    wheelPointerId = e.pointerId;
-    wheelEl.classList.add('dragging');
-    wheelEl.setPointerCapture(e.pointerId);
-    updateWheelFromPoint(e.clientX, e.clientY);
-  });
-  wheelEl.addEventListener('pointermove', e => {
-    if (!wheelDragging || e.pointerId !== wheelPointerId) return;
-    updateWheelFromPoint(e.clientX, e.clientY);
-  });
-  function releaseWheel(e){
-    if (e && e.pointerId !== wheelPointerId) return;
-    wheelDragging = false;
-    wheelEl.classList.remove('dragging');
-    wheelEl.style.transform = 'rotate(0deg)'; // spring back to center — CSS transition animates it
-    steerLeft = false; steerRight = false;
+  // ---------- Input: left/right steer buttons ----------
+  let steerLeft = false, steerRight = false;
+  function bindHold(el, onDown, onUp){
+    el.addEventListener('pointerdown', e => { e.preventDefault(); onDown(); el.classList.add('pressed'); initAudio(); });
+    ['pointerup','pointercancel','pointerleave'].forEach(ev =>
+      el.addEventListener(ev, () => { onUp(); el.classList.remove('pressed'); }));
   }
-  wheelEl.addEventListener('pointerup', releaseWheel);
-  wheelEl.addEventListener('pointercancel', releaseWheel);
+  bindHold(document.getElementById('leftBtn'),  ()=>steerLeft=true,  ()=>steerLeft=false);
+  bindHold(document.getElementById('rightBtn'), ()=>steerRight=true, ()=>steerRight=false);
 
+  // ---------- Input: gas pedal (held = accelerate, released = coast down) ----------
+  const pedalBtn = document.getElementById('pedalBtn');
+  const speedBarFillEl = document.getElementById('speedBarFill');
+  const fuelBarEl = document.getElementById('fuelBar');
+  const fuelBarFillEl = document.getElementById('fuelBarFill');
+
+  pedalBtn.addEventListener('pointerdown', e => {
+    e.preventDefault(); initAudio();
+    pedalHeld = true; pedalBtn.classList.add('pressed');
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(ev =>
+    pedalBtn.addEventListener(ev, () => { pedalHeld = false; pedalBtn.classList.remove('pressed'); }));
+
+  // ---------- Gas side (steer pad always sits on the opposite side) ----------
+  const steerPadEl = document.getElementById('steerPad');
+  let pedalSide = localStorage.getItem('rallyDriftPedalSide') || 'left';
+  function applyPedalSide(){
+    pedalBtn.classList.toggle('pedal-left', pedalSide === 'left');
+    steerPadEl.classList.toggle('pad-right', pedalSide === 'left'); // steer pad on the other side
+    document.querySelectorAll('.sideBtn').forEach(b => b.classList.toggle('active', b.dataset.side === pedalSide));
+  }
+  applyPedalSide();
+  document.querySelectorAll('.sideBtn').forEach(b => {
+    b.addEventListener('click', () => {
+      pedalSide = b.dataset.side;
+      localStorage.setItem('rallyDriftPedalSide', pedalSide);
+      applyPedalSide();
+    });
+  });
+
+  // desktop fallback: arrow keys drive the same left/right flags
   window.addEventListener('keydown', e => {
     if (e.key === 'ArrowLeft' || e.key === 'a') steerLeft = true;
     if (e.key === 'ArrowRight' || e.key === 'd') steerRight = true;
+    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') pedalHeld = true;
   });
   window.addEventListener('keyup', e => {
     if (e.key === 'ArrowLeft' || e.key === 'a') steerLeft = false;
     if (e.key === 'ArrowRight' || e.key === 'd') steerRight = false;
+    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') pedalHeld = false;
   });
 
   // ---------- Update ----------
   function update(dt){
     if (state !== 'playing') return;
 
-    if (tiltAvailable && tiltCalibrated){
-      const target = MIN_SPEED + (tiltSpeedFactor + 1) / 2 * (MAX_SPEED - MIN_SPEED);
-      speed += (target - speed) * Math.min(1, dt * 4); // smooth out sensor jitter
-    } else {
-      // no tilt sensor (e.g. desktop testing): gentle automatic ramp as fallback
-      speed = Math.min(MAX_SPEED, 300 + distanceTraveled * 0.006);
-    }
+    const speedTarget = pedalHeld ? MAX_SPEED : MIN_SPEED;
+    const speedEase = pedalHeld ? 2.6 : 1.6; // gas responds quicker than coasting down
+    speed += (speedTarget - speed) * Math.min(1, dt * speedEase);
     roadWidth = currentRoadWidth();
 
     // The faster you go, the less agile the car is — at top speed it barely turns and is
     // slow to straighten out again, so tight curves genuinely force you to ease off.
     const speedRatio = Math.max(0, Math.min(1, (speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED)));
+    speedBarFillEl.style.height = (speedRatio * 100) + '%';
+    speedBarFillEl.style.background = `hsl(${130 * (1 - speedRatio)},85%,50%)`;
     const steerFactor = 1 - 0.76 * speedRatio;
     const effAngAccel = ANG_ACCEL * steerFactor;
     const effMaxAngVel = MAX_ANG_VEL * steerFactor;
@@ -427,7 +526,34 @@
 
     generateTrackAhead();
     generateTreesAhead();
+    generateFuelCansAhead();
     const offset = updateProgress();
+
+    // fuel is spent per distance covered (not per second) — crawling along slowly no
+    // longer lets you "farm" cans for free, since the total cost over a stretch of road
+    // is the same regardless of how long it takes you to cross it. Pushing hard still
+    // costs a bit more per meter, same as real fuel economy.
+    fuel -= (0.020 + speedRatio * 0.014) * (speed * dt);
+    fuel = Math.max(0, fuel);
+    fuelBarFillEl.style.height = fuel + '%';
+    fuelBarEl.classList.toggle('critical', fuel < 20);
+
+    // pick up any fuel can close enough to the car
+    for (let i=fuelCans.length-1; i>=0; i--){
+      const c = fuelCans[i];
+      const ddx = c.x - car.wx, ddy = c.y - car.wy;
+      if (ddx*ddx + ddy*ddy < FUEL_PICKUP_R*FUEL_PICKUP_R){
+        fuel = Math.min(FUEL_MAX, fuel + FUEL_REFILL);
+        spawnRefuelBurst(W*CAR_SCREEN_X_RATIO, H*CAR_SCREEN_Y_RATIO - 20);
+        playRefuel();
+        fuelCans.splice(i, 1);
+      }
+    }
+
+    if (fuel <= 0){
+      outOfFuel();
+      return;
+    }
 
     // less forgiving off-road buffer at high speed — mistakes are punished harder
     const rumbleW = 26 - 14 * speedRatio;
@@ -461,22 +587,28 @@
     document.getElementById('speedDisplay').textContent = Math.round(speed*0.42) + ' km/h';
   }
 
-  function crash(){
+  function endRun(title){
     state = 'crashed';
-    playCrash();
     setEngine(0,false);
     const meters = Math.floor(distanceTraveled/9);
     const isBest = meters > bestScore;
     if (isBest){ bestScore = meters; localStorage.setItem('rallyDriftBest', bestScore); }
     document.getElementById('bestDisplay').textContent = bestScore;
 
-    document.getElementById('overlayTitle').textContent = 'CRASHED!';
+    document.getElementById('overlayTitle').textContent = title;
     document.getElementById('overlayTagline').style.display = 'none';
     document.getElementById('resultStats').style.display = 'block';
     document.getElementById('finalScore').textContent = meters + ' m';
     document.getElementById('newBestTag').style.display = isBest ? 'block' : 'none';
     document.getElementById('startBtn').textContent = 'RETRY';
     document.getElementById('overlay').classList.remove('hidden');
+  }
+  function crash(){
+    playCrash();
+    endRun('CRASHED!');
+  }
+  function outOfFuel(){
+    endRun('OUT OF FUEL!');
   }
 
   // ---------- Draw ----------
@@ -501,62 +633,17 @@
     if (!trackPoints.length){ return; }
 
     const rw = roadWidth;
-    const EY = -16; // screen-space elevation offset for bridge decks / their roadside trees
+    const lo = Math.max(0, progressIdx-15);
+    const hi = Math.min(trackPoints.length-1, progressIdx+110);
 
-    // Select points by SPATIAL proximity to the car (not by track-index window). This is
-    // what lets an old, far-behind section of track keep rendering as long as it's still
-    // physically close on screen — e.g. the road you're currently driving over on a bridge.
-    const R = Math.hypot(W, H) / 2 + 120;
-    const R2 = R * R;
-    const visIdx = [];
-    for (let idx = 0; idx < trackPoints.length; idx++){
-      const p = trackPoints[idx];
-      const dx = p.x - car.wx, dy = p.y - car.wy;
-      if (dx*dx + dy*dy <= R2) visIdx.push(idx);
-    }
-
-    // Detect real self-crossings only: a point counts as "elevated" (part of a bridge)
-    // only if some much-later part of the track loops back close to it in space.
-    const GAP_MIN = 340;
-    const PROX2 = (rw * 1.3) * (rw * 1.3);
-    const bridgeFlag = new Uint8Array(trackPoints.length);
-    const bridgeDistSet = new Set();
-    for (let a=0; a<visIdx.length; a++){
-      const ii = visIdx[a], pi = trackPoints[ii];
-      for (let b=a+1; b<visIdx.length; b++){
-        const jj = visIdx[b], pj = trackPoints[jj];
-        if (pj.distance - pi.distance < GAP_MIN) continue;
-        const dx = pj.x - pi.x, dy = pj.y - pi.y;
-        if (dx*dx + dy*dy < PROX2){ bridgeFlag[jj] = 1; bridgeDistSet.add(pj.distance); }
-      }
-    }
-    const isBridgeQuad = i => (bridgeFlag[i] || bridgeFlag[i+1]) ? true : false;
-    const visSet = new Set(visIdx);
-
-    function drawRoadQuad(i, elevated){
+    function drawRoadQuad(i){
       const a = trackPoints[i], b = trackPoints[i+1];
       const apx = Math.cos(a.heading), apy = Math.sin(a.heading);
       const bpx = Math.cos(b.heading), bpy = Math.sin(b.heading);
-      let aL = worldToScreen(a.x - apx*rw/2, a.y - apy*rw/2);
-      let aR = worldToScreen(a.x + apx*rw/2, a.y + apy*rw/2);
-      let bL = worldToScreen(b.x - bpx*rw/2, b.y - bpy*rw/2);
-      let bR = worldToScreen(b.x + bpx*rw/2, b.y + bpy*rw/2);
-
-      if (elevated){
-        // soft drop shadow, cast at the TRUE (ground) position — this is what lands on
-        // the old road below and sells the "something is passing over it" look
-        ctx.beginPath();
-        ctx.moveTo(aL.x, aL.y+6); ctx.lineTo(aR.x, aR.y+6);
-        ctx.lineTo(bR.x, bR.y+6); ctx.lineTo(bL.x, bL.y+6);
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(0,0,0,0.35)';
-        ctx.fill();
-
-        // the deck itself is drawn shifted up on screen — this is what keeps the old
-        // road actually visible underneath instead of being fully painted over
-        aL = { x:aL.x, y:aL.y+EY }; aR = { x:aR.x, y:aR.y+EY };
-        bL = { x:bL.x, y:bL.y+EY }; bR = { x:bR.x, y:bR.y+EY };
-      }
+      const aL = worldToScreen(a.x - apx*rw/2, a.y - apy*rw/2);
+      const aR = worldToScreen(a.x + apx*rw/2, a.y + apy*rw/2);
+      const bL = worldToScreen(b.x - bpx*rw/2, b.y - bpy*rw/2);
+      const bR = worldToScreen(b.x + bpx*rw/2, b.y + bpy*rw/2);
 
       ctx.beginPath();
       ctx.moveTo(aL.x, aL.y); ctx.lineTo(aR.x, aR.y);
@@ -564,20 +651,6 @@
       ctx.closePath();
       ctx.fillStyle = '#5b5b5b';
       ctx.fill();
-
-      if (elevated){
-        // light halo around the edges to read as "raised" pavement, plus little support
-        // pillars dropping down to the ground to sell the elevation
-        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.moveTo(aL.x, aL.y); ctx.lineTo(bL.x, bL.y); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(aR.x, aR.y); ctx.lineTo(bR.x, bR.y); ctx.stroke();
-
-        ctx.strokeStyle = 'rgba(60,50,45,0.6)';
-        ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.moveTo(aL.x, aL.y); ctx.lineTo(aL.x, aL.y-16); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(aR.x, aR.y); ctx.lineTo(aR.x, aR.y-16); ctx.stroke();
-      }
 
       const stripeOn = Math.floor(a.distance / 34) % 2 === 0;
       ctx.strokeStyle = stripeOn ? '#e6473b' : '#f2f2f2';
@@ -593,22 +666,20 @@
       }
     }
 
-    function drawTree(t, elevated){
+    for (let i=lo; i<hi; i++) drawRoadQuad(i);
+
+    // trees / bushes
+    for (const t of treePoints){
       const s = worldToScreen(t.x, t.y);
-      if (elevated) s.y += EY;
-      if (s.x < -60 || s.x > W+60 || s.y < -60 || s.y > H+60) return;
+      if (s.x < -60 || s.x > W+60 || s.y < -60 || s.y > H+60) continue;
       drawScenery(s.x, s.y, t.kind || 'tree', -cameraHeading);
     }
 
-    // 1) ground-level road (everything that isn't a bridge crossing over something else)
-    for (let i=0; i<trackPoints.length-1; i++){
-      if ((visSet.has(i) || visSet.has(i+1)) && !isBridgeQuad(i)) drawRoadQuad(i, false);
-    }
-
-    // 2) ground-level trees only — trees that belong to an elevated (bridge) stretch are
-    // held back so they don't show through/around the road passing above them
-    for (const t of treePoints){
-      if (!bridgeDistSet.has(t.attachDistance)) drawTree(t, false);
+    // fuel cans
+    for (const c of fuelCans){
+      const s = worldToScreen(c.x, c.y);
+      if (s.x < -40 || s.x > W+40 || s.y < -40 || s.y > H+40) continue;
+      drawFuelCan(s.x, s.y, -cameraHeading);
     }
 
     // dust particles (screen space)
@@ -618,22 +689,32 @@
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
     }
 
-    // 3) car — drawn at ground level, so a bridge section drawn afterwards can cover it
+    // car
     if (state !== 'idle'){
       drawCar(W*CAR_SCREEN_X_RATIO, H*CAR_SCREEN_Y_RATIO, car.heading - cameraHeading);
     }
+  }
 
-    // 4) bridge sections on top of the ground road, scenery and the car — this is what
-    // makes the car (and the old road) actually pass underneath.
-    for (let i=0; i<trackPoints.length-1; i++){
-      if ((visSet.has(i) || visSet.has(i+1)) && isBridgeQuad(i)) drawRoadQuad(i, true);
-    }
-
-    // 5) the bridge's own roadside trees, drawn last and shifted up with it so they read
-    // as standing alongside the elevated road instead of floating over the old one
-    for (const t of treePoints){
-      if (bridgeDistSet.has(t.attachDistance)) drawTree(t, true);
-    }
+  function drawFuelCan(x, y, worldRot){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(worldRot);
+    const pulse = 1 + Math.sin(performance.now()/220) * 0.08;
+    ctx.scale(pulse, pulse);
+    // ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.ellipse(1, 8, 9, 4, 0, 0, Math.PI*2); ctx.fill();
+    // can body
+    ctx.fillStyle = '#e6473b';
+    ctx.fillRect(-8, -9, 16, 17);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect(-8, -1, 16, 4);
+    // cap + handle
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(-3, -13, 6, 5);
+    ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(-5, -9); ctx.lineTo(-5, -15); ctx.lineTo(5, -15); ctx.lineTo(5, -9); ctx.stroke();
+    ctx.restore();
   }
 
   function drawScenery(x, y, kind, worldRot){
@@ -717,7 +798,6 @@
 
   document.getElementById('startBtn').addEventListener('click', () => {
     initAudio();
-    initTilt();
     resetGame();
     state = 'playing';
     document.getElementById('overlay').classList.add('hidden');
