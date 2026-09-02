@@ -239,10 +239,39 @@
   // ---------- Game state ----------
   let state = 'idle'; // idle | playing | crashed
   let distanceTraveled = 0;   // for scoring / difficulty ramp
-  const MIN_SPEED = 130, MAX_SPEED = 460;
+  const MIN_SPEED = 130, MAX_SPEED = 620;
   let speed = 300;
   let roadWidth = 240;
   const STEP = 20; // world-unit spacing of generated track points
+
+  // ---------- Scenery biomes — the route periodically switches between these ----------
+  const BIOMES = {
+    tarmac:  { road:'#5b5b5b', stripeA:'#e6473b', stripeB:'#f2f2f2', bg:'#3a6b3a', bg2:'rgba(0,0,0,0.06)', treeTint:'#2f5e2a', treeTint2:'#376b32', trunk:'#4a3222', curbs:true, dust:'195,195,198', dustRate:0.35, dustSize:1.0 },
+    dusty:   { road:'#c9a15a', stripeA:'#8a5a2b', stripeB:'#f2e2b8', bg:'#d9bd7c', bg2:'rgba(0,0,0,0.05)', treeTint:'#8a8140', treeTint2:'#a69a4f', trunk:'#6b4a26', dust:'216,178,110', dustRate:1, dustSize:1.9 },
+    gravel:  { road:'#cfcac0', stripeA:'#4a4a4a', stripeB:'#ffffff', bg:'#8f9a7c', bg2:'rgba(0,0,0,0.08)', treeTint:'#2e4a34', treeTint2:'#3a5a40', trunk:'#3a352e', dust:'222,222,215', dustRate:0.95, dustSize:1.6 },
+    coastal: { road:'#c7b88f', stripeA:'#1f6fb2', stripeB:'#ffffff', bg:'#2f7fc1', bg2:'rgba(255,255,255,0.08)', sand:'#e8d9a8', sandWidth:64, noTrees:true, dust:'232,222,190', dustRate:0.2, dustSize:0.8 }
+  };
+  const BIOME_NAMES = Object.keys(BIOMES);
+  let biomeName = 'tarmac', nextBiomeChangeDist = 1900;
+  let pendingBiome = null, transitionStartDist = 0;
+  const TRANSITION_LEN = 280; // world units over which colors blend into the new biome
+
+  function hexToRgb(hex){
+    const n = parseInt(hex.slice(1), 16);
+    return [(n>>16)&255, (n>>8)&255, n&255];
+  }
+  function lerpColor(hexA, hexB, t){
+    const a = hexToRgb(hexA), b = hexToRgb(hexB);
+    const r = Math.round(a[0]+(b[0]-a[0])*t);
+    const g = Math.round(a[1]+(b[1]-a[1])*t);
+    const bl = Math.round(a[2]+(b[2]-a[2])*t);
+    return `rgb(${r},${g},${bl})`;
+  }
+  function shadeRGB(rgbStr, factor){
+    const [r,g,b] = rgbStr.split(',').map(Number);
+    const c = v => Math.max(0, Math.min(255, Math.round(v*factor)));
+    return `${c(r)},${c(g)},${c(b)}`;
+  }
 
   // Car lives in free 2D world space; screen position is always fixed.
   const CAR_SCREEN_X_RATIO = 0.5, CAR_SCREEN_Y_RATIO = 0.74;
@@ -254,16 +283,21 @@
   // Track: array of {x,y,distance,heading}
   let trackPoints = [];
   let trackHeading = 0, curveRate = 0, curveTarget = 0, distToNextTarget = 550;
+  let refHeading = 0; // slow-moving baseline — total heading swing from this is capped, so
+                       // the track can bend into at most a U-turn and can never loop back
+                       // far enough to cross itself
   let lastTrackDist = 0, lastTX = 0, lastTY = 0;
   let progressIdx = 0;
-
-  let treePoints = [];      // {distance, side, kind, jitter, x, y, heading}
-  let lastTreeDist = 0;
 
   let fuelCans = [];        // {distance, x, y}
   let lastFuelDist = 0;
   let fuel = 100;
   const FUEL_MAX = 100, FUEL_REFILL = 38, FUEL_PICKUP_R = 42;
+
+  let bumps = [];            // {distance, x, y, heading}
+  let lastBumpDist = 0;
+  let jumpTimer = 0;
+  const JUMP_DURATION = 0.55, BUMP_R = 34, JUMP_SCALE_PEAK = 0.4;
 
   let particles = [];       // screen-space dust
   let bestScore = parseInt(localStorage.getItem('rallyDriftBest') || '0', 10);
@@ -288,17 +322,19 @@
     fuel = FUEL_MAX;
     car.wx = 0; car.wy = 0; car.heading = 0; car.angVel = 0;
     cameraHeading = 0;
-    trackPoints = []; trackHeading = 0; curveRate = 0; curveTarget = 0; distToNextTarget = 550;
+    trackPoints = []; trackHeading = 0; refHeading = 0; curveRate = 0; curveTarget = 0; distToNextTarget = 550;
     lastTrackDist = 0; lastTX = 0; lastTY = 0;
     progressIdx = 0;
-    treePoints = []; lastTreeDist = 0;
     fuelCans = []; lastFuelDist = 500; // no can right at the start line
+    bumps = []; lastBumpDist = 700; jumpTimer = 0; // no bump right at the start line
     particles = [];
     roadWidth = 240;
-    trackPoints.push({ x:0, y:0, distance:0, heading:0 });
+    biomeName = 'tarmac'; nextBiomeChangeDist = 1900 + Math.random()*600;
+    pendingBiome = null; transitionStartDist = 0;
+    trackPoints.push({ x:0, y:0, distance:0, heading:0, biome:biomeName });
     generateTrackAhead();
-    generateTreesAhead();
     generateFuelCansAhead();
+    generateBumpsAhead();
   }
 
   function currentRoadWidth(){
@@ -307,27 +343,57 @@
 
   function generateTrackAhead(){
     const needAheadDist = 2200; // keep this much track generated beyond current progress
-    const difficultyCurve = 0.0055 + Math.min(0.0075, (speed-MIN_SPEED)/(MAX_SPEED-MIN_SPEED)*0.0075);
-    const safeCurve = 1 / (roadWidth * 0.85); // caps curvature so the turn radius can't be tighter than the road itself
+    const difficultyCurve = 0.0035 + Math.min(0.0032, (speed-MIN_SPEED)/(MAX_SPEED-MIN_SPEED)*0.0032);
+    const safeCurve = 1 / (roadWidth * 1.1); // caps curvature so the turn radius can't be tighter than 1.1x the road width
     const maxCurve = Math.min(difficultyCurve, safeCurve);
+    const MAX_SWING = 2.55; // ~146°: how far the track may bend away from refHeading before
+                             // being forced back — well under a full 180° U-turn, so the
+                             // path geometrically cannot loop back on itself
     while (lastTrackDist < (trackPoints[progressIdx] ? trackPoints[progressIdx].distance : 0) + needAheadDist){
       distToNextTarget -= STEP;
       if (distToNextTarget <= 0 && lastTrackDist > 340){
         curveTarget = (Math.random()*2-1) * maxCurve;
         distToNextTarget = 150 + Math.random()*170;
       }
-      const headingBeforeStep = trackHeading; // heading at the start of this iteration
       curveRate += (curveTarget - curveRate) * 0.11;
       curveRate = Math.max(-maxCurve, Math.min(maxCurve, curveRate));
-      trackHeading = headingBeforeStep + curveRate * STEP;
-      let nx = lastTX + Math.sin(trackHeading) * STEP;
-      let ny = lastTY - Math.cos(trackHeading) * STEP;
+      trackHeading += curveRate * STEP;
 
-      // Actively avoid self-crossing: if this new point would land too close to a much
-      // older stretch of the same track, steer hard away from it and retry once. This
-      // stops tornanti from ever looping back onto themselves, instead of trying to
-      // patch it up visually afterwards.
-      const SAFE_GAP = 750, SAFE_DIST2 = (roadWidth * 1.15) * (roadWidth * 1.15);
+      // Hard cap on cumulative swing from a FIXED baseline: once we've bent this far one
+      // way, further turning in that same direction is refused outright — checked every
+      // step, so it can never build up past this by more than a single step's worth.
+      // Crucially, refHeading only snaps to the current heading once the road has come
+      // back close to straight relative to it — it does NOT continuously creep along with
+      // a sustained turn, otherwise a long, gentle multi-phase curve could still wind all
+      // the way around into a full loop even though no single phase looked dangerous.
+      const deviation = trackHeading - refHeading;
+      if (deviation > MAX_SWING && curveRate > 0){
+        curveRate = 0; curveTarget = -maxCurve * 0.5;
+        trackHeading = refHeading + MAX_SWING;
+        distToNextTarget = Math.max(distToNextTarget, 220);
+      } else if (deviation < -MAX_SWING && curveRate < 0){
+        curveRate = 0; curveTarget = maxCurve * 0.5;
+        trackHeading = refHeading - MAX_SWING;
+        distToNextTarget = Math.max(distToNextTarget, 220);
+      } else if (Math.abs(deviation) < 0.35){
+        refHeading = trackHeading; // road is roughly straight again — safe to re-anchor here
+      }
+
+      const nx = lastTX + Math.sin(trackHeading) * STEP;
+      const ny = lastTY - Math.cos(trackHeading) * STEP;
+
+      // Secondary safety net, on top of the MAX_SWING structural bound above: even a
+      // legitimate U-turn brings its two arms fairly close together, and that alone is
+      // enough for a player to cut straight across between them instead of following the
+      // curve. SAFE_GAP is set well beyond how far a single legitimate turn can stretch, so
+      // this only ever fires against a genuinely distant, unrelated section of the route —
+      // and SAFE_DIST is generous (not just "not touching") so the two arms of any turn
+      // stay far enough apart that cutting across isn't possible either.
+      // Crucially this only ever nudges curveTarget, which then eases in at the SAME rate
+      // as any ordinary curve — never an instant snap. An instant snap would leave a sharp,
+      // unsignalled kink in the road (exactly the "road suddenly went perpendicular and
+      // vanished" problem), which is worse than the thing it's trying to prevent.
+      const SAFE_GAP = 1400, SAFE_DIST2 = (roadWidth * 2.4) * (roadWidth * 2.4);
       let tooClose = false;
       for (let k = 0; k < trackPoints.length; k++){
         const op = trackPoints[k];
@@ -335,18 +401,33 @@
         const ddx = nx - op.x, ddy = ny - op.y;
         if (ddx*ddx + ddy*ddy < SAFE_DIST2){ tooClose = true; break; }
       }
+      const fx = nx, fy = ny;
       if (tooClose){
         curveTarget = -Math.sign(curveRate || 1) * maxCurve;
-        curveRate = curveTarget; // snap hard the other way, no easing delay
-        trackHeading = headingBeforeStep + curveRate * STEP;
-        nx = lastTX + Math.sin(trackHeading) * STEP;
-        ny = lastTY - Math.cos(trackHeading) * STEP;
-        distToNextTarget = 200 + Math.random()*180; // hold this new direction for a bit
+        distToNextTarget = Math.max(distToNextTarget, 260);
       }
 
       lastTrackDist += STEP;
-      lastTX = nx; lastTY = ny;
-      trackPoints.push({ x:nx, y:ny, distance:lastTrackDist, heading:trackHeading });
+      lastTX = fx; lastTY = fy;
+
+      // Gradual biome transition: once triggered, blend colors over TRANSITION_LEN units
+      // before actually committing to the new biome, instead of a hard cut the instant
+      // you arrive.
+      if (!pendingBiome && lastTrackDist >= nextBiomeChangeDist){
+        const options = BIOME_NAMES.filter(n => n !== biomeName);
+        pendingBiome = options[Math.floor(Math.random()*options.length)];
+        transitionStartDist = lastTrackDist;
+      }
+      let blend = 0;
+      if (pendingBiome){
+        blend = Math.min(1, (lastTrackDist - transitionStartDist) / TRANSITION_LEN);
+        if (blend >= 1){
+          biomeName = pendingBiome; pendingBiome = null; blend = 0;
+          nextBiomeChangeDist = lastTrackDist + 1900 + Math.random()*1300;
+        }
+      }
+
+      trackPoints.push({ x:fx, y:fy, distance:lastTrackDist, heading:trackHeading, biome:biomeName, nextBiome:pendingBiome, blend:blend });
     }
     // prune far behind current progress
     if (progressIdx > 60){
@@ -356,67 +437,83 @@
   }
 
   function updateProgress(){
-    // local search around progressIdx for nearest track point to car
-    let lo = Math.max(0, progressIdx-6), hi = Math.min(trackPoints.length-1, progressIdx+6);
+    // Prefer LOCAL continuity: search near where progressIdx already was first. This is
+    // what stops the render window from suddenly "teleporting" to a different, unrelated
+    // section of track that happens to pass nearby in space (e.g. a turn elsewhere on the
+    // route) — that jump is what looked like "the road ends and reappears perpendicular",
+    // even though the actual curve you were on was still there and continuous underneath.
+    // Only fall back to scanning the whole array if the local window comes up genuinely
+    // empty-handed (the car is nowhere near where we thought it was).
+    const lo = Math.max(0, progressIdx-10), hi = Math.min(trackPoints.length-1, progressIdx+50);
     let bestI = progressIdx, bestD = Infinity;
-    for (let i=lo;i<=hi;i++){
+    for (let i=lo; i<=hi; i++){
       const p = trackPoints[i];
       const dx = p.x-car.wx, dy = p.y-car.wy;
       const d = dx*dx+dy*dy;
       if (d < bestD){ bestD = d; bestI = i; }
     }
+    const LOCAL_LIMIT2 = (roadWidth*4)*(roadWidth*4);
+    if (bestD > LOCAL_LIMIT2){
+      for (let i=0; i<trackPoints.length; i++){
+        const p = trackPoints[i];
+        const dx = p.x-car.wx, dy = p.y-car.wy;
+        const d = dx*dx+dy*dy;
+        if (d < bestD){ bestD = d; bestI = i; }
+      }
+    }
     progressIdx = bestI;
     return Math.sqrt(bestD);
   }
 
-  function generateTreesAhead(){
-    const needAheadDist = (trackPoints[progressIdx] ? trackPoints[progressIdx].distance : 0) + 2200;
-    while (lastTreeDist < needAheadDist && trackPoints.length){
-      lastTreeDist += 90 + Math.random()*110;
-      // find nearest track point to attach the tree to (indices shift after pruning,
-      // so derive the offset from the first point's distance rather than assuming index 0 = distance 0)
-      const base = trackPoints[0].distance;
-      let idx = Math.min(trackPoints.length-1, Math.max(0, Math.round((lastTreeDist - base)/STEP)));
-      const tp = trackPoints[idx] || trackPoints[trackPoints.length-1];
-      const side = Math.random() < 0.5 ? -1 : 1;
-      const kind = Math.random() < 0.72 ? 'tree' : 'bush';
-      const off = roadWidth/2 + 30 + Math.random()*40;
-      const px = Math.cos(tp.heading), py = Math.sin(tp.heading);
-      treePoints.push({
-        distance: lastTreeDist,
-        attachDistance: tp.distance,
-        x: tp.x + px*side*off, y: tp.y + py*side*off
-      });
+  function trackPointAtDistance(dist){
+    if (!trackPoints.length) return null;
+    if (dist <= trackPoints[0].distance) return trackPoints[0];
+    const last = trackPoints[trackPoints.length-1];
+    if (dist >= last.distance) return last;
+    let lo = 0, hi = trackPoints.length-1;
+    while (lo < hi){
+      const mid = (lo+hi) >> 1;
+      if (trackPoints[mid].distance < dist) lo = mid+1; else hi = mid;
     }
-    while (treePoints.length && treePoints[0].distance < lastTreeDist - 2600) treePoints.shift();
+    return trackPoints[lo];
   }
 
   function generateFuelCansAhead(){
     const needAheadDist = (trackPoints[progressIdx] ? trackPoints[progressIdx].distance : 0) + 2200;
     while (lastFuelDist < needAheadDist && trackPoints.length){
       lastFuelDist += 420 + Math.random()*260;
-      const base = trackPoints[0].distance;
-      let idx = Math.min(trackPoints.length-1, Math.max(0, Math.round((lastFuelDist - base)/STEP)));
-      const tp = trackPoints[idx] || trackPoints[trackPoints.length-1];
+      const tp = trackPointAtDistance(lastFuelDist);
       // sits inside the road, offset a bit off-center so you have to steer slightly for it
       const lateral = (Math.random()*2-1) * roadWidth * 0.28;
       const px = Math.cos(tp.heading), py = Math.sin(tp.heading);
       fuelCans.push({
         distance: lastFuelDist,
+        biome: tp.biome,
         x: tp.x + px*lateral, y: tp.y + py*lateral
       });
     }
-    while (fuelCans.length && fuelCans[0].distance < lastFuelDist - 2600) fuelCans.shift();
+    while (fuelCans.length && fuelCans[0].distance < lastFuelDist - 4200) fuelCans.shift();
   }
 
-  function spawnDust(sx, sy, offRoad){
+  function generateBumpsAhead(){
+    const needAheadDist = (trackPoints[progressIdx] ? trackPoints[progressIdx].distance : 0) + 2200;
+    while (lastBumpDist < needAheadDist && trackPoints.length){
+      lastBumpDist += 1400 + Math.random()*900;
+      const tp = trackPointAtDistance(lastBumpDist);
+      bumps.push({ distance: tp.distance, x: tp.x, y: tp.y, heading: tp.heading, biome: tp.biome });
+    }
+    while (bumps.length && bumps[0].distance < lastBumpDist - 4200) bumps.shift();
+  }
+
+  function spawnDust(sx, sy, offRoad, color, sizeMul){
+    sizeMul = sizeMul || 1;
     for (let i=0;i<2;i++){
       particles.push({
         x: sx + (Math.random()*10-5), y: sy + (Math.random()*6-3),
         vx: (Math.random()*40-20), vy: 40 + Math.random()*40,
         life: 0.5 + Math.random()*0.3, maxLife: 0.8,
-        r: 3 + Math.random()*4,
-        color: offRoad ? '150,110,60' : '210,210,210'
+        r: (3 + Math.random()*4) * sizeMul,
+        color: offRoad ? '150,110,60' : (color || '210,210,210')
       });
     }
   }
@@ -500,12 +597,16 @@
     const speedRatio = Math.max(0, Math.min(1, (speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED)));
     speedBarFillEl.style.height = (speedRatio * 100) + '%';
     speedBarFillEl.style.background = `hsl(${130 * (1 - speedRatio)},85%,50%)`;
-    const steerFactor = 1 - 0.76 * speedRatio;
+    const steerFactor = 1 - 0.5 * speedRatio;
     const effAngAccel = ANG_ACCEL * steerFactor;
     const effMaxAngVel = MAX_ANG_VEL * steerFactor;
-    const effFriction = ANG_FRICTION * (1 - 0.4 * speedRatio);
+    const effFriction = ANG_FRICTION * (1 - 0.25 * speedRatio);
 
-    if (steerLeft && !steerRight) car.angVel -= effAngAccel * dt;
+    if (jumpTimer > 0){
+      // airborne over a bump — no steering input accepted, it just eases straight
+      if (car.angVel > 0) car.angVel = Math.max(0, car.angVel - effFriction*dt);
+      else car.angVel = Math.min(0, car.angVel + effFriction*dt);
+    } else if (steerLeft && !steerRight) car.angVel -= effAngAccel * dt;
     else if (steerRight && !steerLeft) car.angVel += effAngAccel * dt;
     else {
       if (car.angVel > 0) car.angVel = Math.max(0, car.angVel - effFriction*dt);
@@ -525,9 +626,27 @@
     cameraHeading += diff * Math.min(1, dt * 7.5);
 
     generateTrackAhead();
-    generateTreesAhead();
     generateFuelCansAhead();
+    generateBumpsAhead();
     const offset = updateProgress();
+
+    jumpTimer = Math.max(0, jumpTimer - dt);
+    if (jumpTimer <= 0){
+      const carDist = trackPoints[progressIdx] ? trackPoints[progressIdx].distance : null;
+      for (const bmp of bumps){
+        if (bmp.triggered) continue;
+        let hit = carDist !== null && Math.abs(carDist - bmp.distance) < STEP*2;
+        if (!hit){
+          const ddx = bmp.x - car.wx, ddy = bmp.y - car.wy;
+          hit = (ddx*ddx + ddy*ddy) < (roadWidth*0.65) * (roadWidth*0.65);
+        }
+        if (hit){
+          bmp.triggered = true;
+          jumpTimer = JUMP_DURATION;
+          break;
+        }
+      }
+    }
 
     // fuel is spent per distance covered (not per second) — crawling along slowly no
     // longer lets you "farm" cans for free, since the total cost over a stretch of road
@@ -562,11 +681,14 @@
     else if (offset > roadWidth/2) offRoadState = 'rumble';
 
     const carScreenX = W*CAR_SCREEN_X_RATIO, carScreenY = H*CAR_SCREEN_Y_RATIO;
-    if (offRoadState === 'rumble'){
+    const dustBiome = BIOMES[(trackPoints[progressIdx] && trackPoints[progressIdx].biome)] || BIOMES.tarmac;
+    if (jumpTimer > 0){
+      // airborne — no dust while off the ground
+    } else if (offRoadState === 'rumble'){
       speed *= 0.992;
       if (Math.random() < 0.6) spawnDust(carScreenX + (Math.random()*20-10), carScreenY + CAR_LEN*0.3, true);
-    } else if (Math.random() < 0.5) {
-      spawnDust(carScreenX, carScreenY + CAR_LEN*0.32, false);
+    } else if (Math.random() < dustBiome.dustRate) {
+      spawnDust(carScreenX, carScreenY + CAR_LEN*0.32, false, dustBiome.dust, dustBiome.dustSize);
     }
 
     if (offRoadState === 'crash'){
@@ -612,16 +734,36 @@
   }
 
   // ---------- Draw ----------
+  function blendedColors(point){
+    const cur = BIOMES[point.biome] || BIOMES.tarmac;
+    if (!point.nextBiome || !point.blend) return cur;
+    const nxt = BIOMES[point.nextBiome];
+    const t = point.blend;
+    return {
+      road: lerpColor(cur.road, nxt.road, t),
+      stripeA: lerpColor(cur.stripeA, nxt.stripeA, t),
+      stripeB: lerpColor(cur.stripeB, nxt.stripeB, t),
+      bg: lerpColor(cur.bg, nxt.bg, t),
+      bg2: cur.bg2,
+      sand: t > 0.5 ? nxt.sand : cur.sand,
+      sandWidth: t > 0.5 ? nxt.sandWidth : cur.sandWidth,
+      curbs: t > 0.5 ? nxt.curbs : cur.curbs
+    };
+  }
+
   function draw(){
+    const carPoint = trackPoints[progressIdx];
+    const activeColors = carPoint ? blendedColors(carPoint) : BIOMES.tarmac;
+
     ctx.clearRect(0,0,W,H);
-    ctx.fillStyle = '#3a6b3a';
+    ctx.fillStyle = activeColors.bg;
     ctx.fillRect(0,0,W,H);
 
-    // rotated scrolling grass stripes, drawn as bands perpendicular to track direction near the car
+    // rotated scrolling ground stripes, drawn as bands perpendicular to track direction near the car
     ctx.save();
     ctx.translate(W*CAR_SCREEN_X_RATIO, H*CAR_SCREEN_Y_RATIO);
     ctx.rotate(-cameraHeading);
-    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    ctx.fillStyle = activeColors.bg2;
     const stripeH = 46;
     const off = ((car.wy % (stripeH*2)) + stripeH*2) % (stripeH*2);
     const span = Math.max(W,H)*1.6;
@@ -638,6 +780,7 @@
 
     function drawRoadQuad(i){
       const a = trackPoints[i], b = trackPoints[i+1];
+      const biome = blendedColors(a);
       const apx = Math.cos(a.heading), apy = Math.sin(a.heading);
       const bpx = Math.cos(b.heading), bpy = Math.sin(b.heading);
       const aL = worldToScreen(a.x - apx*rw/2, a.y - apy*rw/2);
@@ -645,41 +788,52 @@
       const bL = worldToScreen(b.x - bpx*rw/2, b.y - bpy*rw/2);
       const bR = worldToScreen(b.x + bpx*rw/2, b.y + bpy*rw/2);
 
+      // beach stretch: a sand band hugging both edges of the road, water is the background
+      if (biome.sand){
+        const sw = biome.sandWidth;
+        ctx.fillStyle = biome.sand;
+        for (const side of [-1,1]){
+          const aS = worldToScreen(a.x + apx*side*(rw/2+sw), a.y + apy*side*(rw/2+sw));
+          const aE = worldToScreen(a.x + apx*side*(rw/2), a.y + apy*side*(rw/2));
+          const bS = worldToScreen(b.x + bpx*side*(rw/2+sw), b.y + bpy*side*(rw/2+sw));
+          const bE = worldToScreen(b.x + bpx*side*(rw/2), b.y + bpy*side*(rw/2));
+          ctx.beginPath();
+          ctx.moveTo(aS.x, aS.y); ctx.lineTo(aE.x, aE.y);
+          ctx.lineTo(bE.x, bE.y); ctx.lineTo(bS.x, bS.y);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+
       ctx.beginPath();
       ctx.moveTo(aL.x, aL.y); ctx.lineTo(aR.x, aR.y);
       ctx.lineTo(bR.x, bR.y); ctx.lineTo(bL.x, bL.y);
       ctx.closePath();
-      ctx.fillStyle = '#5b5b5b';
+      ctx.fillStyle = biome.road;
       ctx.fill();
 
-      const stripeOn = Math.floor(a.distance / 34) % 2 === 0;
-      ctx.strokeStyle = stripeOn ? '#e6473b' : '#f2f2f2';
-      ctx.lineWidth = 10;
-      ctx.beginPath(); ctx.moveTo(aL.x, aL.y); ctx.lineTo(bL.x, bL.y); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(aR.x, aR.y); ctx.lineTo(bR.x, bR.y); ctx.stroke();
-
-      if (Math.floor(a.distance / 40) % 2 === 0){
-        const aC = worldToScreen(a.x, a.y), bC = worldToScreen(b.x, b.y);
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        ctx.lineWidth = 5;
-        ctx.beginPath(); ctx.moveTo(aC.x, aC.y); ctx.lineTo(bC.x, bC.y); ctx.stroke();
+      if (biome.curbs){
+        const stripeOn = Math.floor(a.distance / 34) % 2 === 0;
+        ctx.strokeStyle = stripeOn ? biome.stripeA : biome.stripeB;
+        ctx.lineWidth = 10;
+        ctx.beginPath(); ctx.moveTo(aL.x, aL.y); ctx.lineTo(bL.x, bL.y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(aR.x, aR.y); ctx.lineTo(bR.x, bR.y); ctx.stroke();
       }
     }
 
     for (let i=lo; i<hi; i++) drawRoadQuad(i);
 
-    // trees / bushes
-    for (const t of treePoints){
-      const s = worldToScreen(t.x, t.y);
-      if (s.x < -60 || s.x > W+60 || s.y < -60 || s.y > H+60) continue;
-      drawScenery(s.x, s.y, t.kind || 'tree', -cameraHeading);
-    }
-
     // fuel cans
     for (const c of fuelCans){
       const s = worldToScreen(c.x, c.y);
-      if (s.x < -40 || s.x > W+40 || s.y < -40 || s.y > H+40) continue;
+      if (s.x < -120 || s.x > W+120 || s.y < -120 || s.y > H+120) continue;
       drawFuelCan(s.x, s.y, -cameraHeading);
+    }
+
+    // bumps (drawn at road level, before the car so it visually rides over them)
+    for (const bmp of bumps){
+      const s = worldToScreen(bmp.x, bmp.y);
+      if (s.x < -220 || s.x > W+220 || s.y < -220 || s.y > H+220) continue;
+      drawBump(bmp, -cameraHeading);
     }
 
     // dust particles (screen space)
@@ -691,8 +845,56 @@
 
     // car
     if (state !== 'idle'){
-      drawCar(W*CAR_SCREEN_X_RATIO, H*CAR_SCREEN_Y_RATIO, car.heading - cameraHeading);
+      let jumpScale = 1;
+      if (jumpTimer > 0){
+        const t = 1 - jumpTimer / JUMP_DURATION; // 0 -> 1 over the jump
+        jumpScale = 1 + JUMP_SCALE_PEAK * Math.sin(t * Math.PI);
+      }
+      drawCar(W*CAR_SCREEN_X_RATIO, H*CAR_SCREEN_Y_RATIO, car.heading - cameraHeading, jumpScale);
     }
+  }
+
+  function drawBump(bmp, worldRot){
+    const halfW = roadWidth/2 - 7; // stay inset from the road edges, not overflowing onto the shoulder
+    const perpWx = Math.cos(bmp.heading), perpWy = Math.sin(bmp.heading);
+    const L = worldToScreen(bmp.x - perpWx*halfW, bmp.y - perpWy*halfW);
+    const R = worldToScreen(bmp.x + perpWx*halfW, bmp.y + perpWy*halfW);
+    ctx.save();
+    ctx.lineCap = 'butt'; // no rounded overhang past the endpoints
+
+    if (bmp.biome === 'tarmac'){
+      // classic painted speed bump
+      ctx.lineWidth = 14;
+      ctx.strokeStyle = '#222';
+      ctx.beginPath(); ctx.moveTo(L.x, L.y); ctx.lineTo(R.x, R.y); ctx.stroke();
+      ctx.setLineDash([16, 14]);
+      ctx.lineWidth = 10;
+      ctx.strokeStyle = '#f2c531';
+      ctx.beginPath(); ctx.moveTo(L.x, L.y); ctx.lineTo(R.x, R.y); ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      // earth/sand mound in the biome's own ground tone — layered offset strokes fake the
+      // raised 3D shape: dark ground shadow, dark base, mid-tone body, lit crest on top
+      const base = (BIOMES[bmp.biome] && BIOMES[bmp.biome].dust) || '180,150,110';
+
+      ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+      ctx.lineWidth = 20;
+      ctx.beginPath(); ctx.moveTo(L.x, L.y+7); ctx.lineTo(R.x, R.y+7); ctx.stroke();
+
+      ctx.strokeStyle = `rgb(${shadeRGB(base, 0.55)})`;
+      ctx.lineWidth = 22;
+      ctx.beginPath(); ctx.moveTo(L.x, L.y); ctx.lineTo(R.x, R.y); ctx.stroke();
+
+      ctx.strokeStyle = `rgb(${shadeRGB(base, 0.82)})`;
+      ctx.lineWidth = 15;
+      ctx.beginPath(); ctx.moveTo(L.x, L.y-3); ctx.lineTo(R.x, R.y-3); ctx.stroke();
+
+      ctx.strokeStyle = `rgb(${shadeRGB(base, 1.22)})`;
+      ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.moveTo(L.x, L.y-6); ctx.lineTo(R.x, R.y-6); ctx.stroke();
+    }
+
+    ctx.restore();
   }
 
   function drawFuelCan(x, y, worldRot){
@@ -717,30 +919,11 @@
     ctx.restore();
   }
 
-  function drawScenery(x, y, kind, worldRot){
-    ctx.save();
-    ctx.translate(x,y);
-    ctx.rotate(worldRot);
-    if (kind === 'tree'){
-      ctx.fillStyle = '#4a3222';
-      ctx.fillRect(-3, -4, 6, 14);
-      ctx.fillStyle = '#2f5e2a';
-      ctx.beginPath(); ctx.arc(0, -14, 15, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#376b32';
-      ctx.beginPath(); ctx.arc(-6, -9, 10, 0, Math.PI*2); ctx.fill();
-    } else {
-      ctx.fillStyle = '#2f5e2a';
-      ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#3f7a38';
-      ctx.beginPath(); ctx.arc(-5, 2, 6, 0, Math.PI*2); ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  function drawCar(x, y, angle){
+  function drawCar(x, y, angle, scale){
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
+    if (scale && scale !== 1) ctx.scale(scale, scale);
 
     ctx.fillStyle = 'rgba(0,0,0,0.28)';
     ctx.beginPath();
