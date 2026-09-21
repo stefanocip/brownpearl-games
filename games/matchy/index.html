@@ -1,0 +1,2935 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Match-3 Seed Prototype</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.16.0/pixi.min.js"></script>
+<style>
+  :root {
+    --bg: #14171c;
+    --panel: #1c2028;
+    --panel-border: #2b303a;
+    --ink: #e8e6df;
+    --ink-dim: #8b909c;
+    --accent: #ffb454;
+    --mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 48px;
+  }
+  h1 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    margin: 0 0 4px;
+  }
+  .subtitle {
+    color: var(--ink-dim);
+    font-size: 0.82rem;
+    margin-bottom: 20px;
+  }
+  .controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 18px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    padding: 10px 14px;
+    border-radius: 8px;
+  }
+  .controls label {
+    font-size: 0.75rem;
+    color: var(--ink-dim);
+  }
+  .controls input[type="number"] {
+    background: var(--bg);
+    border: 1px solid var(--panel-border);
+    color: var(--ink);
+    font-family: var(--mono);
+    padding: 6px 8px;
+    border-radius: 6px;
+    width: 130px;
+    font-size: 16px; /* mai sotto i 16px: sotto quella soglia iOS zooma automaticamente al tocco e non torna sempre indietro da solo */
+  }
+  button {
+    background: var(--accent);
+    color: #1a1408;
+    border: none;
+    padding: 7px 14px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--sans);
+  }
+  button.secondary {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--panel-border);
+  }
+  button:active { transform: translateY(1px); }
+  #canvas-wrap {
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    overflow: hidden;
+    line-height: 0;
+    background: #0c0e12;
+  }
+  .info-row {
+    display: flex;
+    gap: 24px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 640px;
+  }
+  .info-block {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    min-width: 140px;
+  }
+  .info-block .label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-dim);
+    margin-bottom: 4px;
+  }
+  .info-block .value {
+    font-family: var(--mono);
+    font-size: 0.88rem;
+  }
+  .targets {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .target-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    background: var(--bg);
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--panel-border);
+  }
+  .swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+  .seed-note {
+    color: var(--ink-dim);
+    font-size: 0.72rem;
+    margin-top: 14px;
+    text-align: center;
+    max-width: 480px;
+  }
+  .goal-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 14px;
+    max-width: 640px;
+  }
+  .goal-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .goal-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    font-weight: 600;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    padding: 4px 9px 4px 4px;
+    border-radius: 7px;
+  }
+  .goal-chip.done { opacity: 0.4; }
+  .goal-swatch {
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    display: inline-block;
+  }
+  .goal-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .goal-icon.bombola { background: var(--accent); color: #3a2f10; }
+  .goal-icon.coverage { background: transparent; border: 1.5px solid #e0524f; color: #e0524f; }
+  .goal-icon.star { background: #22d3ee; color: #0b2e33; }
+  .goal-icon.bulb { background: transparent; font-size: 0.9rem; }
+  .goal-chip.moves { background: var(--accent); color: #1a1408; border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>Match-3 &middot; Livelli generati da seed</h1>
+
+<div class="goal-bar">
+  <div class="goal-row" id="goalMoves"></div>
+  <div class="goal-row" id="goalColors"></div>
+  <div class="goal-row" id="goalOthers"></div>
+</div>
+
+<div id="canvas-wrap"></div>
+<div id="resultMessage" style="display:none; font-weight:700; margin-top:12px; font-size:0.95rem;"></div>
+
+<div class="controls">
+  <label for="seedInput">Seed</label>
+  <input type="number" id="seedInput" value="857383928" step="1" />
+  <button id="genBtn">Genera</button>
+  <button id="nextBtn" class="secondary">Livello successivo</button>
+  <button id="randomBtn" class="secondary">Seed casuale</button>
+  <label style="display:flex; align-items:center; gap:5px; margin-left:6px;">
+    <input type="checkbox" id="animToggle" />
+    <span style="font-size:0.75rem; color:var(--ink-dim);">Animazioni (sperimentale, spente di default)</span>
+  </label>
+</div>
+
+<div class="subtitle">Nessun database — ogni livello è deterministico a partire da un numero</div>
+
+<div class="seed-note">
+  Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
+</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 79 (fix: campo seed non zooma piu su mobile al tocco)</div>
+
+<div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
+  <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
+  <pre id="debugLog" style="background:#0c0e12; border:1px solid var(--panel-border); border-radius:8px; padding:10px; font-size:0.72rem; line-height:1.4; max-height:220px; overflow-y:auto; white-space:pre-wrap; word-break:break-word; color:#e0524f; margin:0;"></pre>
+</div>
+
+<script>
+// Cattura errori/console.error in un pannello visibile in pagina, senza
+// bisogno di aprire i DevTools — utile soprattutto su mobile.
+(function() {
+  const logEl = document.getElementById('debugLog');
+  function append(prefix, args) {
+    const line = prefix + ' ' + args.map(a => {
+      if (a instanceof Error) return a.message + '\n' + (a.stack || '');
+      try { return typeof a === 'object' ? JSON.stringify(a) : String(a); } catch (e) { return String(a); }
+    }).join(' ');
+    logEl.textContent += (logEl.textContent ? '\n\n' : '') + '[' + new Date().toLocaleTimeString() + '] ' + line;
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  const origError = console.error;
+  console.error = function(...args) { origError.apply(console, args); append('ERROR', args); };
+  window.addEventListener('error', (e) => append('UNCAUGHT', [e.message + ' @ ' + e.filename + ':' + e.lineno, e.error]));
+  window.addEventListener('unhandledrejection', (e) => append('PROMISE REJECTED', [e.reason]));
+})();
+</script>
+
+<script>
+// ============================================================
+// 1. LIBRERIA FORME (21 forme su griglia 8x8)
+// ============================================================
+const SIZE = 8;
+
+function emptyGrid() {
+  return Array.from({ length: SIZE }, () => Array(SIZE).fill(false));
+}
+function fillRect(grid, rowStart, rowEnd, colStart, colEnd) {
+  for (let r = rowStart; r <= rowEnd; r++)
+    for (let c = colStart; c <= colEnd; c++) grid[r][c] = true;
+  return grid;
+}
+function ruota90(g) {
+  const ng = emptyGrid();
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++) ng[c][SIZE - 1 - r] = g[r][c];
+  return ng;
+}
+
+const full8x8 = () => fillRect(emptyGrid(), 0, 7, 0, 7);
+const shape6x8 = () => fillRect(emptyGrid(), 0, 7, 1, 6);
+const diamond = () => {
+  const g = emptyGrid(); const cx = 3.5, cy = 3.5;
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++)
+    if (Math.abs(r - cy) + Math.abs(c - cx) <= 4) g[r][c] = true;
+  return g;
+};
+const cinqueQuadrati = () => {
+  const g = emptyGrid();
+  fillRect(g, 0, 1, 0, 1); fillRect(g, 0, 1, 6, 7);
+  fillRect(g, 6, 7, 0, 1); fillRect(g, 6, 7, 6, 7);
+  fillRect(g, 1, 6, 1, 6); // centro allargato di 1 in ogni direzione (era 2,5,2,5): ora tocca i 4 angoli invece di restare isolato
+  return g;
+};
+const treRigheDaDue = () => {
+  const g = emptyGrid();
+  fillRect(g, 0, 1, 0, 7); fillRect(g, 3, 4, 0, 7); fillRect(g, 6, 7, 0, 7);
+  return g;
+};
+const treColonneDaDue = () => {
+  const g = emptyGrid();
+  fillRect(g, 0, 7, 0, 1); fillRect(g, 0, 7, 3, 4); fillRect(g, 0, 7, 6, 7);
+  return g;
+};
+const triangoloSopraPrincipale = () => {
+  const g = emptyGrid();
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (c >= r) g[r][c] = true;
+  return g;
+};
+const triangoloSopraAnti = () => {
+  const g = emptyGrid();
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (c >= SIZE - 1 - r) g[r][c] = true;
+  return g;
+};
+const triangoloSottoPrincipale = () => {
+  const g = emptyGrid();
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (c <= r) g[r][c] = true;
+  return g;
+};
+const triangoloSottoAnti = () => {
+  const g = emptyGrid();
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (c <= SIZE - 1 - r) g[r][c] = true;
+  return g;
+};
+const croceBracciaLarghe4 = () => {
+  const g = emptyGrid();
+  fillRect(g, 0, 7, 2, 5); fillRect(g, 2, 5, 0, 7);
+  return g;
+};
+const lLarga0 = () => { const g = emptyGrid(); fillRect(g, 0, 7, 2, 5); fillRect(g, 4, 7, 0, 7); return g; };
+const lLarga1 = () => ruota90(lLarga0());
+const lLarga2 = () => ruota90(lLarga1());
+const lLarga3 = () => ruota90(lLarga2());
+const tLarga0 = () => { const g = emptyGrid(); fillRect(g, 0, 3, 0, 7); fillRect(g, 0, 7, 2, 5); return g; };
+const tLarga1 = () => ruota90(tLarga0());
+const tLarga2 = () => ruota90(tLarga1());
+const tLarga3 = () => ruota90(tLarga2());
+const dueQuadratiDiagonalePrincipale = () => {
+  const g = emptyGrid(); fillRect(g, 0, 3, 0, 3); fillRect(g, 4, 7, 4, 7); return g;
+};
+const dueQuadratiDiagonaleAnti = () => {
+  const g = emptyGrid(); fillRect(g, 0, 3, 4, 7); fillRect(g, 4, 7, 0, 3); return g;
+};
+
+const SHAPES = {
+  full8x8, shape6x8, diamond, cinqueQuadrati, treRigheDaDue, treColonneDaDue,
+  triangoloSopraPrincipale, triangoloSopraAnti, triangoloSottoPrincipale, triangoloSottoAnti,
+  croceBracciaLarghe4, lLarga0, lLarga1, lLarga2, lLarga3, tLarga0, tLarga1, tLarga2, tLarga3,
+  dueQuadratiDiagonalePrincipale, dueQuadratiDiagonaleAnti,
+};
+const SHAPE_NAMES = Object.keys(SHAPES);
+
+// ============================================================
+// 2. PRNG DETERMINISTICO (mulberry32)
+// ============================================================
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const COLOR_NAMES = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'white', 'gray'];
+const COLOR_HEX = {
+  red: 0xe05252, blue: 0x4c8fe0, green: 0x4caf6b, yellow: 0xe0c23c,
+  purple: 0x9a5cd0, orange: 0xe08a3c, white: 0xe8e6df, gray: 0x8b909c,
+  black: 0x15161a,
+};
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+// Sceglie colorCount colori distinti a caso tra gli 8 disponibili (non sempre
+// gli stessi N in ordine fisso) — determinismo intatto, dipende solo da rng().
+function pickRandomColors(rng, colorCount) {
+  const pool = COLOR_NAMES.slice();
+  const chosen = [];
+  for (let i = 0; i < colorCount; i++) {
+    const idx = Math.floor(rng() * pool.length);
+    chosen.push(pool.splice(idx, 1)[0]);
+  }
+  return chosen;
+}
+
+function countActiveCells(grid) {
+  let n = 0;
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (grid[r][c]) n++;
+  return n;
+}
+
+function findConveyorCandidates(grid, minLen, occupied) {
+  const isFree = (r, c) => grid[r][c] && !(occupied && occupied.has(r + ',' + c));
+  const candidates = [];
+  for (let r = 0; r < SIZE; r++) {
+    let run = [];
+    for (let c = 0; c < SIZE; c++) {
+      if (isFree(r, c)) run.push([r, c]);
+      else { if (run.length >= minLen) candidates.push({ type: 'row', index: r, cells: run.slice() }); run = []; }
+    }
+    if (run.length >= minLen) candidates.push({ type: 'row', index: r, cells: run.slice() });
+  }
+  for (let c = 0; c < SIZE; c++) {
+    let run = [];
+    for (let r = 0; r < SIZE; r++) {
+      if (isFree(r, c)) run.push([r, c]);
+      else { if (run.length >= minLen) candidates.push({ type: 'col', index: c, cells: run.slice() }); run = []; }
+    }
+    if (run.length >= minLen) candidates.push({ type: 'col', index: c, cells: run.slice() });
+  }
+  return candidates;
+}
+
+function pickRandomCells(rng, grid, count, exclude) {
+  const free = [];
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++)
+    if (grid[r][c] && !exclude.has(r + ',' + c)) free.push([r, c]);
+  const picked = [];
+  for (let i = 0; i < count && free.length > 0; i++) {
+    const idx = Math.floor(rng() * free.length);
+    const cell = free.splice(idx, 1)[0];
+    picked.push(cell);
+    exclude.add(cell[0] + ',' + cell[1]);
+  }
+  return picked;
+}
+
+// Celle che appartengono a una riga o colonna con >=3 celle contigue attive:
+// solo lì un match reale può formarsi. Usato per filtrare dove piazzare goal
+// "fissi attivati da match adiacente" (lampadine, blocchi2x2) — altrimenti si
+// rischia di piazzarli in zone isolate (es. gli angoli 2x2 della forma
+// "cinqueQuadrati") dove nessun match potrà mai toccarli.
+function computeCoreMatchable(grid) {
+  const core = new Set();
+  for (let r = 0; r < SIZE; r++) {
+    let run = [];
+    for (let c = 0; c < SIZE; c++) {
+      if (grid[r][c]) run.push([r, c]);
+      else { if (run.length >= 3) run.forEach(([rr, cc]) => core.add(rr + ',' + cc)); run = []; }
+    }
+    if (run.length >= 3) run.forEach(([rr, cc]) => core.add(rr + ',' + cc));
+  }
+  for (let c = 0; c < SIZE; c++) {
+    let run = [];
+    for (let r = 0; r < SIZE; r++) {
+      if (grid[r][c]) run.push([r, c]);
+      else { if (run.length >= 3) run.forEach(([rr, cc]) => core.add(rr + ',' + cc)); run = []; }
+    }
+    if (run.length >= 3) run.forEach(([rr, cc]) => core.add(rr + ',' + cc));
+  }
+  return core;
+}
+
+function isAdjacentToMatchable(coreMatchable, r, c) {
+  const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  return deltas.some(([dr, dc]) => coreMatchable.has((r + dr) + ',' + (c + dc)));
+}
+
+// Componenti connesse della forma (celle raggiungibili tra loro in 4-direzioni).
+// Alcune forme (es. cinqueQuadrati) hanno più regioni isolate — angoli 2x2,
+// centro 4x4 — ognuna un pool a sé di celle, non raggiungibile dalle altre.
+const NARROW_COMPONENT_THRESHOLD = 20; // celle totali: sotto questa soglia, l'area è "stretta"
+
+function getConnectedComponents(grid) {
+  const compId = {};
+  const sizes = [];
+  let nextId = 0;
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const key = r + ',' + c;
+      if (!grid[r][c] || compId[key] !== undefined) continue;
+      const id = nextId++;
+      let size = 0;
+      const stack = [[r, c]];
+      compId[key] = id;
+      while (stack.length) {
+        const [rr, cc] = stack.pop();
+        size++;
+        [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dr, dc]) => {
+          const nr = rr + dr, nc = cc + dc;
+          const nkey = nr + ',' + nc;
+          if (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE && grid[nr][nc] && compId[nkey] === undefined) {
+            compId[nkey] = id;
+            stack.push([nr, nc]);
+          }
+        });
+      }
+      sizes[id] = size;
+    }
+  }
+  return { compId, sizes };
+}
+
+function isInNarrowComponent(componentInfo, r, c) {
+  const id = componentInfo.compId[r + ',' + c];
+  return componentInfo.sizes[id] <= NARROW_COMPONENT_THRESHOLD;
+}
+
+// Trova tutte le posizioni valide per un blocco 2x2 (4 celle contigue,
+// tutte attive e libere) che abbia almeno una cella adiacente ESTERNA al
+// blocco appartenente a coreMatchable — altrimenti nessun match potrà mai
+// toccarlo (es. i 4 angoli isolati della forma "cinqueQuadrati" sono
+// esattamente 2x2: se il blocco coincide con l'angolo, resta bloccato per
+// sempre perché non ha nessun vicino esterno).
+function find2x2Candidates(grid, coreMatchable, occupied) {
+  const candidates = [];
+  for (let r = 0; r < SIZE - 1; r++) {
+    for (let c = 0; c < SIZE - 1; c++) {
+      const cells = [[r, c], [r, c + 1], [r + 1, c], [r + 1, c + 1]];
+      const valid = cells.every(([rr, cc]) => grid[rr][cc] && !occupied.has(rr + ',' + cc));
+      if (!valid) continue;
+
+      const blockSet = new Set(cells.map(([rr, cc]) => rr + ',' + cc));
+      const touchable = cells.some(([rr, cc]) => {
+        const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+        return deltas.some(([dr, dc]) => {
+          const key = (rr + dr) + ',' + (cc + dc);
+          if (blockSet.has(key)) return false;
+          return coreMatchable.has(key);
+        });
+      });
+      if (touchable) candidates.push(cells);
+    }
+  }
+  return candidates;
+}
+
+// ============================================================
+// 3. decodeLevel(seed) — genera tutti i parametri del livello
+// ============================================================
+function decodeLevel(seed) {
+  const rng = mulberry32(seed);
+  const occupied = new Set();
+
+  const shapeName = SHAPE_NAMES[Math.floor(rng() * SHAPE_NAMES.length)];
+  const grid = SHAPES[shapeName]();
+  const activeCellCount = countActiveCells(grid);
+  const coreMatchable = computeCoreMatchable(grid);
+  const componentInfo = getConnectedComponents(grid);
+
+  let colorCount = 4 + Math.floor(rng() * 3); // 4-6, non più fino a 8
+  // qualunque forma con componenti piccole e isolate (strisce, quadrati
+  // diagonali, ecc.) soffre lo stesso problema: troppi colori in un pool
+  // piccolo rende quasi impossibile trovare match E rimescolare quando si
+  // resta bloccati. Limitiamo in base alla componente PIÙ PICCOLA della
+  // forma (non al totale), perché i colori devono funzionare dentro ad
+  // ognuna, non nella somma di tutte insieme.
+  const minComponentSize = Math.min(...componentInfo.sizes);
+  const maxColorsForShape = Math.max(3, Math.floor(minComponentSize / 5));
+  colorCount = Math.min(colorCount, maxColorsForShape);
+  const colors = pickRandomColors(rng, colorCount); // quali colori, non solo quanti — varia da livello a livello
+  colors.sort((a, b) => COLOR_NAMES.indexOf(a) - COLOR_NAMES.indexOf(b)); // ma l'ORDINE resta sempre lo stesso (canonico): arancione è sempre nella stessa posizione relativa quando presente, indipendentemente da quando è stato pescato
+
+  const colorTargets = {};
+  colors.forEach((c) => { colorTargets[c] = 8 + Math.floor(rng() * 18); });
+  const totalColorTarget = Object.values(colorTargets).reduce((a, b) => a + b, 0);
+
+  let activeGoalsCount = 0; // max 2 goal attivi insieme (lampadine/bombole/copertura/stella) — il conveyor non conta, è un elemento a sé
+
+  const wantsLightbulbs = rng() < 0.5;
+  const hasLightbulbs = wantsLightbulbs && activeGoalsCount < 2;
+  if (hasLightbulbs) activeGoalsCount++;
+  let lightbulbs = { active: false, count: 0, positions: [] };
+  if (hasLightbulbs) {
+    const desiredCount = 2 + Math.floor(rng() * 3);
+    const positions = [];
+    // le lampadine sono ferme (mai switchate/cadute): se due sono adiacenti
+    // diventano un blocco compatto che riduce ulteriormente lo spazio di
+    // match — quindi ogni lampadina esclude anche le sue 4 celle vicine
+    // dal pool delle lampadine successive (non tocca altri goal/colori)
+    const spacingExclude = new Set();
+    for (let i = 0; i < desiredCount; i++) {
+      const candidates = [];
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          const key = r + ',' + c;
+          if (!grid[r][c] || occupied.has(key) || spacingExclude.has(key)) continue;
+          if (!isAdjacentToMatchable(coreMatchable, r, c)) continue;
+          if (isInNarrowComponent(componentInfo, r, c)) continue;
+          candidates.push([r, c]);
+        }
+      }
+      if (candidates.length === 0) break;
+      const idx = Math.floor(rng() * candidates.length);
+      const [r, c] = candidates[idx];
+      positions.push([r, c]);
+      occupied.add(r + ',' + c);
+      spacingExclude.add(r + ',' + c);
+      [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dr, dc]) => spacingExclude.add((r + dr) + ',' + (c + dc)));
+    }
+    lightbulbs = { active: positions.length > 0, count: positions.length, positions };
+  }
+
+  const wantsBombola = rng() < 0.5;
+  const hasBombola = wantsBombola && activeGoalsCount < 2;
+  if (hasBombola) activeGoalsCount++;
+  let bombole = { active: false, count: 0, instances: [] };
+  if (hasBombola) {
+    const desiredCount = 1 + Math.floor(rng() * 4);
+    const instances = [];
+    for (let i = 0; i < desiredCount; i++) {
+      const candidates = find2x2Candidates(grid, coreMatchable, occupied);
+      if (candidates.length === 0) break; // niente più spazio valido, ne piazziamo di meno
+      const idx = Math.floor(rng() * candidates.length);
+      const cells = candidates[idx];
+      cells.forEach(([rr, cc]) => occupied.add(rr + ',' + cc));
+      instances.push({
+        cells,                       // le 4 celle occupate [ [r,c], ... ]
+        anchorRow: cells[0][0],      // angolo in alto a sinistra, per il rendering
+        anchorCol: cells[0][1],
+        hitsRequired: 1 + Math.floor(rng() * 4), // random 1-4
+      });
+    }
+    bombole = { active: instances.length > 0, count: instances.length, instances };
+  }
+
+  const wantsCoverage = rng() < 0.5;
+  const hasCoverage = wantsCoverage && activeGoalsCount < 2;
+  if (hasCoverage) activeGoalsCount++;
+  let coverage = { active: false, area: null, cells: [] };
+  if (hasCoverage) {
+    const isFull = rng() < 0.5;
+    if (isFull) {
+      const cells = [];
+      for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (grid[r][c]) cells.push([r, c]);
+      coverage = { active: true, area: 'full', cells };
+    } else {
+      const ratio = 0.4 + rng() * 0.3;
+      const targetCount = Math.max(4, Math.round(activeCellCount * ratio));
+      const cells = pickRandomCells(rng, grid, targetCount, new Set());
+      coverage = { active: true, area: 'partial', cells };
+    }
+  }
+
+  const wantsStar = rng() < 0.5;
+  const hasStar = wantsStar && activeGoalsCount < 2;
+  if (hasStar) activeGoalsCount++;
+  let star = { active: false, startRow: null, startCol: null };
+  if (hasStar) {
+    // cella propria: deve avere almeno 2 celle attive sotto di sé nella stessa
+    // colonna (altrimenti la stella non ha spazio per scendere fino al pavimento),
+    // libera da altri goal, e la più in alto possibile tra quelle valide
+    function activeBelowCount(row, col) {
+      let n = 0;
+      for (let rr = row + 1; rr < SIZE; rr++) if (grid[rr][col]) n++;
+      return n;
+    }
+    let topRow = null, topCol = null;
+    outer:
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (grid[r][c] && !occupied.has(r + ',' + c) && activeBelowCount(r, c) >= 2) {
+          topRow = r; topCol = c; break outer;
+        }
+      }
+    }
+    if (topRow !== null) {
+      occupied.add(topRow + ',' + topCol);
+      star = { active: true, startRow: topRow, startCol: topCol };
+    }
+    // se nessuna colonna della forma ha profondità sufficiente, il goal
+    // resta semplicemente disattivato per questo livello (star.active: false)
+  }
+
+  // Ripulisco la copertura: non deve mai includere celle occupate da goal
+  // fissi non colorabili (lampadine, blocchi2x2, stella) — un match lì non
+  // può avvenire, quindi la richiesta non avrebbe senso. Senza questo filtro,
+  // una copertura "partial" può pescare 3 celle su 4 di un blocco2x2,
+  // disegnando 3 bordi isolati che sembrano un conveyor "a L".
+  if (coverage.active) {
+    const fixedNonMatchable = new Set();
+    lightbulbs.positions.forEach(([r, c]) => fixedNonMatchable.add(r + ',' + c));
+    bombole.instances.forEach((b) => b.cells.forEach(([r, c]) => fixedNonMatchable.add(r + ',' + c)));
+    if (star.active) fixedNonMatchable.add(star.startRow + ',' + star.startCol);
+    coverage.cells = coverage.cells.filter(([r, c]) => !fixedNonMatchable.has(r + ',' + c));
+    if (coverage.cells.length === 0) coverage.active = false;
+  }
+
+  const goalFlags = [lightbulbs.active, bombole.active, coverage.active, star.active];
+  let extraGoalsCount = goalFlags.filter(Boolean).length;
+
+  const colorPenaltyTable = { 3: 0.85, 4: 1.0, 5: 1.15, 6: 1.3, 7: 1.45, 8: 1.6 };
+  const colorPenalty = colorPenaltyTable[colorCount];
+  const avgClearPerMove = 3;
+  const TARGET_MIN = 8, TARGET_MAX = 25;
+  const rawMin = (4 * TARGET_MIN / avgClearPerMove) * 1.0 * 1.0;
+  const rawMax = (6 * TARGET_MAX / avgClearPerMove) * 1.3 * 1.3; // colori max 6, goal attivi max 2 ora
+
+  function computeBaseMoves(nGoals) {
+    const goalPenalty = 1 + nGoals * 0.15;
+    const raw = (totalColorTarget / avgClearPerMove) * colorPenalty * goalPenalty;
+    let normalized = clamp((raw - rawMin) / (rawMax - rawMin), 0, 1);
+    return Math.round(10 + normalized * 8); // era 15 + normalized*11 (15-26) — ridotto per aumentare la difficoltà
+  }
+
+  const movesVariance = Math.floor(rng() * 3); // era 0-4, ridotto a 0-2
+  let baseMoves = computeBaseMoves(extraGoalsCount);
+
+  const dropOrder = ['star', 'coverage', 'bombole', 'lightbulbs'];
+  const goalRefs = { star, coverage, bombole, lightbulbs };
+  let dropIdx = 0;
+  while (baseMoves + movesVariance > 20 && dropIdx < dropOrder.length) {
+    const key = dropOrder[dropIdx];
+    if (goalRefs[key].active) {
+      goalRefs[key].active = false;
+      extraGoalsCount = Object.values(goalRefs).filter((g) => g.active).length;
+      baseMoves = computeBaseMoves(extraGoalsCount);
+    }
+    dropIdx++;
+  }
+  const moves = clamp(baseMoves + movesVariance, 9, 20);
+
+  const conveyorCandidatesInitial = findConveyorCandidates(grid, 4, occupied);
+  const hasConveyor = conveyorCandidatesInitial.length > 0 && rng() < 0.4;
+  let conveyor = { active: false, belts: [] };
+  if (hasConveyor) {
+    const desiredCount = clamp(1 + Math.floor(rng() * 3), 1, 3);
+    const belts = [];
+    for (let i = 0; i < desiredCount; i++) {
+      // ricalcolo i candidati ad ogni giro, escludendo anche le celle già
+      // usate dai belt scelti finora — altrimenti un belt-riga e un
+      // belt-colonna possono incrociarsi sulla stessa cella e sembrare
+      // un conveyor "a L" a schermo, che non è mai valido (sempre dritti)
+      const candidates = findConveyorCandidates(grid, 4, occupied);
+      if (candidates.length === 0) break;
+      const idx = Math.floor(rng() * candidates.length);
+      const belt = candidates[idx];
+      const direction = belt.type === 'row'
+        ? (rng() < 0.5 ? 'right' : 'left')
+        : (rng() < 0.5 ? 'down' : 'up');
+      belts.push({ ...belt, direction });
+      belt.cells.forEach(([r, c]) => occupied.add(r + ',' + c));
+    }
+    conveyor = { active: belts.length > 0, belts };
+  }
+
+  return {
+    seed, shape: shapeName, grid, activeCellCount, colorCount, colors, colorTargets,
+    totalColorTarget, moves, componentInfo,
+    goals: { lightbulbs, bombole, coverage, star },
+    obstacles: { blackCellWeight: 0.5, conveyor },
+  };
+}
+
+// ============================================================
+// 4. Popolamento colori cella-per-cella (nero incluso, peso 0.5)
+// ============================================================
+function populateGrid(level) {
+  // Volutamente NON legato al seed: i goal (forma, target, posizione di
+  // lampadine/bombole/stella, mosse) restano deterministici da decodeLevel,
+  // ma la disposizione dei colori in griglia è vera casualità — ogni
+  // caricamento dello stesso livello mescola i colori in celle diverse,
+  // senza bisogno di un pulsante "riprova" a parte.
+  const rng = Math.random;
+  const cellData = {}; // "r,c" -> { type: colorName | 'black' | 'lightbulb' | 'bombola' }
+
+  const occupiedByGoal = new Set();
+  level.goals.lightbulbs.positions.forEach(([r, c]) => { cellData[r + ',' + c] = { kind: 'lightbulb' }; occupiedByGoal.add(r + ',' + c); });
+  level.goals.bombole.instances.forEach((b) => {
+    b.cells.forEach(([r, c], idx) => {
+      cellData[r + ',' + c] = idx === 0
+        ? { kind: 'bombola', hitsRequired: b.hitsRequired }  // angolo in alto a sx: disegna il riquadro grande + numero
+        : { kind: 'bombola_part' };                          // le altre 3 celle: nessun colore, nessun disegno proprio
+      occupiedByGoal.add(r + ',' + c);
+    });
+  });
+  if (level.goals.star.active) {
+    const r = level.goals.star.startRow, c = level.goals.star.startCol;
+    cellData[r + ',' + c] = { kind: 'star' };
+    occupiedByGoal.add(r + ',' + c);
+  }
+
+  const weights = level.colors.map(() => 1);
+  const totalColorWeight = weights.reduce((a, b) => a + b, 0);
+
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (!level.grid[r][c]) continue;
+      const key = r + ',' + c;
+      if (occupiedByGoal.has(key)) continue;
+
+      // niente nero nelle componenti isolate piccole (es. centro/angoli dei
+      // "5 quadrati"): con poco spazio e pochi colori disponibili, il tris
+      // vicino a una lampadina diventa quasi impossibile da ottenere
+      const blackWeight = isInNarrowComponent(level.componentInfo, r, c) ? 0 : level.obstacles.blackCellWeight;
+      const totalWeight = totalColorWeight + blackWeight;
+
+      const roll = rng() * totalWeight;
+      if (roll < blackWeight) {
+        cellData[key] = { kind: 'black' };
+      } else {
+        const colorIdx = Math.min(level.colors.length - 1, Math.floor((roll - blackWeight) / totalColorWeight * level.colors.length));
+        cellData[key] = { kind: 'color', color: level.colors[colorIdx] };
+      }
+    }
+  }
+  return cellData;
+}
+
+
+
+// board[r][c] = null (cella non attiva) | { kind, ...props }
+// kind: 'color' {color}, 'black' {}, 'lightbulb' {lit}, 'bombola' {instanceId}, 'star' {}
+
+// Identità persistente dei pezzi (per animare "questo pezzo si è spostato
+// da qui a lì" invece di ridisegnare tutto di netto ad ogni mossa)
+let nextUid = 1;
+
+function buildInitialBoard(level, cellData) {
+  const board = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+  const bombolaInstances = {}; // id -> { cells:[[r,c]...], hitsRequired, hitsRemaining }
+
+  level.goals.bombole.instances.forEach((b, i) => {
+    const id = 'b' + i;
+    bombolaInstances[id] = {
+      id, cells: b.cells.map((c) => c.slice()),
+      hitsRequired: b.hitsRequired, hitsRemaining: b.hitsRequired,
+      anchorRow: b.anchorRow, anchorCol: b.anchorCol,
+    };
+  });
+
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (!level.grid[r][c]) continue;
+      const data = cellData[r + ',' + c];
+      if (!data) continue;
+      if (data.kind === 'color') board[r][c] = { kind: 'color', color: data.color, uid: nextUid++ };
+      else if (data.kind === 'black') board[r][c] = { kind: 'black', uid: nextUid++ };
+      else if (data.kind === 'lightbulb') board[r][c] = { kind: 'lightbulb', lit: false };
+      else if (data.kind === 'star') board[r][c] = { kind: 'star', uid: nextUid++ };
+      else if (data.kind === 'bombola') {
+        const inst = Object.values(bombolaInstances).find((b) => b.cells.some(([rr, cc]) => rr === r && cc === c));
+        board[r][c] = { kind: 'bombola', instanceId: inst.id };
+      } else if (data.kind === 'bombola_part') {
+        const inst = Object.values(bombolaInstances).find((b) => b.cells.some(([rr, cc]) => rr === r && cc === c));
+        board[r][c] = { kind: 'bombola', instanceId: inst.id };
+      }
+    }
+  }
+
+  const coverageSet = new Set();
+  if (level.goals.coverage.active) {
+    level.goals.coverage.cells.forEach(([r, c]) => {
+      // il nero non può mai essere matchato: se una cella di copertura è
+      // finita nera, escludiamola subito (altrimenti il goal sarebbe
+      // impossibile da completare)
+      if (board[r][c] && board[r][c].kind === 'black') return;
+      coverageSet.add(r + ',' + c);
+    });
+  }
+
+  const colorRemaining = { ...level.colorTargets };
+
+  const lightbulbTotal = level.goals.lightbulbs.positions.length;
+
+  let starPos = null;
+  if (level.goals.star.active) starPos = [level.goals.star.startRow, level.goals.star.startCol];
+
+  return {
+    board, bombolaInstances, coverageSet, colorRemaining,
+    lightbulbTotal, lightbulbLitCount: 0,
+    starPos, starDone: false,
+    movesRemaining: level.moves,
+    grid: level.grid,
+  };
+}
+
+function isActive(grid, r, c) {
+  return r >= 0 && r < SIZE && c >= 0 && c < SIZE && grid[r][c];
+}
+
+function isMovable(cell) {
+  return cell && (cell.kind === 'color' || cell.kind === 'black' || cell.kind === 'star' || cell.kind === 'bomb');
+}
+
+// Trova tutti i run (riga o colonna) di lunghezza >=3 dello stesso colore.
+// Restituisce Set di "r,c" coinvolte in almeno un match.
+function findMatches(state) {
+  const { board, grid } = state;
+  const matched = new Set();
+
+  // le bombe contano per il proprio colore nei match normali — "freccia
+  // viola + viola + viola" è un tris valido, non solo tre caramelle vere.
+  // La stella (colorBomb) fa eccezione: è un jolly, non ha un colore
+  // proprio e non forma/non conta mai per un match di colore.
+  const colorOf = (cell) => cell && (cell.kind === 'color' || (cell.kind === 'bomb' && cell.bombType !== 'colorBomb')) ? cell.color : null;
+
+  for (let r = 0; r < SIZE; r++) {
+    let run = [];
+    for (let c = 0; c <= SIZE; c++) {
+      const cell = c < SIZE ? board[r][c] : null;
+      const color = colorOf(cell);
+      if (color && run.length && run[run.length - 1].color === color) {
+        run.push({ c, color });
+      } else {
+        if (run.length >= 3) run.forEach((x) => matched.add(r + ',' + x.c));
+        run = color ? [{ c, color }] : [];
+      }
+    }
+  }
+
+  for (let c = 0; c < SIZE; c++) {
+    let run = [];
+    for (let r = 0; r <= SIZE; r++) {
+      const cell = r < SIZE ? board[r][c] : null;
+      const color = colorOf(cell);
+      if (color && run.length && run[run.length - 1].color === color) {
+        run.push({ r, color });
+      } else {
+        if (run.length >= 3) run.forEach((x) => matched.add(x.r + ',' + c));
+        run = color ? [{ r, color }] : [];
+      }
+    }
+  }
+
+  // match a quadrato 2x2 (come i pesci di Candy Crush Soda): 4 celle dello
+  // stesso colore disposte a quadrato, anche senza formare un tris in riga/
+  // colonna. Anche qui le bombe contano per il proprio colore.
+  for (let r = 0; r < SIZE - 1; r++) {
+    for (let c = 0; c < SIZE - 1; c++) {
+      const a = board[r][c], b = board[r][c + 1], d = board[r + 1][c], e = board[r + 1][c + 1];
+      const ca = colorOf(a), cb = colorOf(b), cd = colorOf(d), ce = colorOf(e);
+      if (ca && cb && cd && ce && ca === cb && ca === cd && ca === ce) {
+        matched.add(r + ',' + c); matched.add(r + ',' + (c + 1));
+        matched.add((r + 1) + ',' + c); matched.add((r + 1) + ',' + (c + 1));
+      }
+    }
+  }
+
+  return matched;
+}
+
+// Scansiona il board e trova tutti i pattern che generano bombe: righe/colonne
+// da 4 (line bomb), righe/colonne da 5+ (color bomb), incroci riga+colonna
+// nello stesso punto (cross bomb), quadrati 2x2 (area bomb). Restituisce una
+// lista di { anchor:[r,c], bombType, color, cells:Set<string> } — le celle
+// dell'ancora diventano la bomba, le altre si tolgono come un match normale.
+function detectBombPatterns(board, grid) {
+  const patterns = [];
+  // le bombe contano per il proprio colore anche qui: un pattern che
+  // normalmente creerebbe una bomba nuova (striscia da 4+, croce, quadrato
+  // 2x2) deve farlo anche se una delle celle è già una bomba esistente. La
+  // stella (colorBomb) fa eccezione: jolly, nessun colore proprio.
+  const colorOf = (cell) => cell && (cell.kind === 'color' || (cell.kind === 'bomb' && cell.bombType !== 'colorBomb')) ? cell.color : null;
+  // preferisce una cella 'color' vera come ancora della bomba NUOVA, così
+  // la bomba VECCHIA (se nel pattern) esplode per conto suo separatamente,
+  // invece di essere "assorbita" senza effetto proprio
+  const pickAnchor = (cellsArr) => {
+    const colorCell = cellsArr.find(([rr, cc]) => board[rr][cc].kind === 'color');
+    return colorCell || cellsArr[Math.floor(cellsArr.length / 2)];
+  };
+
+  for (let r = 0; r < SIZE; r++) {
+    let run = [];
+    const flush = () => {
+      if (run.length >= 4) {
+        const cells = run.map((x) => [r, x.c]);
+        const anchor = pickAnchor(cells);
+        const isStar = run.length >= 5;
+        patterns.push({
+          anchor, bombType: isStar ? 'colorBomb' : 'lineCol', color: isStar ? undefined : run[0].color,
+          cells: new Set(cells.map(([rr, cc]) => rr + ',' + cc)),
+        });
+      }
+      run = [];
+    };
+    for (let c = 0; c <= SIZE; c++) {
+      const cell = c < SIZE ? board[r][c] : null;
+      const color = colorOf(cell);
+      if (color && run.length && run[run.length - 1].color === color) run.push({ c, color });
+      else { flush(); run = color ? [{ c, color }] : []; }
+    }
+    flush();
+  }
+
+  for (let c = 0; c < SIZE; c++) {
+    let run = [];
+    const flush = () => {
+      if (run.length >= 4) {
+        const cells = run.map((x) => [x.r, c]);
+        const anchor = pickAnchor(cells);
+        const isStar = run.length >= 5;
+        patterns.push({
+          anchor, bombType: isStar ? 'colorBomb' : 'lineRow', color: isStar ? undefined : run[0].color,
+          cells: new Set(cells.map(([rr, cc]) => rr + ',' + cc)),
+        });
+      }
+      run = [];
+    };
+    for (let r = 0; r <= SIZE; r++) {
+      const cell = r < SIZE ? board[r][c] : null;
+      const color = colorOf(cell);
+      if (color && run.length && run[run.length - 1].color === color) run.push({ r, color });
+      else { flush(); run = color ? [{ r, color }] : []; }
+    }
+    flush();
+  }
+
+  const inHorizontalRun3 = new Set();
+  for (let r = 0; r < SIZE; r++) {
+    let run = [];
+    const flush = () => { if (run.length >= 3) run.forEach((x) => inHorizontalRun3.add(r + ',' + x.c)); run = []; };
+    for (let c = 0; c <= SIZE; c++) {
+      const cell = c < SIZE ? board[r][c] : null;
+      const color = colorOf(cell);
+      if (color && run.length && run[run.length - 1].color === color) run.push({ c, color });
+      else { flush(); run = color ? [{ c, color }] : []; }
+    }
+    flush();
+  }
+  const inVerticalRun3 = new Set();
+  for (let c = 0; c < SIZE; c++) {
+    let run = [];
+    const flush = () => { if (run.length >= 3) run.forEach((x) => inVerticalRun3.add(x.r + ',' + c)); run = []; };
+    for (let r = 0; r <= SIZE; r++) {
+      const cell = r < SIZE ? board[r][c] : null;
+      const color = colorOf(cell);
+      if (color && run.length && run[run.length - 1].color === color) run.push({ r, color });
+      else { flush(); run = color ? [{ r, color }] : []; }
+    }
+    flush();
+  }
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const key = r + ',' + c;
+      if (inHorizontalRun3.has(key) && inVerticalRun3.has(key)) {
+        const cell = board[r][c];
+        patterns.push({ anchor: [r, c], bombType: 'cross', color: cell.color, cells: new Set([key]) });
+      }
+    }
+  }
+
+  for (let r = 0; r < SIZE - 1; r++) {
+    for (let c = 0; c < SIZE - 1; c++) {
+      const a = board[r][c], b = board[r][c + 1], d = board[r + 1][c], e = board[r + 1][c + 1];
+      const ca = colorOf(a), cb = colorOf(b), cd = colorOf(d), ce = colorOf(e);
+      if (ca && cb && cd && ce && ca === cb && ca === cd && ca === ce) {
+        const cells = [[r, c], [r, c + 1], [r + 1, c], [r + 1, c + 1]];
+        const anchor = pickAnchor(cells);
+        patterns.push({
+          anchor, bombType: 'area3x3', color: ca,
+          cells: new Set(cells.map(([rr, cc]) => rr + ',' + cc)),
+        });
+      }
+    }
+  }
+
+  return patterns;
+}
+
+// Priorità in caso di pattern sovrapposti sulla stessa cella: la bomba più
+// potente vince.
+const BOMB_PRIORITY = { colorBomb: 4, cross: 3, lineRow: 2, lineCol: 2, area3x3: 1 };
+
+function mostCommonColor(state) {
+  const counts = {};
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    const cell = state.board[r][c];
+    if (cell && cell.kind === 'color') counts[cell.color] = (counts[cell.color] || 0) + 1;
+  }
+  let best = null, bestCount = -1;
+  Object.entries(counts).forEach(([color, n]) => { if (n > bestCount) { best = color; bestCount = n; } });
+  return best;
+}
+
+// Cancella UNA cella con tutti i suoi effetti collaterali (target colore,
+// lampadine, bombole) — riutilizzata sia da explodeBomb sia dai combo
+// bomba+bomba. Non tocca le bombe: il chiamante decide se metterle in coda
+// per la reazione a catena.
+function clearCellWithEffects(state, rr, cc, hitBombolasSet, protectedKeys) {
+  const { board } = state;
+  if (rr < 0 || rr >= SIZE || cc < 0 || cc >= SIZE) return { cleared: false };
+  const cell = board[rr][cc];
+  if (!cell) return { cleared: false };
+
+  if (protectedKeys && protectedKeys.has(rr + ',' + cc)) return { cleared: false }; // bomba appena creata in questo stesso giro: immune per ora
+
+  if (cell.kind === 'star') return { cleared: false };
+
+  if (cell.kind === 'lightbulb') {
+    if (!cell.lit) { cell.lit = true; state.lightbulbLitCount++; }
+    return { cleared: false };
+  }
+
+  if (cell.kind === 'bomb') return { cleared: false, isBomb: true, bombPos: [rr, cc] };
+
+  if (cell.kind === 'bombola') {
+    if (!hitBombolasSet.has(cell.instanceId)) {
+      hitBombolasSet.add(cell.instanceId);
+      const inst = state.bombolaInstances[cell.instanceId];
+      if (inst.hitsRemaining > 0) inst.hitsRemaining--;
+    }
+    return { cleared: false };
+  }
+
+  const ckey = rr + ',' + cc;
+  if (cell.kind === 'color' && state.colorRemaining[cell.color] !== undefined) {
+    state.colorRemaining[cell.color] = Math.max(0, state.colorRemaining[cell.color] - 1);
+  }
+  state.coverageSet.delete(ckey);
+  board[rr][cc] = null;
+  return { cleared: true };
+}
+
+// Chiude il giro: lampadine tutte accese sparite insieme, bombole a zero
+// colpi liberate — condiviso da explodeBomb e dai combo.
+function finalizeAfterClearing(state) {
+  const { board } = state;
+  if (state.lightbulbTotal > 0 && state.lightbulbLitCount >= state.lightbulbTotal) {
+    for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++)
+      if (board[rr][cc] && board[rr][cc].kind === 'lightbulb') board[rr][cc] = null;
+  }
+  Object.values(state.bombolaInstances).forEach((inst) => {
+    if (inst.hitsRemaining <= 0 && !inst.cleared) {
+      inst.cleared = true;
+      inst.cells.forEach(([rr, cc]) => { board[rr][cc] = null; });
+    }
+  });
+}
+
+function computeExplosionCells(state, r, c, bomb) {
+  const { grid } = state;
+  const cells = new Set();
+  const add = (rr, cc) => { if (rr >= 0 && rr < SIZE && cc >= 0 && cc < SIZE && grid[rr][cc]) cells.add(rr + ',' + cc); };
+
+  if (bomb.bombType === 'area3x3') {
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) add(r + dr, c + dc);
+  } else if (bomb.bombType === 'cross') {
+    for (let rr = 0; rr < SIZE; rr++) add(rr, c);
+    for (let cc = 0; cc < SIZE; cc++) add(r, cc);
+  } else if (bomb.bombType === 'lineRow') {
+    for (let cc = 0; cc < SIZE; cc++) add(r, cc);
+  } else if (bomb.bombType === 'lineCol') {
+    for (let rr = 0; rr < SIZE; rr++) add(rr, c);
+  } else if (bomb.bombType === 'colorBomb') {
+    const targetColor = bomb.pendingTargetColor || mostCommonColor(state);
+    for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
+      const cell = state.board[rr][cc];
+      if (cell && cell.kind === 'color' && cell.color === targetColor) add(rr, cc);
+    }
+  }
+  add(r, c);
+  return cells;
+}
+
+// Esplode una bomba in (r,c), con reazione a catena se libera un'altra
+// bomba. Stella e lampadine sono immuni ai colpi "di striscio" (solo un
+// colpo DIRETTO dentro l'esplosione conta); una bombola presa in pieno
+// perde un colpo solo, come un match normale, non sparisce subito.
+function explodeBomb(state, r, c, targetColor, protectedKeys) {
+  const { board } = state;
+  const queue = [{ r, c, pendingTargetColor: targetColor }];
+  const processed = new Set();
+  const hitBombolasThisExplosion = new Set();
+  let totalCleared = 0;
+
+  while (queue.length) {
+    const { r: br, c: bc, pendingTargetColor } = queue.shift();
+    const key = br + ',' + bc;
+    if (processed.has(key)) continue;
+    processed.add(key);
+
+    const bombCell = board[br][bc];
+    if (!bombCell || bombCell.kind !== 'bomb') continue;
+
+    const cellsToClear = computeExplosionCells(state, br, bc, { bombType: bombCell.bombType, pendingTargetColor });
+
+    cellsToClear.forEach((ckey) => {
+      const [rr, cc] = ckey.split(',').map(Number);
+      if (ckey === key) {
+        board[rr][cc] = null;
+        totalCleared++;
+        return;
+      }
+      const result = clearCellWithEffects(state, rr, cc, hitBombolasThisExplosion, protectedKeys);
+      if (result.isBomb) { queue.push({ r: rr, c: cc }); return; }
+      if (result.cleared) totalCleared++;
+    });
+  }
+
+  finalizeAfterClearing(state);
+  return totalCleared;
+}
+
+// --- combo bomba+bomba: geometrie combinate attorno al punto (r,c) dove le
+// due bombe si sono scambiate ---
+
+function cellsInRect(grid, r, c, halfHeight, halfWidth) {
+  const cells = new Set();
+  for (let dr = -halfHeight; dr <= halfHeight; dr++)
+    for (let dc = -halfWidth; dc <= halfWidth; dc++) {
+      const rr = r + dr, cc = c + dc;
+      if (rr >= 0 && rr < SIZE && cc >= 0 && cc < SIZE && grid[rr][cc]) cells.add(rr + ',' + cc);
+    }
+  return cells;
+}
+function cellsInRow(grid, r, band) {
+  const cells = new Set();
+  for (let dr = -band; dr <= band; dr++) {
+    const rr = r + dr;
+    if (rr < 0 || rr >= SIZE) continue;
+    for (let cc = 0; cc < SIZE; cc++) if (grid[rr][cc]) cells.add(rr + ',' + cc);
+  }
+  return cells;
+}
+function cellsInCol(grid, c, band) {
+  const cells = new Set();
+  for (let dc = -band; dc <= band; dc++) {
+    const cc = c + dc;
+    if (cc < 0 || cc >= SIZE) continue;
+    for (let rr = 0; rr < SIZE; rr++) if (grid[rr][cc]) cells.add(rr + ',' + cc);
+  }
+  return cells;
+}
+function unionSets(...sets) { const out = new Set(); sets.forEach((s) => s.forEach((x) => out.add(x))); return out; }
+
+// Celle colpite dal combo di due bombe NON-colorBomb, nel punto (r,c) dove
+// si sono scambiate:
+// - freccia+freccia -> croce normale
+// - 3x3+freccia -> 3x3 + riga o colonna (in base alla freccia)
+// - 3x3+3x3 -> 3x5
+// - 3x3+croce -> 3x3 + croce
+// - croce+croce -> croce con braccia larghe 3
+// - croce+freccia -> croce con UN braccio largo 3 (quello della direzione della freccia)
+function computeComboCells(grid, r, c, typeA, typeB) {
+  const types = [typeA, typeB].sort();
+  const isArrow = (t) => t === 'lineRow' || t === 'lineCol';
+
+  if (types[0] === 'area3x3' && types[1] === 'area3x3') {
+    return cellsInRect(grid, r, c, 1, 2);
+  }
+  if (isArrow(typeA) && isArrow(typeB)) {
+    return unionSets(cellsInRow(grid, r, 0), cellsInCol(grid, c, 0));
+  }
+  if ((typeA === 'area3x3' && isArrow(typeB)) || (typeB === 'area3x3' && isArrow(typeA))) {
+    const arrowType = typeA === 'area3x3' ? typeB : typeA;
+    const line = arrowType === 'lineRow' ? cellsInRow(grid, r, 0) : cellsInCol(grid, c, 0);
+    return unionSets(cellsInRect(grid, r, c, 1, 1), line);
+  }
+  if ((typeA === 'area3x3' && typeB === 'cross') || (typeB === 'area3x3' && typeA === 'cross')) {
+    return unionSets(cellsInRect(grid, r, c, 1, 1), cellsInRow(grid, r, 0), cellsInCol(grid, c, 0));
+  }
+  if (typeA === 'cross' && typeB === 'cross') {
+    return unionSets(cellsInRow(grid, r, 1), cellsInCol(grid, c, 1));
+  }
+  if ((typeA === 'cross' && isArrow(typeB)) || (typeB === 'cross' && isArrow(typeA))) {
+    const arrowType = typeA === 'cross' ? typeB : typeA;
+    const rowBand = arrowType === 'lineRow' ? 1 : 0;
+    const colBand = arrowType === 'lineCol' ? 1 : 0;
+    return unionSets(cellsInRow(grid, r, rowBand), cellsInCol(grid, c, colBand));
+  }
+  return unionSets(cellsInRow(grid, r, 0), cellsInCol(grid, c, 0));
+}
+
+// Innesca il combo tra due bombe appena scambiate in (r,c) (la cella dove
+// sono finite dopo lo swap). Se una delle due è la stella (colorBomb):
+// trasforma tutte le celle del colore più presente nel tipo dell'ALTRA
+// bomba, poi le fa esplodere tutte insieme. Altrimenti: geometria combinata
+// in un colpo solo.
+function triggerBombCombo(state, r, c, typeA, colorA, typeB, colorB, otherR, otherC) {
+  // le DUE bombe originali che si combinano vengono sempre consumate,
+  // rimosse esplicitamente subito — altrimenti restano fisicamente sul
+  // tabellone (solo scambiate di posto) e se un'esplosione successiva le
+  // raggiunge per caso (capita spesso, essendo adiacenti al punto del
+  // combo) scattano di nuovo per conto proprio con effetti indesiderati,
+  // specialmente la stella senza bersaglio esplicito.
+  state.board[r][c] = null;
+  if (otherR !== undefined && otherC !== undefined) state.board[otherR][otherC] = null;
+
+  if (typeA === 'colorBomb' || typeB === 'colorBomb') {
+    const otherType = typeA === 'colorBomb' ? typeB : typeA;
+    const otherColor = typeA === 'colorBomb' ? colorB : colorA;
+    // il colore della bomba con cui la stella si combina — non "il più
+    // presente sul tabellone" (incoerente con lo swap stella+colore, che
+    // usa sempre il colore specifico con cui si è scambiata)
+    const targetColor = otherColor || mostCommonColor(state);
+    const positions = [];
+    for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
+      const cell = state.board[rr][cc];
+      if (cell && cell.kind === 'color' && cell.color === targetColor) positions.push([rr, cc]);
+    }
+    if (otherType === 'colorBomb') {
+      const hitBombolas = new Set();
+      for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
+        const cell = state.board[rr][cc];
+        if (cell && cell.kind === 'color') clearCellWithEffects(state, rr, cc, hitBombolas);
+      }
+      finalizeAfterClearing(state);
+      return;
+    }
+    positions.forEach(([rr, cc]) => {
+      state.board[rr][cc] = { kind: 'bomb', bombType: otherType, color: targetColor, uid: nextUid++ };
+    });
+    positions.forEach(([rr, cc]) => explodeBomb(state, rr, cc));
+    return;
+  }
+
+  const cellsToClear = computeComboCells(state.grid, r, c, typeA, typeB);
+  const hitBombolas = new Set();
+  const chainQueue = [];
+  cellsToClear.forEach((ckey) => {
+    const [rr, cc] = ckey.split(',').map(Number);
+    const result = clearCellWithEffects(state, rr, cc, hitBombolas);
+    if (result.isBomb) chainQueue.push(result.bombPos);
+  });
+  finalizeAfterClearing(state);
+  chainQueue.forEach(([rr, cc]) => explodeBomb(state, rr, cc));
+}
+
+// La griglia iniziale (colori piazzati a caso) può capitare per puro caso
+// con un tris già pronto — un match-3 vero parte sempre "pulito", niente
+// punti gratis prima ancora di giocare. Ripesca solo le celle coinvolte in
+// un match finché non ce ne sono più (copre anche i quadrati 2x2, dato che
+// findMatches li rileva già).
+function removeInitialMatches(state, colors) {
+  let iterations = 0;
+  while (iterations < 50) {
+    const matches = findMatches(state);
+    if (matches.size === 0) break;
+    matches.forEach((key) => {
+      const [r, c] = key.split(',').map(Number);
+      const cell = state.board[r][c];
+      if (cell && cell.kind === 'color') {
+        cell.color = colors[Math.floor(Math.random() * colors.length)];
+      }
+    });
+    iterations++;
+  }
+}
+
+// Rimuove le celle matchate, aggiorna target colore, attiva lampadine/blocchi
+// adiacenti, segna la copertura. Ritorna true se qualcosa è cambiato.
+function resolveMatches(state, matchedSet, rng, colors) {
+  if (matchedSet.size === 0) return false;
+  const { board, grid, colorRemaining, coverageSet, bombolaInstances } = state;
+  const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  const hitBombolasThisResolve = new Set(); // un match = massimo 1 colpo per bombola, anche se la tocca da più lati
+
+  // quali celle di questo match diventano bombe invece di sparire — al
+  // massimo un tipo per cella, il più potente in caso di sovrapposizione.
+  // Se lo swap del giocatore è atterrato su una cella che fa parte del
+  // pattern, la bomba nasce LÌ (non al centro geometrico del pattern) —
+  // può essere una qualsiasi delle due celle scambiate, a seconda di quale
+  // delle due è finita dentro al pattern. Solo per il primo resolveMatches
+  // dopo lo swap, non nelle cascate successive (si consuma subito dopo).
+  const patterns = detectBombPatterns(board, grid);
+  const swapKeys = (state.lastSwapCells || []).map(([r, c]) => r + ',' + c);
+  const bombAnchors = new Map(); // "r,c" -> { bombType, color }
+  patterns.forEach((p) => {
+    let anchorCell = p.anchor;
+    const swapKeyInPattern = swapKeys.find((k) => p.cells.has(k));
+    if (swapKeyInPattern) anchorCell = swapKeyInPattern.split(',').map(Number);
+    const key = anchorCell[0] + ',' + anchorCell[1];
+    if (!matchedSet.has(key)) return; // l'ancora dev'essere una cella che sta davvero per risolversi ora
+    const existing = bombAnchors.get(key);
+    if (!existing || BOMB_PRIORITY[p.bombType] > BOMB_PRIORITY[existing.bombType]) {
+      bombAnchors.set(key, { bombType: p.bombType, color: p.color });
+    }
+  });
+  state.lastSwapCells = null;
+
+  // PRIMO passaggio: tutte le trasformazioni in bombe nuove, PRIMA di
+  // qualunque esplosione — altrimenti una bomba vecchia nello stesso match
+  // può esplodere e cancellare la cella destinata a diventare quella nuova
+  // prima ancora che ci arrivi il turno (bug: dipendeva dall'ordine di
+  // iterazione del Set).
+  matchedSet.forEach((key) => {
+    const bombInfo = bombAnchors.get(key);
+    if (!bombInfo) return;
+    const [r, c] = key.split(',').map(Number);
+    const cell = board[r][c];
+    if (!cell) return;
+    if (cell.kind === 'bomb') {
+      // la bomba che occupa proprio il punto dove dovrebbe nascere quella
+      // nuova (capita con la croce, che ha un'unica cella possibile come
+      // ancora) esplode PRIMA — il suo effetto non va mai perso in
+      // silenzio — poi la bomba nuova appare lì
+      explodeBomb(state, r, c, undefined, new Set(bombAnchors.keys()));
+      board[r][c] = { kind: 'bomb', bombType: bombInfo.bombType, color: bombInfo.color, uid: nextUid++ };
+    } else {
+      // era un colore normale: diventa la bomba nuova invece di sparire,
+      // stesso uid, niente scalo del target (non è stata "raccolta")
+      cell.kind = 'bomb';
+      cell.bombType = bombInfo.bombType;
+      cell.color = bombInfo.color;
+    }
+  });
+
+  // SECONDO passaggio: bombe esistenti (non scelte come ancora) esplodono,
+  // le celle normali spariscono — ora che tutte le trasformazioni sono già
+  // al sicuro sul tabellone.
+  matchedSet.forEach((key) => {
+    if (bombAnchors.has(key)) return; // già gestita sopra
+    const [r, c] = key.split(',').map(Number);
+    const cell = board[r][c];
+    if (!cell) return; // già sparita (es. presa dall'esplosione di un'altra bomba nello stesso match)
+
+    if (cell.kind === 'bomb') {
+      // bomba ESISTENTE presa in un match vero (es. "freccia viola + viola
+      // + viola") — esplode, non sparisce silenziosamente. Niente
+      // ricompensa qui: solo il combo bomba+bomba vero e proprio la dà,
+      // altrimenti ogni tap su una bomba a colonna/riga intera farebbe
+      // sempre ricadere una bomba nuova, sempre in fondo, troppo prevedibile.
+      // bombAnchors come "protette": una bomba appena creata nel primo
+      // passaggio non deve sparire risucchiata dalla reazione a catena di
+      // QUESTA esplosione, altrimenti si autodistrugge nello stesso istante
+      // in cui nasce.
+      explodeBomb(state, r, c, undefined, new Set(bombAnchors.keys()));
+      return;
+    }
+
+    if (cell.kind === 'color') {
+      if (colorRemaining[cell.color] !== undefined) {
+        colorRemaining[cell.color] = Math.max(0, colorRemaining[cell.color] - 1);
+      }
+    }
+    coverageSet.delete(key);
+    board[r][c] = null;
+
+    // effetto sugli adiacenti: lampadine si accendono, bombole perdono un colpo
+    deltas.forEach(([dr, dc]) => {
+      const nr = r + dr, nc = c + dc;
+      const ncell = board[nr] && board[nr][nc];
+      if (!ncell) return;
+      if (ncell.kind === 'lightbulb' && !ncell.lit) {
+        ncell.lit = true;
+        state.lightbulbLitCount++;
+      } else if (ncell.kind === 'bombola') {
+        if (!hitBombolasThisResolve.has(ncell.instanceId)) {
+          hitBombolasThisResolve.add(ncell.instanceId);
+          const inst = bombolaInstances[ncell.instanceId];
+          if (inst.hitsRemaining > 0) inst.hitsRemaining--;
+        }
+      }
+    });
+  });
+
+  // le lampadine si tolgono tutte insieme solo quando sono TUTTE accese
+  if (state.lightbulbTotal > 0 && state.lightbulbLitCount >= state.lightbulbTotal) {
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+      if (board[r][c] && board[r][c].kind === 'lightbulb') board[r][c] = null;
+    }
+  }
+
+  // i blocchi2x2 che hanno esaurito i colpi si tolgono (tutte e 4 le celle insieme)
+  Object.values(bombolaInstances).forEach((inst) => {
+    if (inst.hitsRemaining <= 0 && !inst.cleared) {
+      inst.cleared = true;
+      inst.cells.forEach(([r, c]) => { board[r][c] = null; });
+    }
+  });
+
+  return true;
+}
+
+// Gravità: le celle "movable" (color/black/star) cadono verso il basso
+// dentro la loro colonna, ma non possono attraversare una cella fissa
+// (lightbulb ancora accesa/non rimossa, o bombola non ancora liberato) —
+// quella agisce da "ripiano". Ritorna true se qualcosa si è mosso.
+function applyGravity(state) {
+  const { board, grid } = state;
+  let moved = false;
+
+  for (let c = 0; c < SIZE; c++) {
+    // individua i segmenti verticali della colonna separati dagli ostacoli fissi
+    let segStart = 0;
+    for (let r = 0; r <= SIZE; r++) {
+      const blocked = r === SIZE || !grid[r][c] || (board[r][c] && !isMovable(board[r][c]));
+      if (blocked) {
+        compactSegment(board, c, segStart, r - 1, grid);
+        segStart = r + 1;
+      }
+    }
+  }
+
+  function compactSegment(board, c, top, bottom, grid) {
+    if (top > bottom) return;
+    const pieces = [];
+    for (let r = top; r <= bottom; r++) {
+      if (board[r][c] && isMovable(board[r][c])) pieces.push(board[r][c]);
+    }
+    let writeRow = bottom;
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      if (board[writeRow][c] !== pieces[i]) moved = true;
+      board[writeRow][c] = pieces[i];
+      writeRow--;
+    }
+    for (let r = top; r <= writeRow; r++) board[r][c] = null;
+  }
+
+  return moved;
+}
+
+// Riempie le celle vuote attive rimaste in cima ad ogni colonna con nuovi
+// colori random (peso uniforme — semplificato, non replica la distribuzione
+// "narrow/black" del generatore iniziale).
+function refill(state, rng, colors) {
+  const { board, grid } = state;
+  let filled = false;
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (grid[r][c] && board[r][c] === null) {
+        board[r][c] = { kind: 'color', color: colors[Math.floor(rng() * colors.length)], uid: nextUid++ };
+        filled = true;
+      }
+    }
+  }
+  return filled;
+}
+
+// La stella cade come le altre pedine (gestita già da applyGravity, essendo
+// 'star' incluso in isMovable). Qui aggiorniamo solo starPos e starDone.
+function updateStar(state) {
+  if (!state.starPos || state.starDone) return;
+  const { board, grid } = state;
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (board[r][c] && board[r][c].kind === 'star') { state.starPos = [r, c]; }
+  }
+  const [r, c] = state.starPos;
+  const below = r + 1;
+  // vero pavimento: fuori dalla griglia o cella non attiva della forma.
+  // Una lampadina o una bombola sotto NON conta come pavimento — sono
+  // ostacoli temporanei; la stella resta ferma finché non si liberano, poi
+  // la gravità la fa scendere ancora nei turni successivi.
+  const trueFloor = !(below < SIZE && grid[below][c]);
+  if (trueFloor) {
+    state.starDone = true;
+    board[r][c] = null; // raggiunto il pavimento vero: la stella sparisce, la cella torna libera
+  }
+}
+
+function goalsComplete(state, level) {
+  const colorsDone = Object.values(state.colorRemaining).every((v) => v <= 0);
+  const lightbulbsDone = state.lightbulbTotal === 0 || state.lightbulbLitCount >= state.lightbulbTotal;
+  const blocksDone = Object.values(state.bombolaInstances).every((b) => b.cleared);
+  const coverageDone = state.coverageSet.size === 0;
+  const starDone = !level.goals.star.active || state.starDone;
+  return colorsDone && lightbulbsDone && blocksDone && coverageDone && starDone;
+}
+
+// Un ciclo completo: risolvi match correnti, gravità, refill, ripeti finché
+// non ci sono più match (cascata). Ritorna il numero di "iterazioni" fatte.
+function resolveCascade(state, rng, colors) {
+  let iterations = 0;
+  while (resolveOneStep(state, rng, colors)) {
+    iterations++;
+    if (iterations > 50) break; // guardia di sicurezza
+  }
+  return iterations;
+}
+
+// Un singolo passaggio della cascata: risolve i match presenti ORA, fa
+// cadere/rabbocca, e si ferma — non continua da sola. Usata per animare
+// ogni passaggio separatamente invece che tutta la cascata in un colpo solo
+// (che su cascate lunghe faceva sembrare "sparisce tutto e torna").
+// Ritorna true se ha fatto qualcosa, false se non c'erano match (cascata finita).
+function resolveOneStep(state, rng, colors) {
+  const matches = findMatches(state);
+  if (matches.size === 0) return false;
+  resolveMatches(state, matches, rng, colors);
+  applyGravity(state);
+  updateStar(state);   // può liberare la cella della stella: va fatto PRIMA del refill
+  applyGravity(state); // fa scendere ciò che sta sopra nella cella appena liberata
+  refill(state, rng, colors);
+  return true;
+}
+
+// Tenta uno swap tra due celle adiacenti. Se non forma nessun match, annulla
+// (nessun costo mossa) — nessuna eccezione, nemmeno per la stella. Se valido,
+// COMMETTE solo lo scambio e scala una mossa: NON risolve la cascata (la fa
+// il chiamante, un passaggio alla volta, per poterla animare correttamente).
+function attemptSwap(state, level, rng, colors, r1, c1, r2, c2) {
+  const { board, grid } = state;
+  if (!isActive(grid, r1, c1) || !isActive(grid, r2, c2)) return { ok: false, reason: 'fuori griglia' };
+  const dr = Math.abs(r1 - r2), dc = Math.abs(c1 - c2);
+  if (dr + dc !== 1) return { ok: false, reason: 'non adiacenti' };
+
+  const a = board[r1][c1], b = board[r2][c2];
+  if (!isMovable(a) || !isMovable(b)) return { ok: false, reason: 'cella fissa non scambiabile' };
+
+  const bothBombs = a.kind === 'bomb' && b.kind === 'bomb';
+  // solo la stella (colorBomb) è sempre scambiabile a prescindere — non ha
+  // un colore "vero" concettualmente. Le altre bombe (freccia/3x3/croce)
+  // ORA contano per il proprio colore nei match normali, quindi seguono la
+  // stessa regola di qualunque pezzo: serve un match vero.
+  const involvesOnlyColorBomb =
+    (a.kind === 'bomb' && a.bombType === 'colorBomb' && b.kind !== 'bomb') ||
+    (b.kind === 'bomb' && b.bombType === 'colorBomb' && a.kind !== 'bomb');
+
+  board[r1][c1] = b; board[r2][c2] = a;
+
+  if (bothBombs) {
+    // due bombe scambiate tra loro: sempre valido, innesca sempre il combo.
+    // Niente ricompensa casuale qui: una bomba nuova nasce solo se un
+    // pattern geometrico vero la giustifica (via la cascata normale che
+    // segue), mai a caso — coerente con come nascono in un match normale.
+    state.movesRemaining--;
+    triggerBombCombo(state, r2, c2, a.bombType, a.color, b.bombType, b.color, r1, c1);
+    applyGravity(state);
+    updateStar(state);
+    applyGravity(state);
+    refill(state, rng, colors);
+    return { ok: true, comboAt: [r2, c2] };
+  }
+
+  if (involvesOnlyColorBomb) {
+    // la stella: OGNI swap con un colore esplode SEMPRE quel colore — non
+    // si sposta mai "a vuoto" in silenzio, come nei match-3 veri
+    state.movesRemaining--;
+    let bombRow, bombCol, otherPiece;
+    if (a.kind === 'bomb') { bombRow = r2; bombCol = c2; otherPiece = b; }
+    else { bombRow = r1; bombCol = c1; otherPiece = a; }
+    const targetColor = otherPiece.kind === 'color' ? otherPiece.color : undefined;
+    explodeBomb(state, bombRow, bombCol, targetColor);
+    applyGravity(state);
+    updateStar(state);
+    applyGravity(state);
+    refill(state, rng, colors);
+    return { ok: true, comboAt: [bombRow, bombCol] };
+  }
+
+  const matches = findMatches(state);
+
+  if (matches.size === 0) {
+    // annulla: uno swap normale vale solo se crea un match
+    board[r1][c1] = a; board[r2][c2] = b;
+    return { ok: false, reason: 'nessun match' };
+  }
+
+  state.movesRemaining--;
+  state.lastSwapCells = [[r1, c1], [r2, c2]]; // per la creazione bombe: preferisci una di queste due come ancora, se fa parte di un pattern
+  return { ok: true };
+}
+
+function checkGameEnd(state, level) {
+  const won = goalsComplete(state, level);
+  const lost = !won && state.movesRemaining <= 0;
+  return { won, lost };
+}
+
+// C'è almeno una bomba sul tabellone? Scambiarla è sempre valido, quindi la
+// sua sola presenza garantisce una mossa disponibile.
+function hasBomb(state) {
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (state.board[r][c] && state.board[r][c].kind === 'bomb') return true;
+  }
+  return false;
+}
+
+// Prova ogni scambio adiacente possibile (solo tra celle 'color': le bombe
+// sono già coperte sopra) e verifica se ne crea almeno uno valido.
+function hasAnyPossibleMove(state) {
+  if (hasBomb(state)) return true;
+  const { board, grid } = state;
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (!grid[r][c]) continue;
+      const dirs = [[0, 1], [1, 0]]; // destra e giù bastano, ogni coppia si controlla una volta sola
+      for (const [dr, dc] of dirs) {
+        const r2 = r + dr, c2 = c + dc;
+        if (r2 >= SIZE || c2 >= SIZE || !grid[r2][c2]) continue;
+        const a = board[r][c], b = board[r2][c2];
+        if (!a || !b || a.kind !== 'color' || b.kind !== 'color') continue;
+
+        board[r][c] = b; board[r2][c2] = a;
+        const matches = findMatches(state);
+        board[r][c] = a; board[r2][c2] = b;
+
+        if (matches.size > 0) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Rimescola le celle colorate finché non c'è né un match già pronto né uno
+// stallo — rimescola, poi aggiusta SOLO le celle che creano un match
+// (stessa tecnica di removeInitialMatches) invece di ributtare via tutto il
+// tentativo se il rimescolamento casuale non è perfetto al primo colpo:
+// molto più affidabile quando i colori disponibili sono pochi. Se anche con
+// tanti tentativi non basta (rarissimo, forme con punte molto strette),
+// ultimo paracadute: riprova con una tavolozza ridotta a 3 colori.
+// Fa scorrere ogni belt di 1 posizione nella sua direzione, ciclicamente
+// (l'ultimo pezzo rientra dall'altro capo). Muove i riferimenti agli
+// oggetti-pezzo esistenti (non ne crea di nuovi), quindi l'uid resta intatto
+// per l'animazione, come già fa la gravità.
+function advanceConveyors(state, level) {
+  if (!level.obstacles.conveyor.active) return { moved: false, wrappedUids: new Set() };
+  let moved = false;
+  const wrappedUids = new Set(); // il pezzo che "avvolge" da un capo all'altro del belt: non deve attraversare visibilmente la griglia
+  level.obstacles.conveyor.belts.forEach((belt) => {
+    const cells = belt.cells;
+    const pieces = cells.map(([r, c]) => state.board[r][c]);
+    let rotated, wrapper;
+    if (belt.direction === 'right' || belt.direction === 'down') {
+      wrapper = pieces[pieces.length - 1];
+      rotated = [pieces[pieces.length - 1], ...pieces.slice(0, pieces.length - 1)];
+    } else {
+      wrapper = pieces[0];
+      rotated = [...pieces.slice(1), pieces[0]];
+    }
+    if (wrapper && wrapper.uid) wrappedUids.add(wrapper.uid);
+    cells.forEach(([r, c], i) => { state.board[r][c] = rotated[i]; });
+    moved = true;
+  });
+  return { moved, wrappedUids };
+}
+
+function reshuffleColors(state, rng, colors) {
+  const positions = [];
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (state.board[r][c] && state.board[r][c].kind === 'color') positions.push([r, c]);
+  }
+
+  function tryWithPalette(palette, outerBudget) {
+    for (let outer = 0; outer < outerBudget; outer++) {
+      positions.forEach(([r, c]) => {
+        state.board[r][c].color = palette[Math.floor(rng() * palette.length)];
+      });
+
+      let fixIterations = 0;
+      while (fixIterations < 50) {
+        const matches = findMatches(state);
+        if (matches.size === 0) break;
+        matches.forEach((key) => {
+          const [r, c] = key.split(',').map(Number);
+          const cell = state.board[r][c];
+          if (cell && cell.kind === 'color') cell.color = palette[Math.floor(rng() * palette.length)];
+        });
+        fixIterations++;
+      }
+
+      if (findMatches(state).size === 0 && hasAnyPossibleMove(state)) return true;
+    }
+    return false;
+  }
+
+  if (tryWithPalette(colors, 60)) return true;
+  return tryWithPalette(colors.slice(0, 3), 60); // paracadute: tavolozza ridotta, quasi sempre risolutiva
+}
+
+
+// ============================================================
+// 6. RENDERING + INTERAZIONE con Pixi.js
+// ============================================================
+const CELL = 46;
+const GAP = 3;
+const BOARD_PX = SIZE * CELL;
+
+let app = null;
+let conveyorTexture = null; // texture del nastro trasportatore (pannello scatola magazzino + freccia), caricata una volta in ensureApp
+const CONVEYOR_TEXTURE_URI = 'data:image/png;base64,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';
+let game = null; // { level, cellDataInitial, state, gameplayRng, selected, boardContainer }
+
+async function ensureApp() {
+  if (app) return;
+  app = new PIXI.Application();
+  await app.init({ width: BOARD_PX, height: BOARD_PX, background: 0x0c0e12, antialias: true });
+  document.getElementById('canvas-wrap').appendChild(app.canvas);
+  try {
+    conveyorTexture = await loadTextureFromDataUri(CONVEYOR_TEXTURE_URI);
+  } catch (err) {
+    // se anche questo fallisse, il gioco deve partire comunque — il
+    // conveyor semplicemente non si disegna (drawConveyorTile controlla
+    // conveyorTexture prima di usarla)
+    console.error('[match3] impossibile caricare la texture del conveyor:', err);
+  }
+  setupSwipeHandling();
+}
+
+// Carica un'immagine da data URI in una texture Pixi passando da un
+// <img> vero e Texture.from — PIXI.Assets.load si basa sull'ESTENSIONE del
+// file per scegliere come caricare la risorsa, e un data URI non ne ha
+// una riconoscibile: falliva silenziosamente e bloccava ensureApp() a metà,
+// impedendo l'avvio del primo livello e lasciando la texture sempre nulla
+// anche nei livelli generati dopo (ensureApp ha già "app" impostato e
+// salta tutto al richiamo successivo).
+function loadTextureFromDataUri(dataUri) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(PIXI.Texture.from(img));
+    img.onerror = reject;
+    img.src = dataUri;
+  });
+}
+
+// ============================================================
+// Interazione: tap-tap (seleziona due celle) O swipe (trascina verso una
+// cella adiacente) — entrambe finiscono nello stesso tentativo di swap.
+// ============================================================
+let pointerStart = null; // { r, c, x, y, consumed }
+const SWIPE_THRESHOLD = 18; // px in coordinate locali dello stage
+
+function setupSwipeHandling() {
+  app.stage.eventMode = 'static';
+  app.stage.hitArea = new PIXI.Rectangle(0, 0, BOARD_PX, BOARD_PX);
+
+  app.stage.on('pointermove', (e) => {
+    if (!pointerStart || pointerStart.consumed) return;
+    const local = e.getLocalPosition(app.stage);
+    const dx = local.x - pointerStart.x, dy = local.y - pointerStart.y;
+    if (Math.hypot(dx, dy) < SWIPE_THRESHOLD) return;
+
+    let tr = pointerStart.r, tc = pointerStart.c;
+    if (Math.abs(dx) > Math.abs(dy)) tc += dx > 0 ? 1 : -1;
+    else tr += dy > 0 ? 1 : -1;
+
+    pointerStart.consumed = true;
+    onSwipe(pointerStart.r, pointerStart.c, tr, tc);
+  });
+
+  app.stage.on('pointerup', () => {
+    if (pointerStart && !pointerStart.consumed) onCellTap(pointerStart.r, pointerStart.c);
+    pointerStart = null;
+  });
+  app.stage.on('pointerupoutside', () => { pointerStart = null; });
+}
+
+function cellBg(x, y) {
+  const bg = new PIXI.Graphics();
+  bg.roundRect(GAP / 2, GAP / 2, CELL - GAP, CELL - GAP, 6);
+  bg.fill(0x22262f);
+  bg.position.set(x, y);
+  return bg;
+}
+
+function colorBox(x, y, hex) {
+  const g = new PIXI.Graphics();
+  g.roundRect(GAP / 2 + 4, GAP / 2 + 4, CELL - GAP - 8, CELL - GAP - 8, 8);
+  g.fill(hex);
+  g.position.set(x, y);
+  return g;
+}
+
+function renderBoard() {
+  const { level, state } = game;
+  app.stage.removeChildren(); activeConveyorSprites = []; // pulizia totale, non dipende da un riferimento che può perdersi tra un livello e l'altro
+  const container = new PIXI.Container();
+  game.boardContainer = container;
+
+  // (i blocchi2x2 non si disegnano qui dentro al loop: vedi il secondo
+  // passaggio subito dopo, per evitare che gli sfondi delle celle vicine
+  // coprano il riquadro grande)
+
+  // conveyor: lookup celle -> verso, per disegnarlo SUBITO dopo lo sfondo e
+  // PRIMA del pezzo, altrimenti lo sprite pieno lo coprirebbe (col vecchio
+  // bordino sottile non si notava, con lo sprite intero sì)
+  const conveyorDirAt = {};
+  if (level.obstacles.conveyor.active) {
+    level.obstacles.conveyor.belts.forEach((belt) => {
+      belt.cells.forEach(([r, c]) => { conveyorDirAt[r + ',' + c] = belt.direction; });
+    });
+  }
+
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (!level.grid[r][c]) continue;
+      const x = c * CELL, y = r * CELL;
+      container.addChild(cellBg(x, y));
+      const belowDir = conveyorDirAt[r + ',' + c];
+      if (belowDir) drawConveyorTile(container, r, c, belowDir);
+
+      const cell = state.board[r][c];
+      if (!cell) continue;
+
+      if (cell.kind === 'color') {
+        container.addChild(colorBox(x, y, COLOR_HEX[cell.color]));
+      } else if (cell.kind === 'black') {
+        container.addChild(colorBox(x, y, COLOR_HEX.black));
+      } else if (cell.kind === 'lightbulb') {
+        const g = new PIXI.Graphics();
+        g.roundRect(GAP / 2 + 4, GAP / 2 + 4, CELL - GAP - 8, CELL - GAP - 8, 8);
+        g.fill(cell.lit ? 0x4a4322 : 0x2a2d35);
+        g.stroke({ width: 2, color: 0xffd966 });
+        g.position.set(x, y);
+        container.addChild(g);
+        const label = new PIXI.Text({ text: '\u{1F4A1}', style: { fontSize: 20 } });
+        label.anchor.set(0.5);
+        label.alpha = cell.lit ? 1 : 0.5;
+        label.position.set(x + CELL / 2, y + CELL / 2);
+        container.addChild(label);
+      } else if (cell.kind === 'star') {
+        const g = new PIXI.Graphics();
+        g.roundRect(GAP / 2 + 4, GAP / 2 + 4, CELL - GAP - 8, CELL - GAP - 8, 8);
+        g.fill(0x2a2d35);
+        g.stroke({ width: 2, color: 0xfff0a8 });
+        g.position.set(x, y);
+        container.addChild(g);
+        const label = new PIXI.Text({ text: '\u2B50', style: { fontSize: 22 } });
+        label.anchor.set(0.5);
+        label.position.set(x + CELL / 2, y + CELL / 2);
+        container.addChild(label);
+      } else if (cell.kind === 'bombola') {
+        // niente qui: disegnato in un secondo passaggio dopo tutti gli sfondi,
+        // altrimenti le celle successive del loop coprono il riquadro grande
+        // (stesso bug di layering già risolto una volta, reintrodotto qui
+        // riscrivendo il rendering per l'interattività)
+      } else if (cell.kind === 'bomb') {
+        const obj = createPieceDisplay('bomb', cell.color, cell.bombType);
+        obj.position.set(x + CELL / 2, y + CELL / 2);
+        container.addChild(obj);
+      }
+
+      // selezione corrente
+      if (game.selected && game.selected[0] === r && game.selected[1] === c) {
+        const sel = new PIXI.Graphics();
+        sel.roundRect(GAP / 2 - 1, GAP / 2 - 1, CELL - GAP + 2, CELL - GAP + 2, 8);
+        sel.stroke({ width: 3, color: 0xffffff, alpha: 0.9 });
+        sel.position.set(x, y);
+        container.addChild(sel);
+      }
+
+      // lampeggio rosso su uno swap appena rifiutato (nessun match formato)
+      if (game.rejectedFlash && game.rejectedFlash.some(([fr, fc]) => fr === r && fc === c)) {
+        const rej = new PIXI.Graphics();
+        rej.roundRect(GAP / 2 - 1, GAP / 2 - 1, CELL - GAP + 2, CELL - GAP + 2, 8);
+        rej.stroke({ width: 3, color: 0xe0524f, alpha: 0.95 });
+        rej.position.set(x, y);
+        container.addChild(rej);
+      }
+
+      // area cliccabile
+      const hit = new PIXI.Graphics();
+      hit.rect(0, 0, CELL, CELL);
+      hit.fill({ color: 0x000000, alpha: 0.001 });
+      hit.position.set(x, y);
+      hit.eventMode = 'static';
+      hit.cursor = 'pointer';
+      hit.on('pointerdown', (e) => {
+        const local = e.getLocalPosition(app.stage);
+        pointerStart = { r, c, x: local.x, y: local.y, consumed: false };
+      });
+      container.addChild(hit);
+    }
+  }
+
+  // blocchi 2x2 (secondo passaggio, sopra gli sfondi di tutte le celle coinvolte)
+  Object.values(state.bombolaInstances).forEach((inst) => {
+    if (inst.cleared) return; // già liberato, niente da disegnare
+    const ax = inst.anchorCol * CELL, ay = inst.anchorRow * CELL;
+    const size2 = CELL * 2;
+    const g = new PIXI.Graphics();
+    g.roundRect(GAP / 2 + 4, GAP / 2 + 4, size2 - GAP - 8, size2 - GAP - 8, 10);
+    g.fill(0x3a3220);
+    g.stroke({ width: 2, color: 0xffb454 });
+    g.position.set(ax, ay);
+    container.addChild(g);
+    const label = new PIXI.Text({
+      text: String(inst.hitsRemaining),
+      style: { fontSize: 26, fill: 0xffb454, fontWeight: '700', fontFamily: 'IBM Plex Mono, monospace' },
+    });
+    label.anchor.set(0.5);
+    label.position.set(ax + size2 / 2, ay + size2 / 2);
+    container.addChild(label);
+  });
+
+  // copertura (bordo rosso, solo celle ancora da coprire)
+  state.coverageSet.forEach((key) => {
+    const [r, c] = key.split(',').map(Number);
+    const g = new PIXI.Graphics();
+    g.roundRect(GAP / 2 + 1, GAP / 2 + 1, CELL - GAP - 2, CELL - GAP - 2, 7);
+    g.stroke({ width: 1.5, color: 0xe0524f, alpha: 0.75 });
+    g.position.set(c * CELL, r * CELL);
+    container.addChild(g);
+  });
+
+  app.stage.addChild(container);
+}
+
+// ============================================================
+// 6b. ANIMAZIONI (swap, rimozione match, caduta, refill)
+// ============================================================
+
+// Cattura posizione di ogni pezzo mobile (colore/nero/stella), per confronto prima/dopo
+function snapshotMovable(board, grid) {
+  const map = new Map();
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (!grid[r][c]) continue;
+    const cell = board[r][c];
+    if (cell && (cell.kind === 'color' || cell.kind === 'black' || cell.kind === 'star' || cell.kind === 'bomb') && cell.uid) {
+      map.set(cell.uid, { r, c, kind: cell.kind, color: cell.color, bombType: cell.bombType });
+    }
+  }
+  return map;
+}
+
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+// Disegna tutto TRANNE i pezzi mobili e le aree cliccabili: sfondo celle,
+// lampadine, bombole, copertura, conveyor. Usato come sfondo fermo durante
+// le animazioni, così non devo ridisegnare da zero la logica dei goal.
+// Disegna una cella del nastro trasportatore con la texture del pannello
+// da magazzino (freccia gialla su pannello metallico) — l'immagine punta a
+// destra di default, per gli altri versi la ruoto semplicemente. TilingSprite
+// invece di Sprite semplice: lo sfondo scorre di continuo (vedi il ticker in
+// ensureApp), non solo il pezzo che ci scivola sopra.
+const CONVEYOR_ROTATION = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
+let activeConveyorSprites = []; // i tile correnti sullo stage, per lo scroll continuo — azzerato a ogni render
+function drawConveyorTile(container, r, c, direction) {
+  if (!conveyorTexture) return; // non ancora caricata (non dovrebbe succedere, ensureApp la aspetta)
+  const size = CELL - GAP + 2;
+  const sprite = new PIXI.TilingSprite({ texture: conveyorTexture, width: size, height: size });
+  sprite.anchor.set(0.5);
+  sprite.rotation = CONVEYOR_ROTATION[direction] || 0;
+  sprite.position.set(c * CELL + CELL / 2, r * CELL + CELL / 2);
+  // la texture sorgente è più grande della cella: scalo il tile perché il
+  // pattern non si ripeta dentro a una singola cella (un tile solo, come
+  // prima), lo scroll poi lo fa muovere comunque
+  sprite.tileScale.set(size / conveyorTexture.width, size / conveyorTexture.height);
+  container.addChild(sprite);
+  activeConveyorSprites.push(sprite);
+}
+
+function renderStaticLayer(state, level) {
+  app.stage.removeChildren(); activeConveyorSprites = [];
+  const container = new PIXI.Container();
+
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (!level.grid[r][c]) continue;
+      container.addChild(cellBg(c * CELL, r * CELL));
+      // le lampadine NON si disegnano qui: vanno in un layer a parte,
+      // sopra ai pezzi mobili (renderOverlayLayer), altrimenti un pezzo
+      // che cade ci passerebbe sopra invece che dietro
+    }
+  }
+
+  Object.values(state.bombolaInstances).forEach((inst) => {
+    if (inst.cleared) return;
+    const ax = inst.anchorCol * CELL, ay = inst.anchorRow * CELL;
+    const size2 = CELL * 2;
+    const g = new PIXI.Graphics();
+    g.roundRect(GAP / 2 + 4, GAP / 2 + 4, size2 - GAP - 8, size2 - GAP - 8, 10);
+    g.fill(0x3a3220);
+    g.stroke({ width: 2, color: 0xffb454 });
+    g.position.set(ax, ay);
+    container.addChild(g);
+    const label = new PIXI.Text({
+      text: String(inst.hitsRemaining),
+      style: { fontSize: 26, fill: 0xffb454, fontWeight: '700', fontFamily: 'IBM Plex Mono, monospace' },
+    });
+    label.anchor.set(0.5);
+    label.position.set(ax + size2 / 2, ay + size2 / 2);
+    container.addChild(label);
+  });
+
+  state.coverageSet.forEach((key) => {
+    const [r, c] = key.split(',').map(Number);
+    const g = new PIXI.Graphics();
+    g.roundRect(GAP / 2 + 1, GAP / 2 + 1, CELL - GAP - 2, CELL - GAP - 2, 7);
+    g.stroke({ width: 1.5, color: 0xe0524f, alpha: 0.75 });
+    g.position.set(c * CELL, r * CELL);
+    container.addChild(g);
+  });
+
+  if (level.obstacles.conveyor.active) {
+    level.obstacles.conveyor.belts.forEach((belt) => {
+      belt.cells.forEach(([r, c]) => drawConveyorTile(container, r, c, belt.direction));
+    });
+  }
+
+  app.stage.addChild(container);
+}
+
+// Lampadine, disegnate SOPRA ai pezzi mobili (chiamata dopo aver aggiunto il
+// movingLayer allo stage) — un pezzo che cade nella loro cella o vicino
+// deve passarci dietro, non sopra, altrimenti la lampadina sembra sparire
+// sotto la caramella che cade.
+function renderOverlayLayer(state, level) {
+  const container = new PIXI.Container();
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (!level.grid[r][c]) continue;
+      const cell = state.board[r][c];
+      if (!cell || cell.kind !== 'lightbulb') continue;
+      const x = c * CELL, y = r * CELL;
+      const g = new PIXI.Graphics();
+      g.roundRect(GAP / 2 + 4, GAP / 2 + 4, CELL - GAP - 8, CELL - GAP - 8, 8);
+      g.fill(cell.lit ? 0x4a4322 : 0x2a2d35);
+      g.stroke({ width: 2, color: 0xffd966 });
+      g.position.set(x, y);
+      container.addChild(g);
+      const label = new PIXI.Text({ text: '\u{1F4A1}', style: { fontSize: 20 } });
+      label.anchor.set(0.5);
+      label.alpha = cell.lit ? 1 : 0.5;
+      label.position.set(x + CELL / 2, y + CELL / 2);
+      container.addChild(label);
+    }
+  }
+  app.stage.addChild(container);
+  return container; // i pezzi mobili animati vengono aggiunti sopra questo, dal chiamante
+}
+
+// Crea il display object di un pezzo UNA VOLTA (origine al centro, così
+// impostare .position equivale a piazzare il centro del pezzo in quel punto).
+// Le animazioni poi mutano solo posizione/alpha/scala, non ricreano nulla.
+const BOMB_ICON = { area3x3: '\u{1F4A5}', cross: '\u271B', lineRow: '\u2194', lineCol: '\u2195', colorBomb: '\u2605' };
+
+// Lampo breve su TUTTE le celle coinvolte in un'esplosione (combo bomba+
+// bomba, o bomba attivata da sola) — non solo il punto centrale: se esplode
+// una riga o una colonna, deve illuminarsi tutta, altrimenti non si capisce
+// cosa sta per sparire. `cells` è un array di [r,c].
+// Come explodeBomb, ma SENZA modificare la board: segue la reazione a
+// catena (bomba che ne tocca un'altra) solo per scoprire TUTTE le celle che
+// finiranno per sparire, in modo da poterle illuminare tutte insieme nel
+// lampo — non solo quelle della prima bomba che scatta.
+function previewExplosionChain(state, r, c, bombType) {
+  const { board } = state;
+  const queue = [{ r, c, bombType }];
+  const processed = new Set();
+  const allCells = new Set();
+  while (queue.length) {
+    const { r: br, c: bc, bombType: bt } = queue.shift();
+    const key = br + ',' + bc;
+    if (processed.has(key)) continue;
+    processed.add(key);
+    const cellsToClear = computeExplosionCells(state, br, bc, { bombType: bt });
+    cellsToClear.forEach((ckey) => {
+      allCells.add(ckey);
+      if (ckey === key) return;
+      const [rr, cc] = ckey.split(',').map(Number);
+      const cell = board[rr][cc];
+      if (cell && cell.kind === 'bomb' && !processed.has(ckey)) {
+        queue.push({ r: rr, c: cc, bombType: cell.bombType });
+      }
+    });
+  }
+  return [...allCells].map((k) => k.split(',').map(Number));
+}
+
+// Controlla se il PROSSIMO match da risolvere include una bomba esistente
+// (es. "freccia rossa + rosso + rosso") — se sì, restituisce tutte le celle
+// che quella bomba (e l'eventuale catena che innesca) sta per colpire, per
+// il lampo — altrimenti null. Usata prima di ogni passaggio della cascata,
+// non solo per tap/combo.
+function computeInMatchBombFlashCells(state) {
+  const matches = findMatches(state);
+  const cellsSet = new Set();
+  let anyBomb = false;
+  matches.forEach((key) => {
+    const [r, c] = key.split(',').map(Number);
+    const cell = state.board[r][c];
+    if (cell && cell.kind === 'bomb') {
+      anyBomb = true;
+      previewExplosionChain(state, r, c, cell.bombType).forEach(([rr, cc]) => cellsSet.add(rr + ',' + cc));
+    }
+  });
+  if (!anyBomb) return null;
+  return [...cellsSet].map((k) => k.split(',').map(Number));
+}
+
+function flashExplosion(cells, onDone) {
+  const FLASH_MS = 220;
+  const overlay = new PIXI.Graphics();
+  app.stage.addChild(overlay); // sopra a tutto quello che c'è già, lampadine comprese
+  const start = performance.now();
+  function frame(now) {
+    try {
+      const t = Math.min(1, (now - start) / FLASH_MS);
+      const alpha = (1 - t) * 0.9;
+      overlay.clear();
+      cells.forEach(([r, c]) => {
+        const x = c * CELL, y = r * CELL;
+        overlay.roundRect(x + GAP / 2 - 1, y + GAP / 2 - 1, CELL - GAP + 2, CELL - GAP + 2, 8);
+      });
+      overlay.fill({ color: 0xffe9a8, alpha });
+      if (t < 1) requestAnimationFrame(frame);
+      else { app.stage.removeChild(overlay); onDone(); }
+    } catch (err) {
+      emergencyRecover(err, 'flashExplosion');
+    }
+  }
+  frame(start);
+}
+
+function createPieceDisplay(kind, color, bombType) {
+  if (kind === 'star') {
+    // riquadro con bordo dorato + emoji, come nel rendering statico — prima
+    // mancava il riquadro qui, e durante l'animazione la stella perdeva il
+    // bordo (sembrava "spegnersi") mostrando solo la faccina nuda
+    const box = new PIXI.Container();
+    const size = CELL - GAP - 8;
+    const g = new PIXI.Graphics();
+    g.roundRect(-size / 2, -size / 2, size, size, 8);
+    g.fill(0x2a2d35);
+    g.stroke({ width: 2, color: 0xfff0a8 });
+    box.addChild(g);
+    const label = new PIXI.Text({ text: '\u2B50', style: { fontSize: 22 } });
+    label.anchor.set(0.5);
+    box.addChild(label);
+    return box;
+  }
+  if (kind === 'bomb') {
+    const box = new PIXI.Container();
+    const size = CELL - GAP - 8;
+    const g = new PIXI.Graphics();
+    g.roundRect(-size / 2, -size / 2, size, size, 8);
+    const hex = bombType === 'colorBomb' ? 0x22d3ee : COLOR_HEX[color]; // stella: ciano, non più bianco (si confondeva)
+    g.fill(hex);
+    g.stroke({ width: 2, color: 0xffffff });
+    box.addChild(g);
+    const label = new PIXI.Text({
+      text: BOMB_ICON[bombType] || '?',
+      style: { fontSize: 16, fill: bombType === 'colorBomb' ? 0x0b2e33 : 0xffffff, fontWeight: '700' },
+    });
+    label.anchor.set(0.5);
+    box.addChild(label);
+    return box;
+  }
+  const hex = kind === 'black' ? COLOR_HEX.black : COLOR_HEX[color];
+  const size = CELL - GAP - 8;
+  const g = new PIXI.Graphics();
+  g.roundRect(-size / 2, -size / 2, size, size, 8);
+  g.fill(hex);
+  return g;
+}
+
+// Anima la transizione tra due istanti (prima/dopo uno swap risolto): i
+// pezzi sopravvissuti scivolano dalla vecchia alla nuova posizione, quelli
+// rimossi svaniscono sul posto, quelli nuovi cadono dall'alto. Non modella
+// ogni singolo passo della cascata (match->gravità->match...) come eventi
+// separati, ma un'unica transizione continua dal "prima" al "dopo" — un
+// compromesso deliberato per restare in scope.
+//
+// Lo sfondo (forma, lampadine, bombole, copertura, conveyor) si costruisce
+// UNA SOLA VOLTA prima del loop, non ad ogni frame: ricostruire tutto lo
+// stage 60 volte al secondo (con tanto di testo delle bombole, costoso in
+// Pixi) causava un frame vuoto visibile ogni tanto — il "buio" che si vedeva.
+// Segmenti contigui di celle attive per ogni colonna della forma — non
+// basta il bordo più in alto della COLONNA intera: forme con buchi nel
+// mezzo (le strisce, ma anche i 5-quadrati allargati) hanno più segmenti
+// separati nella stessa colonna, e un pezzo nuovo deve entrare dal bordo
+// del SUO segmento, non da quello dell'intera colonna — altrimenti
+// attraversa visibilmente segmenti che non gli appartengono.
+function columnSegments(grid) {
+  const segments = []; // per colonna: array di {top, bottom}
+  for (let c = 0; c < SIZE; c++) {
+    const colSegs = [];
+    let segTop = null;
+    for (let r = 0; r <= SIZE; r++) {
+      const active = r < SIZE && grid[r][c];
+      if (active && segTop === null) segTop = r;
+      else if (!active && segTop !== null) { colSegs.push({ top: segTop, bottom: r - 1 }); segTop = null; }
+    }
+    segments.push(colSegs);
+  }
+  return segments;
+}
+
+// Trova il segmento (di columnSegments) a cui appartiene la cella (r,c).
+function findSegment(segments, c, r) {
+  return segments[c].find((s) => r >= s.top && r <= s.bottom);
+}
+
+function runSettleAnimation(before, after, level, finalState, duration, onComplete, teleportUids, scrollConveyor) {
+  teleportUids = teleportUids || new Set();
+  const moved = [];   // presenti prima E dopo (anche se non si sono spostati)
+  const removed = []; // presenti prima, spariti dopo (match)
+  const teleportIn = []; // pezzi che "avvolgono" sul conveyor: dissolvenza in uscita + in entrata, mai un movimento visibile
+
+  before.forEach((p, uid) => {
+    if (after.has(uid)) {
+      const p2 = after.get(uid);
+      if (teleportUids.has(uid)) {
+        // avvolge da un capo all'altro del belt: non deve attraversare
+        // visibilmente la griglia — sparisce da dove stava, ricompare dove
+        // arriva, come una cella rimossa e una nuova insieme
+        removed.push(p);
+        teleportIn.push(p2);
+      } else {
+        moved.push({ kind: p.kind, color: p.color, bombType: p.bombType, r0: p.r, c0: p.c, r1: p2.r, c1: p2.c });
+      }
+    } else {
+      removed.push(p);
+    }
+  });
+  const added = [];
+  after.forEach((p, uid) => { if (!before.has(uid)) added.push(p); });
+
+  // i pezzi nuovi cadono in fila, ma partono appena sopra il bordo del LORO
+  // SEGMENTO (non della colonna intera, che può avere più segmenti separati
+  // da buchi — capita nelle strisce ma anche in forme come i 5-quadrati
+  // allargati) — altrimenti attraversano visibilmente segmenti che non gli
+  // appartengono prima di raggiungere quello vero.
+  const segments = columnSegments(level.grid);
+  const byColumn = {};
+  added.forEach((p) => { (byColumn[p.c] = byColumn[p.c] || []).push(p); });
+  const startRowByPiece = new Map();
+  Object.values(byColumn).forEach((pieces) => {
+    pieces.sort((a, b) => a.r - b.r);
+    const seg = findSegment(segments, pieces[0].c, pieces[0].r);
+    const top = seg ? seg.top : 0;
+    pieces.forEach((p, i) => startRowByPiece.set(p, top - (i + 1)));
+  });
+
+  renderStaticLayer(finalState, level); // sfondo, una volta sola
+  const movingLayer = new PIXI.Container();
+
+  // maschera PER SEGMENTO: ogni segmento di ogni colonna è visibile solo
+  // dal proprio bordo superiore in giù — un rettangolo per segmento, non
+  // uno solo per l'intera colonna, altrimenti i buchi tra i segmenti
+  // resterebbero "aperti" e si vedrebbe un pezzo attraversarli.
+  const mask = new PIXI.Graphics();
+  for (let c = 0; c < SIZE; c++) {
+    segments[c].forEach((seg) => {
+      mask.rect(c * CELL, seg.top * CELL, CELL, (seg.bottom - seg.top + 1) * CELL);
+    });
+  }
+  mask.fill(0xffffff);
+  movingLayer.addChild(mask);
+  movingLayer.mask = mask;
+  app.stage.addChild(movingLayer);
+  renderOverlayLayer(finalState, level); // lampadine sopra ai pezzi mobili, non sotto
+
+  // --- fisica di caduta, come COLORUSH: ogni pezzo ha la propria velocità
+  // verticale che accelera per gravità ad ogni frame, non una curva a tempo
+  // fisso — chi ha più strada da fare arriva più veloce naturalmente, senza
+  // bisogno di ritardi o durate calcolate a mano. Costanti scalate dalla
+  // cella di riferimento di COLORUSH (72px) alla nostra (46px).
+  const REF_CELL = 72;
+  const GRAVITY = 4.5 * (CELL / REF_CELL);
+  const BOUNCE_VY_THRESHOLD = 8 * (CELL / REF_CELL);
+  const BOUNCE_DAMPING = 0.15;
+  const X_TWEEN_MS = 160; // spostamenti orizzontali (conveyor): breve tween, non è una caduta
+
+  // specifiche unificate di ogni pezzo che cade/si sposta, ordinate per riga
+  // di arrivo (chi atterra più in basso va disegnato per ultimo, quindi
+  // sopra nello z-order — altrimenti chi cade da più in alto lo attraverserebbe)
+  const fallingSpecs = [];
+  moved.forEach((m) => {
+    fallingSpecs.push({
+      kind: m.kind, color: m.color, bombType: m.bombType,
+      x0: m.c0 * CELL, x1: m.c1 * CELL, y0: m.r0 * CELL, y1: m.r1 * CELL, targetRow: m.r1,
+    });
+  });
+  added.forEach((p) => {
+    const startRow = startRowByPiece.get(p);
+    fallingSpecs.push({
+      kind: p.kind, color: p.color, bombType: p.bombType,
+      x0: p.c * CELL, x1: p.c * CELL, y0: startRow * CELL, y1: p.r * CELL, targetRow: p.r,
+    });
+  });
+  fallingSpecs.sort((a, b) => a.targetRow - b.targetRow);
+
+  const bodies = fallingSpecs.map((spec) => {
+    const obj = createPieceDisplay(spec.kind, spec.color, spec.bombType);
+    movingLayer.addChild(obj);
+    return {
+      obj, x0: spec.x0, x1: spec.x1,
+      y: spec.y0, targetY: spec.y1, vy: 0, settled: spec.y0 === spec.y1,
+    };
+  });
+
+  const removedObjs = removed.map((p) => ({ p, obj: createPieceDisplay(p.kind, p.color, p.bombType) }));
+  removedObjs.forEach(({ obj }) => movingLayer.addChild(obj));
+  const REMOVE_FADE_MS = 180;
+
+  // pezzi che "avvolgono" sul conveyor: dissolvenza in entrata alla loro
+  // posizione di arrivo, ritardata quanto basta perché non si sovrapponga
+  // visivamente alla dissolvenza in uscita dello stesso pezzo altrove
+  const teleportInObjs = teleportIn.map((p) => ({ p, obj: createPieceDisplay(p.kind, p.color, p.bombType) }));
+  teleportInObjs.forEach(({ obj }) => { obj.alpha = 0; movingLayer.addChild(obj); });
+  const TELEPORT_IN_DELAY_MS = REMOVE_FADE_MS; // aspetta che la dissolvenza in uscita sia finita
+
+  const start = performance.now();
+  const SAFETY_MS = 4000; // guardia: se la fisica non si stabilizza mai (bug), non resta bloccato per sempre
+
+  function frame(now) {
+    try {
+      const elapsed = now - start;
+      let allSettled = true;
+
+      if (scrollConveyor) {
+        // il nastro scorre in sincrono con lo spostamento dei pezzi sopra,
+        // non di continuo — stessa durata di questa animazione
+        const scrollT = Math.min(1, elapsed / duration);
+        const offset = scrollT * (CELL - GAP + 2);
+        activeConveyorSprites.forEach((s) => { s.tilePosition.x = offset; });
+      }
+
+      bodies.forEach((b) => {
+        const xT = X_TWEEN_MS === 0 ? 1 : Math.min(1, elapsed / X_TWEEN_MS);
+        const xE = easeOutCubic(xT);
+        const x = b.x0 + (b.x1 - b.x0) * xE;
+        if (xT < 1) allSettled = false;
+
+        if (!b.settled) {
+          b.vy += GRAVITY;
+          b.y += b.vy;
+          if (b.y >= b.targetY) {
+            if (Math.abs(b.vy) > BOUNCE_VY_THRESHOLD) {
+              b.y = b.targetY;
+              b.vy = -b.vy * BOUNCE_DAMPING;
+            } else {
+              b.y = b.targetY;
+              b.vy = 0;
+              b.settled = true;
+            }
+          }
+          allSettled = false;
+        }
+        b.obj.position.set(x + CELL / 2, b.y + CELL / 2);
+      });
+
+      const fadeT = Math.min(1, elapsed / REMOVE_FADE_MS);
+      const fadeE = easeOutCubic(fadeT);
+      removedObjs.forEach(({ p, obj }) => {
+        obj.position.set(p.c * CELL + CELL / 2, p.r * CELL + CELL / 2);
+        obj.alpha = 1 - fadeE;
+        obj.scale.set(1 - fadeE * 0.4);
+      });
+      if (fadeT < 1) allSettled = false;
+
+      const teleportElapsed = Math.max(0, elapsed - TELEPORT_IN_DELAY_MS);
+      const teleportT = Math.min(1, teleportElapsed / REMOVE_FADE_MS);
+      const teleportE = easeOutCubic(teleportT);
+      teleportInObjs.forEach(({ p, obj }) => {
+        obj.position.set(p.c * CELL + CELL / 2, p.r * CELL + CELL / 2);
+        obj.alpha = teleportE;
+      });
+      if (teleportInObjs.length > 0 && teleportT < 1) allSettled = false;
+
+      if (!allSettled && elapsed < SAFETY_MS) requestAnimationFrame(frame);
+      else onComplete();
+    } catch (err) {
+      emergencyRecover(err, 'runSettleAnimation.frame');
+    }
+  }
+  frame(start); // posiziona subito i pezzi al frame 0 E avvia il loop (si rischedula da sola)
+}
+// Anima solo lo scambio "di prova" fra due celle adiacenti (prima ancora di
+// sapere se lo swap è valido) — pura estetica, la logica gira dopo.
+// reverse=true anima il percorso inverso (torna alle posizioni originali,
+// usato quando lo swap viene rifiutato dopo la preview in avanti).
+function runSwapPreview(r1, c1, r2, c2, board, level, duration, reverse, onComplete) {
+  const p1 = board[r1][c1], p2 = board[r2][c2];
+
+  renderStaticLayer({ ...game.state, board }, level); // sfondo, una volta sola
+  const movingLayer = new PIXI.Container();
+  const mask = new PIXI.Graphics();
+  mask.rect(0, 0, BOARD_PX, BOARD_PX);
+  mask.fill(0xffffff);
+  movingLayer.addChild(mask);
+  movingLayer.mask = mask;
+  app.stage.addChild(movingLayer);
+  renderOverlayLayer({ ...game.state, board }, level); // lampadine sopra ai pezzi mobili, non sotto
+
+  const obj1 = p1 ? createPieceDisplay(p1.kind, p1.color, p1.bombType) : null;
+  const obj2 = p2 ? createPieceDisplay(p2.kind, p2.color, p2.bombType) : null;
+  if (obj1) movingLayer.addChild(obj1);
+  if (obj2) movingLayer.addChild(obj2);
+
+  // TUTTI gli altri pezzi del tabellone (non coinvolti nello scambio)
+  // vanno comunque disegnati, fermi, altrimenti spariscono per l'intera
+  // preview — lo sfondo statico non include mai i pezzi colorati per design.
+  for (let rr = 0; rr < SIZE; rr++) {
+    for (let cc = 0; cc < SIZE; cc++) {
+      if ((rr === r1 && cc === c1) || (rr === r2 && cc === c2)) continue;
+      const cell = board[rr][cc];
+      if (cell && (cell.kind === 'color' || cell.kind === 'black' || cell.kind === 'star' || cell.kind === 'bomb')) {
+        const obj = createPieceDisplay(cell.kind, cell.color, cell.bombType);
+        obj.position.set(cc * CELL + CELL / 2, rr * CELL + CELL / 2);
+        movingLayer.addChild(obj);
+      }
+    }
+  }
+
+  const start = performance.now();
+  function frame(now) {
+    try {
+      const t = Math.min(1, (now - start) / duration);
+      let e = easeOutCubic(t);
+      if (reverse) e = 1 - e;
+
+      const x1 = c1 * CELL + (c2 - c1) * CELL * e + CELL / 2, y1 = r1 * CELL + (r2 - r1) * CELL * e + CELL / 2;
+      const x2 = c2 * CELL + (c1 - c2) * CELL * e + CELL / 2, y2 = r2 * CELL + (r1 - r2) * CELL * e + CELL / 2;
+      if (obj1) obj1.position.set(x1, y1);
+      if (obj2) obj2.position.set(x2, y2);
+
+      if (t < 1) requestAnimationFrame(frame);
+      else onComplete();
+    } catch (err) {
+      emergencyRecover(err, 'runSwapPreview.frame');
+    }
+  }
+  frame(start); // posiziona subito i pezzi al frame 0 E avvia il loop (si rischedula da sola)
+}
+
+// Tap singolo su una cella: seleziona/deseleziona, tenta lo swap se una
+// cella era già selezionata ed è adiacente, oppure — se è una bomba e non
+// c'è nulla di selezionato — la attiva subito, senza bisogno di scambiarla.
+function onCellTap(r, c) {
+  if (game.finished || game.animating) return;
+  const cell = game.state.board[r][c];
+
+  if (cell && cell.kind === 'bomb' && !game.selected) {
+    performBombActivation(r, c);
+    return;
+  }
+
+  if (!isMovable(cell)) return; // lampadine/bombole fisse non si selezionano
+
+  if (!game.selected) {
+    game.selected = [r, c];
+    renderBoard();
+    return;
+  }
+
+  const [sr, sc] = game.selected;
+  if (sr === r && sc === c) { game.selected = null; renderBoard(); return; }
+
+  const dr = Math.abs(sr - r), dc = Math.abs(sc - c);
+  if (dr + dc !== 1) { game.selected = [r, c]; renderBoard(); return; } // non adiacenti: sposta la selezione
+
+  game.selected = null;
+  performSwapAttempt(sr, sc, r, c);
+}
+
+// Trascinamento verso una cella adiacente: salta dritto al tentativo di
+// swap, senza passare per la selezione a due tap.
+function onSwipe(r1, c1, r2, c2) {
+  if (game.finished || game.animating) return;
+  if (!isActive(game.level.grid, r2, c2)) return;
+  const cell1 = game.state.board[r1][c1];
+  const cell2 = game.state.board[r2][c2];
+  if (!isMovable(cell1) || !isMovable(cell2)) return; // anche la destinazione dev'essere scambiabile, non solo la partenza
+  game.selected = null;
+  performSwapAttempt(r1, c1, r2, c2);
+}
+
+// Logica di swap condivisa da tap e swipe.
+function performSwapAttempt(sr, sc, r, c) {
+  const animationsOn = document.getElementById('animToggle').checked;
+  if (!animationsOn) {
+    // percorso istantaneo, senza animazione — quello affidabile di prima
+    const res = attemptSwap(game.state, game.level, game.gameplayRng, game.level.colors, sr, sc, r, c);
+    if (!res.ok) {
+      game.rejectedFlash = [[sr, sc], [r, c]];
+      renderBoard();
+      setTimeout(() => { game.rejectedFlash = null; renderBoard(); }, 220);
+      return;
+    }
+    resolveCascade(game.state, game.gameplayRng, game.level.colors);
+    renderBoard();
+    updateInfoPanel();
+    finalizeMove();
+    return;
+  }
+
+  game.animating = true;
+
+  try {
+    runSwapPreview(sr, sc, r, c, game.state.board, game.level, 140, false, () => {
+      try {
+        const cellA = game.state.board[sr][sc], cellB = game.state.board[r][c];
+        const bothAreBombs = cellA && cellB && cellA.kind === 'bomb' && cellB.kind === 'bomb';
+        const involvesOnlyColorBombSwap = cellA && cellB && (
+          (cellA.kind === 'bomb' && cellA.bombType === 'colorBomb' && cellB.kind !== 'bomb') ||
+          (cellB.kind === 'bomb' && cellB.bombType === 'colorBomb' && cellA.kind !== 'bomb')
+        );
+        const willExplode = bothAreBombs || involvesOnlyColorBombSwap;
+        const comboBefore = willExplode ? snapshotMovable(game.state.board, game.level.grid) : null;
+
+        // celle da illuminare nel lampo, calcolate PRIMA che attemptSwap
+        // risolva tutto — con la stella (colorBomb) coinvolta, sono le
+        // celle del colore col quale è stata scambiata (o il più presente
+        // se scambiata con qualcosa senza colore proprio), altrimenti la
+        // geometria del combo/esplosione vera e propria
+        let comboFlashCells = null;
+        if (bothAreBombs) {
+          if (cellA.bombType === 'colorBomb' || cellB.bombType === 'colorBomb') {
+            const otherColor = cellA.bombType === 'colorBomb' ? cellB.color : cellA.color;
+            const targetColor = otherColor || mostCommonColor(game.state);
+            comboFlashCells = [];
+            for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
+              const cell = game.state.board[rr][cc];
+              if (cell && cell.kind === 'color' && cell.color === targetColor) comboFlashCells.push([rr, cc]);
+            }
+          } else {
+            const baseCells = computeComboCells(game.state.grid, r, c, cellA.bombType, cellB.bombType);
+            const flashSet = new Set(baseCells);
+            baseCells.forEach((ckey) => {
+              const [rr, cc] = ckey.split(',').map(Number);
+              if ((rr === sr && cc === sc) || (rr === r && cc === c)) return; // le due bombe combinate stesse
+              const cell = game.state.board[rr][cc];
+              if (cell && cell.kind === 'bomb') {
+                previewExplosionChain(game.state, rr, cc, cell.bombType).forEach(([r2, c2]) => flashSet.add(r2 + ',' + c2));
+              }
+            });
+            comboFlashCells = [...flashSet].map((k) => k.split(',').map(Number));
+          }
+        } else if (involvesOnlyColorBombSwap) {
+          const otherPiece = cellA.kind === 'bomb' ? cellB : cellA;
+          const targetColor = otherPiece.kind === 'color' ? otherPiece.color : mostCommonColor(game.state);
+          comboFlashCells = [];
+          for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
+            const cell = game.state.board[rr][cc];
+            if (cell && cell.kind === 'color' && cell.color === targetColor) comboFlashCells.push([rr, cc]);
+          }
+        }
+
+        const res = attemptSwap(game.state, game.level, game.gameplayRng, game.level.colors, sr, sc, r, c);
+
+        if (!res.ok) {
+          // swap rifiutato: torna alle posizioni originali, poi lampeggio rosso
+          runSwapPreview(sr, sc, r, c, game.state.board, game.level, 140, true, () => {
+            game.animating = false;
+            game.rejectedFlash = [[sr, sc], [r, c]];
+            renderBoard();
+            setTimeout(() => { game.rejectedFlash = null; renderBoard(); }, 220);
+          });
+          return;
+        }
+
+        // swap valido: risolvo la cascata UN PASSAGGIO ALLA VOLTA, animando
+        // ognuno separatamente — non tutta insieme, altrimenti su cascate
+        // lunghe quasi nessun pezzo "sopravvive" dall'inizio alla fine e
+        // sembra che l'intera griglia si svuoti e si riempia da capo.
+        function stepLoop() {
+          try {
+            const before = snapshotMovable(game.state.board, game.level.grid);
+            const bombFlashCells = computeInMatchBombFlashCells(game.state);
+            const proceed = () => {
+              const hadStep = resolveOneStep(game.state, game.gameplayRng, game.level.colors);
+              if (!hadStep) {
+                game.animating = false;
+                renderBoard();
+                updateInfoPanel();
+                finalizeMove();
+                return;
+              }
+              const after = snapshotMovable(game.state.board, game.level.grid);
+              runSettleAnimation(before, after, game.level, game.state, 220, stepLoop);
+            };
+            if (bombFlashCells) flashExplosion(bombFlashCells, proceed);
+            else proceed();
+          } catch (err) {
+            emergencyRecover(err, 'stepLoop');
+          }
+        }
+
+        if (res.comboAt) {
+          // il combo (esplosione + gravità + refill) è già stato risolto
+          // TUTTO dentro attemptSwap: senza questo passaggio non si
+          // vedrebbe nulla, il tabellone apparirebbe già risolto di netto.
+          // Prima un breve lampo nel punto del combo, poi l'intera
+          // transizione prima/dopo animata in un colpo solo, poi la
+          // cascata normale per eventuali match ulteriori.
+          const comboAfter = snapshotMovable(game.state.board, game.level.grid);
+          flashExplosion(comboFlashCells, () => {
+            runSettleAnimation(comboBefore, comboAfter, game.level, game.state, 260, stepLoop);
+          });
+          return;
+        }
+
+        stepLoop();
+      } catch (err) {
+        emergencyRecover(err, 'dopo attemptSwap');
+      }
+    });
+  } catch (err) {
+    emergencyRecover(err, 'avvio swap preview');
+  }
+}
+
+// Attiva una bomba toccata da sola (nessun secondo pezzo coinvolto): stesso
+// schema di performSwapAttempt (istantaneo o animato), ma parte già
+// dall'esplosione invece che da uno swap-preview.
+function performBombActivation(r, c) {
+  const rng = game.gameplayRng, colors = game.level.colors;
+  const animationsOn = document.getElementById('animToggle').checked;
+
+  if (!animationsOn) {
+    game.state.movesRemaining--;
+    explodeBomb(game.state, r, c);
+    applyGravity(game.state);
+    updateStar(game.state);
+    applyGravity(game.state);
+    refill(game.state, rng, colors);
+    resolveCascade(game.state, rng, colors);
+    renderBoard();
+    updateInfoPanel();
+    finalizeMove();
+    return;
+  }
+
+  game.animating = true;
+  try {
+    const bombCell = game.state.board[r][c];
+    const previewCells = previewExplosionChain(game.state, r, c, bombCell.bombType);
+    flashExplosion(previewCells, () => {
+      try {
+        const before = snapshotMovable(game.state.board, game.level.grid);
+        game.state.movesRemaining--;
+        explodeBomb(game.state, r, c);
+        applyGravity(game.state);
+        updateStar(game.state);
+        applyGravity(game.state);
+        refill(game.state, rng, colors);
+        const after = snapshotMovable(game.state.board, game.level.grid);
+
+        function stepLoop() {
+          try {
+            const before2 = snapshotMovable(game.state.board, game.level.grid);
+            const bombFlashCells2 = computeInMatchBombFlashCells(game.state);
+            const proceed2 = () => {
+              const hadStep = resolveOneStep(game.state, rng, colors);
+              if (!hadStep) {
+                game.animating = false;
+                renderBoard();
+                updateInfoPanel();
+                finalizeMove();
+                return;
+              }
+              const after2 = snapshotMovable(game.state.board, game.level.grid);
+              runSettleAnimation(before2, after2, game.level, game.state, 220, stepLoop);
+            };
+            if (bombFlashCells2) flashExplosion(bombFlashCells2, proceed2);
+            else proceed2();
+          } catch (err) {
+            emergencyRecover(err, 'bombTap.stepLoop');
+      }
+    }
+        runSettleAnimation(before, after, game.level, game.state, 220, stepLoop);
+      } catch (err) {
+        emergencyRecover(err, 'bombTap');
+      }
+    });
+  } catch (err) {
+    emergencyRecover(err, 'bombTap.flash');
+  }
+}
+
+// Se qualcosa va storto durante un'animazione (errore imprevisto), non
+// lasciare il gioco bloccato a metà: risolvo tutto quello che resta in
+// sospeso ISTANTANEAMENTE (senza animazione) e ridisegno pulito. Logga
+// l'errore in console per la diagnosi.
+function emergencyRecover(err, context) {
+  console.error('[match3] errore durante animazione (' + context + '):', err);
+  game.animating = false;
+  try {
+    resolveCascade(game.state, game.gameplayRng, game.level.colors);
+  } catch (err2) {
+    console.error('[match3] errore anche nel recovery:', err2);
+  }
+  renderBoard();
+  updateInfoPanel();
+  finalizeMove();
+}
+
+// Dopo ogni mossa risolta (vinta, persa, o in attesa della prossima): fa
+// scorrere il conveyor (se presente) — animato passo-passo come la cascata,
+// quando le animazioni sono attive — risolve eventuali nuovi match che lo
+// scorrimento genera, poi controlla che esista ancora almeno una mossa
+// possibile — altrimenti rimescola i colori (forma/goal/posizioni fisse
+// restano invariati) prima di restituire il controllo al giocatore.
+function finalizeMove() {
+  const { won, lost } = checkGameEnd(game.state, game.level);
+  if (won) { game.finished = true; showMessage('Livello completato!', true); return; }
+  if (lost) { game.finished = true; showMessage('Mosse finite — livello non completato', false); return; }
+
+  if (!game.level.obstacles.conveyor.active) {
+    checkDeadlockAndFinish();
+    return;
+  }
+
+  const animationsOn = document.getElementById('animToggle').checked;
+
+  if (!animationsOn) {
+    advanceConveyors(game.state, game.level);
+    resolveCascade(game.state, game.gameplayRng, game.level.colors);
+    renderBoard();
+    updateInfoPanel();
+    const end2 = checkGameEnd(game.state, game.level);
+    if (end2.won) { game.finished = true; showMessage('Livello completato!', true); return; }
+    if (end2.lost) { game.finished = true; showMessage('Mosse finite — livello non completato', false); return; }
+    checkDeadlockAndFinish();
+    return;
+  }
+
+  // animato: il conveyor scorre come un passaggio di cascata, poi eventuali
+  // match che genera si risolvono a loro volta, passo-passo
+  game.animating = true;
+  try {
+    const before = snapshotMovable(game.state.board, game.level.grid);
+    const { wrappedUids } = advanceConveyors(game.state, game.level);
+    const after = snapshotMovable(game.state.board, game.level.grid);
+
+    function cascadeStepLoop() {
+      try {
+        const b2 = snapshotMovable(game.state.board, game.level.grid);
+        const hadStep = resolveOneStep(game.state, game.gameplayRng, game.level.colors);
+        if (!hadStep) {
+          game.animating = false;
+          renderBoard();
+          updateInfoPanel();
+          const end2 = checkGameEnd(game.state, game.level);
+          if (end2.won) { game.finished = true; showMessage('Livello completato!', true); return; }
+          if (end2.lost) { game.finished = true; showMessage('Mosse finite — livello non completato', false); return; }
+          checkDeadlockAndFinish();
+          return;
+        }
+        const a2 = snapshotMovable(game.state.board, game.level.grid);
+        runSettleAnimation(b2, a2, game.level, game.state, 220, cascadeStepLoop);
+      } catch (err) {
+        emergencyRecover(err, 'conveyor.cascadeStepLoop');
+      }
+    }
+
+    runSettleAnimation(before, after, game.level, game.state, 220, () => {
+      updateInfoPanel();
+      cascadeStepLoop();
+    }, wrappedUids, true); // scrollConveyor: true — qui il nastro scorre insieme ai pezzi
+  } catch (err) {
+    emergencyRecover(err, 'conveyor.advance');
+  }
+}
+
+function checkDeadlockAndFinish() {
+  if (!hasAnyPossibleMove(game.state)) {
+    reshuffleColors(game.state, game.gameplayRng, game.level.colors);
+    renderBoard();
+  }
+}
+
+function showMessage(text, success) {
+  const el = document.getElementById('resultMessage');
+  el.textContent = text;
+  el.style.display = 'block';
+  el.style.color = success ? '#8fd48f' : '#e0524f';
+}
+function clearMessage() {
+  const el = document.getElementById('resultMessage');
+  el.style.display = 'none';
+}
+
+function updateInfoPanel() {
+  const { level, state } = game;
+
+  // mosse: chip singolo, ben visibile
+  const movesEl = document.getElementById('goalMoves');
+  movesEl.innerHTML = '';
+  const movesChip = document.createElement('div');
+  movesChip.className = 'goal-chip moves';
+  movesChip.textContent = 'Mosse: ' + state.movesRemaining;
+  movesEl.appendChild(movesChip);
+
+  // colori: solo quadratino colorato + numero, niente nome
+  const colorsEl = document.getElementById('goalColors');
+  colorsEl.innerHTML = '';
+  Object.entries(state.colorRemaining).forEach(([color, remaining]) => {
+    const chip = document.createElement('div');
+    chip.className = 'goal-chip' + (remaining <= 0 ? ' done' : '');
+    const hex = '#' + COLOR_HEX[color].toString(16).padStart(6, '0');
+    chip.innerHTML = '<span class="goal-swatch" style="background:' + hex + '"></span>' + Math.max(0, remaining);
+    colorsEl.appendChild(chip);
+  });
+
+  // bombole, stella, copertura, lampadine: icona + numero, solo se attivi in questo livello
+  const othersEl = document.getElementById('goalOthers');
+  othersEl.innerHTML = '';
+
+  if (level.goals.lightbulbs.active) {
+    const chip = document.createElement('div');
+    const done = state.lightbulbLitCount >= state.lightbulbTotal;
+    chip.className = 'goal-chip' + (done ? ' done' : '');
+    chip.innerHTML = '<span class="goal-icon bulb">\u{1F4A1}</span>' + state.lightbulbLitCount + '/' + state.lightbulbTotal;
+    othersEl.appendChild(chip);
+  }
+
+  if (level.goals.bombole.active) {
+    const total = Object.keys(state.bombolaInstances).length;
+    const cleared = Object.values(state.bombolaInstances).filter((b) => b.cleared).length;
+    const chip = document.createElement('div');
+    chip.className = 'goal-chip' + (cleared >= total ? ' done' : '');
+    chip.innerHTML = '<span class="goal-icon bombola">X</span>' + cleared + '/' + total;
+    othersEl.appendChild(chip);
+  }
+
+  if (level.goals.star.active) {
+    const chip = document.createElement('div');
+    chip.className = 'goal-chip' + (state.starDone ? ' done' : '');
+    chip.innerHTML = '<span class="goal-icon star">\u2605</span>' + (state.starDone ? '1/1' : '0/1');
+    othersEl.appendChild(chip);
+  }
+
+  if (level.goals.coverage.active) {
+    const chip = document.createElement('div');
+    chip.className = 'goal-chip' + (state.coverageSet.size === 0 ? ' done' : '');
+    chip.innerHTML = '<span class="goal-icon coverage"></span>' + state.coverageSet.size;
+    othersEl.appendChild(chip);
+  }
+}
+
+async function startLevel(seed) {
+  await ensureApp();
+  const level = decodeLevel(seed);
+  const cellData = populateGrid(level);
+  const state = buildInitialBoard(level, cellData);
+  removeInitialMatches(state, level.colors);
+  if (!hasAnyPossibleMove(state)) reshuffleColors(state, Math.random, level.colors); // rete di sicurezza, molto raro
+  game = {
+    level, state, selected: null, finished: false, animating: false,
+    gameplayRng: Math.random, // anche i refill durante il gioco: colori vera casualità, non legati al seed
+  };
+  clearMessage();
+  renderBoard();
+  updateInfoPanel();
+}
+
+// ============================================================
+// 7. UI
+// ============================================================
+const STEP = 104729;
+let currentSeed = 857383928;
+
+const seedInput = document.getElementById('seedInput');
+seedInput.value = currentSeed;
+
+document.getElementById('genBtn').addEventListener('click', () => {
+  currentSeed = parseInt(seedInput.value, 10) || 0;
+  startLevel(currentSeed);
+});
+document.getElementById('nextBtn').addEventListener('click', () => {
+  currentSeed += STEP;
+  seedInput.value = currentSeed;
+  startLevel(currentSeed);
+});
+document.getElementById('randomBtn').addEventListener('click', () => {
+  currentSeed = Math.floor(Math.random() * 2 ** 31);
+  seedInput.value = currentSeed;
+  startLevel(currentSeed);
+});
+
+startLevel(currentSeed);
+
+</script>
+</body>
+</html>
