@@ -225,7 +225,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 79 (fix: campo seed non zooma piu su mobile al tocco)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 80 (fix: la copertura non spariva se la bomba stessa era sulla cella coperta)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -1164,6 +1164,7 @@ function explodeBomb(state, r, c, targetColor, protectedKeys) {
     cellsToClear.forEach((ckey) => {
       const [rr, cc] = ckey.split(',').map(Number);
       if (ckey === key) {
+        state.coverageSet.delete(ckey); // la bomba stessa può stare su una cella coperta
         board[rr][cc] = null;
         totalCleared++;
         return;
@@ -1261,7 +1262,11 @@ function triggerBombCombo(state, r, c, typeA, colorA, typeB, colorB, otherR, oth
   // combo) scattano di nuovo per conto proprio con effetti indesiderati,
   // specialmente la stella senza bersaglio esplicito.
   state.board[r][c] = null;
-  if (otherR !== undefined && otherC !== undefined) state.board[otherR][otherC] = null;
+  state.coverageSet.delete(r + ',' + c);
+  if (otherR !== undefined && otherC !== undefined) {
+    state.board[otherR][otherC] = null;
+    state.coverageSet.delete(otherR + ',' + otherC);
+  }
 
   if (typeA === 'colorBomb' || typeB === 'colorBomb') {
     const otherType = typeA === 'colorBomb' ? typeB : typeA;
