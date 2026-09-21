@@ -225,7 +225,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 82 (fix: livelli potevano essere matematicamente impossibili, mosse ora legate al target reale)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 84 (colori tabellone e colori-obiettivo separati: es. 6 colori visibili, 3-4 richiesti)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -553,8 +553,19 @@ function decodeLevel(seed) {
   const colors = pickRandomColors(rng, colorCount); // quali colori, non solo quanti — varia da livello a livello
   colors.sort((a, b) => COLOR_NAMES.indexOf(a) - COLOR_NAMES.indexOf(b)); // ma l'ORDINE resta sempre lo stesso (canonico): arancione è sempre nella stessa posizione relativa quando presente, indipendentemente da quando è stato pescato
 
+  // i colori sul TABELLONE (varietà visiva, colorCount) possono essere più
+  // di quelli che hanno davvero un obiettivo — un colore senza obiettivo
+  // resta comunque mescolato ed eliminabile (un po' di "rumore" che rende
+  // il tabellone meno prevedibile e ricco da vedere), ma non aggiunge al
+  // carico minimo di mosse: ogni colore CON obiettivo costringe ad alcune
+  // mosse dedicate solo a lui (vedi il controllo di fattibilità più sotto),
+  // quindi meno colori "veri" significa livelli più brevi e meno noiosi a
+  // parità di varietà visiva sul tabellone.
+  const targetColorCount = Math.min(colors.length, 3 + Math.floor(rng() * 2)); // 3-4 colori con obiettivo vero
+  const targetColorSet = new Set([...colors].sort(() => rng() - 0.5).slice(0, targetColorCount));
+
   const colorTargets = {};
-  colors.forEach((c) => { colorTargets[c] = 8 + Math.floor(rng() * 18); });
+  colors.forEach((c) => { colorTargets[c] = targetColorSet.has(c) ? 8 + Math.floor(rng() * 18) : 0; });
   const totalColorTarget = Object.values(colorTargets).reduce((a, b) => a + b, 0);
 
   let activeGoalsCount = 0; // max 2 goal attivi insieme (lampadine/bombole/copertura/stella) — il conveyor non conta, è un elemento a sé
@@ -694,7 +705,18 @@ function decodeLevel(seed) {
   // più lenti da soddisfare, serve qualche mossa in più).
   const avgClearPerMove = 4; // resa realistica per un giocatore che vede la griglia (non a caso: misurato empiricamente ~2.83/mossa con mosse casuali, un umano fa meglio)
   const goalPenalty = 1 + extraGoalsCount * 0.15;
-  const minFeasibleMoves = Math.ceil((totalColorTarget / avgClearPerMove) * 1.15 * goalPenalty);
+  const aggregateMinMoves = Math.ceil((totalColorTarget / avgClearPerMove) * 1.15 * goalPenalty);
+  // controllo AGGIUNTIVO, per singolo colore: ogni match colpisce UN SOLO
+  // colore (minimo 3 celle), quindi un colore da N pezzi richiede almeno
+  // N/3 mosse DEDICATE — e queste non si condividono mai davvero tra
+  // colori diversi. Il controllo aggregato da solo non lo cattura: può
+  // risultare "in media" fattibile ma con margine quasi nullo sul colore
+  // più richiesto (seed 1281256101: somma dei minimi per-colore 33 contro
+  // 35 mosse disponibili — margine di 2, troppo poco per essere giocabile
+  // davvero, confermato con più bot di test che non riuscivano a vincere).
+  const perColorMinMoves = Object.values(colorTargets).reduce((sum, t) => sum + Math.ceil(t / 3), 0);
+  const perColorFeasibleMoves = Math.ceil(perColorMinMoves * 1.35 * goalPenalty);
+  const minFeasibleMoves = Math.max(aggregateMinMoves, perColorFeasibleMoves);
   const movesVariance = Math.floor(rng() * 3);
   const finalMoves = minFeasibleMoves + movesVariance;
 
