@@ -225,7 +225,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 85 (margini di sicurezza stretti: livelli piu tesi, mediana 29 invece di 34)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 87 (target colori ridotto (6-17 invece di 8-25): mediana mosse 20, era 28)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -565,7 +565,7 @@ function decodeLevel(seed) {
   const targetColorSet = new Set([...colors].sort(() => rng() - 0.5).slice(0, targetColorCount));
 
   const colorTargets = {};
-  colors.forEach((c) => { colorTargets[c] = targetColorSet.has(c) ? 8 + Math.floor(rng() * 18) : 0; });
+  colors.forEach((c) => { colorTargets[c] = targetColorSet.has(c) ? 6 + Math.floor(rng() * 12) : 0; }); // 6-17, era 8-25 — range più basso, livelli più brevi a parità di margine di sicurezza
   const totalColorTarget = Object.values(colorTargets).reduce((a, b) => a + b, 0);
 
   let activeGoalsCount = 0; // max 2 goal attivi insieme (lampadine/bombole/copertura/stella) — il conveyor non conta, è un elemento a sé
@@ -703,9 +703,9 @@ function decodeLevel(seed) {
   // Ora: mosse minime = target / resa media a mossa, con un margine di
   // sicurezza e una piccola penalità per ogni goal extra attivo (li rende
   // più lenti da soddisfare, serve qualche mossa in più).
-  const avgClearPerMove = 4.5; // leggermente più realistico per un giocatore che gioca bene, non solo "vede la griglia" — usa cascate e bombe
-  const goalPenalty = 1 + extraGoalsCount * 0.12;
-  const aggregateMinMoves = Math.ceil((totalColorTarget / avgClearPerMove) * 1.08 * goalPenalty);
+  const avgClearPerMove = 5; // ancora leggermente più realistico — un giocatore che sa il fatto suo con cascate e bombe fa parecchio meglio della semplice media
+  const goalPenalty = 1 + extraGoalsCount * 0.1;
+  const aggregateMinMoves = Math.ceil((totalColorTarget / avgClearPerMove) * 1.03 * goalPenalty);
   // controllo AGGIUNTIVO, per singolo colore: ogni match colpisce UN SOLO
   // colore (minimo 3 celle), quindi un colore da N pezzi richiede almeno
   // N/3 mosse DEDICATE — e queste non si condividono mai davvero tra
@@ -715,7 +715,7 @@ function decodeLevel(seed) {
   // 35 mosse disponibili — margine di 2, troppo poco per essere giocabile
   // davvero, confermato con più bot di test che non riuscivano a vincere).
   const perColorMinMoves = Object.values(colorTargets).reduce((sum, t) => sum + Math.ceil(t / 3), 0);
-  const perColorFeasibleMoves = Math.ceil(perColorMinMoves * 1.2 * goalPenalty);
+  const perColorFeasibleMoves = Math.ceil(perColorMinMoves * 1.15 * goalPenalty) + 1;
   const minFeasibleMoves = Math.max(aggregateMinMoves, perColorFeasibleMoves);
   const movesVariance = Math.floor(rng() * 2);
   const finalMoves = minFeasibleMoves + movesVariance;
@@ -1394,10 +1394,14 @@ function resolveMatches(state, matchedSet, rng, colors) {
       board[r][c] = { kind: 'bomb', bombType: bombInfo.bombType, color: bombInfo.color, uid: nextUid++ };
     } else {
       // era un colore normale: diventa la bomba nuova invece di sparire,
-      // stesso uid, niente scalo del target (non è stata "raccolta")
+      // stesso uid, niente scalo del target (non è stata "raccolta").
+      // La copertura invece SPARISCE comunque: il giocatore ha fatto un
+      // match proprio lì, anche se il risultato è una bomba e non il
+      // vuoto — prima restava per sempre (bordo rosso bloccato).
       cell.kind = 'bomb';
       cell.bombType = bombInfo.bombType;
       cell.color = bombInfo.color;
+      state.coverageSet.delete(key);
     }
   });
 
