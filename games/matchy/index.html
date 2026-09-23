@@ -157,6 +157,7 @@
     gap: 6px;
     flex-wrap: wrap;
     justify-content: center;
+    min-height: 30px; /* riserva lo spazio di una riga: senza questo il gruppo "salta" quando i chip cambiano larghezza (es. 9->10 mosse) o vanno a capo */
   }
   .goal-chip {
     display: flex;
@@ -190,7 +191,7 @@
   }
   .goal-icon.bombola { background: var(--accent); color: #3a2f10; }
   .goal-icon.coverage { background: transparent; border: 1.5px solid #e0524f; color: #e0524f; }
-  .goal-icon.star { background: #22d3ee; color: #0b2e33; }
+  .goal-icon.star { background: #fff0a8; color: #4a3f10; }
   .goal-icon.bulb { background: transparent; font-size: 0.9rem; }
   .goal-chip.moves { background: var(--accent); color: #1a1408; border-color: var(--accent); }
 </style>
@@ -225,7 +226,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 87 (target colori ridotto (6-17 invece di 8-25): mediana mosse 20, era 28)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 90 (fix visivi: goal stella giallo, bomba stella arcobaleno, riepilogo non salta piu)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -611,11 +612,35 @@ function decodeLevel(seed) {
   if (hasBombola) {
     const desiredCount = 1 + Math.floor(rng() * 4);
     const instances = [];
+    const usedComponents = new Set(); // in quali componenti è già finita una bombola
     for (let i = 0; i < desiredCount; i++) {
       const candidates = find2x2Candidates(grid, coreMatchable, occupied);
       if (candidates.length === 0) break; // niente più spazio valido, ne piazziamo di meno
-      const idx = Math.floor(rng() * candidates.length);
-      const cells = candidates[idx];
+      // preferisco un componente SENZA bombola già piazzata — mai più di
+      // una per quadrante PICCOLO quando possibile (es. i due quadrati
+      // diagonali separati di "dueQuadratiDiagonale...", 16 celle a testa:
+      // due bombole nello stesso quadrante ne lasciano solo 8 per i colori,
+      // troppo poco). Su un componente grande (il caso normale, un'unica
+      // forma connessa) va benissimo riusarlo, c'è spazio in abbondanza.
+      const freshComponentCandidates = candidates.filter((cellsCand) => {
+        const compId = componentInfo.compId[cellsCand[0][0] + ',' + cellsCand[0][1]];
+        return !usedComponents.has(compId);
+      });
+      let pool;
+      if (freshComponentCandidates.length > 0) {
+        pool = freshComponentCandidates;
+      } else {
+        const bigEnoughCandidates = candidates.filter((cellsCand) => {
+          const compId = componentInfo.compId[cellsCand[0][0] + ',' + cellsCand[0][1]];
+          return componentInfo.sizes[compId] > NARROW_COMPONENT_THRESHOLD;
+        });
+        if (bigEnoughCandidates.length === 0) break; // solo quadranti piccoli già occupati: meglio poche bombole che troppo affollate
+        pool = bigEnoughCandidates;
+      }
+      const idx = Math.floor(rng() * pool.length);
+      const cells = pool[idx];
+      const compId = componentInfo.compId[cells[0][0] + ',' + cells[0][1]];
+      usedComponents.add(compId);
       cells.forEach(([rr, cc]) => occupied.add(rr + ',' + cc));
       instances.push({
         cells,                       // le 4 celle occupate [ [r,c], ... ]
@@ -627,21 +652,62 @@ function decodeLevel(seed) {
     bombole = { active: instances.length > 0, count: instances.length, instances };
   }
 
+  // Muri: blocchi indistruttibili e non scambiabili, fissi per tutto il
+  // livello — come le lampadine ma senza nessun modo di toglierli, mai.
+  // Non è un "goal" da completare (niente contatore, niente vittoria
+  // legata a loro): sono solo un ostacolo permanente che sta lì a dare
+  // fastidio, riduce lo spazio utile e spezza la griglia in segmenti più
+  // piccoli per la gravità (stessa logica delle lampadine, gratis, perché
+  // applyGravity si basa solo su isMovable).
+  const wantsWalls = rng() < 0.35;
+  let walls = { active: false, count: 0, positions: [] };
+  if (wantsWalls) {
+    const desiredWallCount = 1 + Math.floor(rng() * 3); // 1-3
+    const positions = [];
+    const spacingExclude = new Set();
+    for (let i = 0; i < desiredWallCount; i++) {
+      const candidates = [];
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          const key = r + ',' + c;
+          if (!grid[r][c] || occupied.has(key) || spacingExclude.has(key)) continue;
+          if (!isAdjacentToMatchable(coreMatchable, r, c)) continue;
+          if (isInNarrowComponent(componentInfo, r, c)) continue;
+          candidates.push([r, c]);
+        }
+      }
+      if (candidates.length === 0) break;
+      const idx = Math.floor(rng() * candidates.length);
+      const [r, c] = candidates[idx];
+      positions.push([r, c]);
+      occupied.add(r + ',' + c);
+      spacingExclude.add(r + ',' + c);
+      [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dr, dc]) => spacingExclude.add((r + dr) + ',' + (c + dc)));
+    }
+    walls = { active: positions.length > 0, count: positions.length, positions };
+  }
+
   const wantsCoverage = rng() < 0.5;
   const hasCoverage = wantsCoverage && activeGoalsCount < 2;
   if (hasCoverage) activeGoalsCount++;
   let coverage = { active: false, area: null, cells: [] };
   if (hasCoverage) {
+    // solo celle davvero "matchabili sul posto" (coreMatchable, già usato
+    // sopra per altri goal) — mai negli angoli 2x2 isolati tipo
+    // "cinqueQuadrati": lì un match è rarissimo o impossibile, la copertura
+    // può restare bloccata per sempre.
     const isFull = rng() < 0.5;
     if (isFull) {
       const cells = [];
-      for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (grid[r][c]) cells.push([r, c]);
-      coverage = { active: true, area: 'full', cells };
+      for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (grid[r][c] && coreMatchable.has(r + ',' + c)) cells.push([r, c]);
+      coverage = { active: cells.length > 0, area: 'full', cells };
     } else {
       const ratio = 0.4 + rng() * 0.3;
       const targetCount = Math.max(4, Math.round(activeCellCount * ratio));
-      const cells = pickRandomCells(rng, grid, targetCount, new Set());
-      coverage = { active: true, area: 'partial', cells };
+      const nonCoreMatchable = new Set();
+      for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (grid[r][c] && !coreMatchable.has(r + ',' + c)) nonCoreMatchable.add(r + ',' + c);
+      const cells = pickRandomCells(rng, grid, targetCount, nonCoreMatchable);
+      coverage = { active: cells.length > 0, area: 'partial', cells };
     }
   }
 
@@ -684,6 +750,7 @@ function decodeLevel(seed) {
     const fixedNonMatchable = new Set();
     lightbulbs.positions.forEach(([r, c]) => fixedNonMatchable.add(r + ',' + c));
     bombole.instances.forEach((b) => b.cells.forEach(([r, c]) => fixedNonMatchable.add(r + ',' + c)));
+    walls.positions.forEach(([r, c]) => fixedNonMatchable.add(r + ',' + c));
     if (star.active) fixedNonMatchable.add(star.startRow + ',' + star.startCol);
     coverage.cells = coverage.cells.filter(([r, c]) => !fixedNonMatchable.has(r + ',' + c));
     if (coverage.cells.length === 0) coverage.active = false;
@@ -748,7 +815,7 @@ function decodeLevel(seed) {
     seed, shape: shapeName, grid, activeCellCount, colorCount, colors, colorTargets,
     totalColorTarget, moves: finalMoves, componentInfo,
     goals: { lightbulbs, bombole, coverage, star },
-    obstacles: { blackCellWeight: 0.5, conveyor },
+    obstacles: { blackCellWeight: 0.5, conveyor, walls },
   };
 }
 
@@ -779,6 +846,7 @@ function populateGrid(level) {
     cellData[r + ',' + c] = { kind: 'star' };
     occupiedByGoal.add(r + ',' + c);
   }
+  level.obstacles.walls.positions.forEach(([r, c]) => { cellData[r + ',' + c] = { kind: 'wall' }; occupiedByGoal.add(r + ',' + c); });
 
   const weights = level.colors.map(() => 1);
   const totalColorWeight = weights.reduce((a, b) => a + b, 0);
@@ -836,6 +904,7 @@ function buildInitialBoard(level, cellData) {
       if (!data) continue;
       if (data.kind === 'color') board[r][c] = { kind: 'color', color: data.color, uid: nextUid++ };
       else if (data.kind === 'black') board[r][c] = { kind: 'black', uid: nextUid++ };
+      else if (data.kind === 'wall') board[r][c] = { kind: 'wall' };
       else if (data.kind === 'lightbulb') board[r][c] = { kind: 'lightbulb', lit: false };
       else if (data.kind === 'star') board[r][c] = { kind: 'star', uid: nextUid++ };
       else if (data.kind === 'bombola') {
@@ -872,6 +941,7 @@ function buildInitialBoard(level, cellData) {
     starPos, starDone: false,
     movesRemaining: level.moves,
     grid: level.grid,
+    blackCellWeight: level.obstacles.blackCellWeight, // così refill() lo trova senza dover ricevere "level" ovunque
   };
 }
 
@@ -1086,6 +1156,8 @@ function clearCellWithEffects(state, rr, cc, hitBombolasSet, protectedKeys) {
   if (protectedKeys && protectedKeys.has(rr + ',' + cc)) return { cleared: false }; // bomba appena creata in questo stesso giro: immune per ora
 
   if (cell.kind === 'star') return { cleared: false };
+
+  if (cell.kind === 'wall') return { cleared: false }; // indistruttibile per sempre, niente lo tocca, nemmeno le bombe
 
   if (cell.kind === 'lightbulb') {
     if (!cell.lit) { cell.lit = true; state.lightbulbLitCount++; }
@@ -1516,10 +1588,19 @@ function applyGravity(state) {
 function refill(state, rng, colors) {
   const { board, grid } = state;
   let filled = false;
+  // il nero ora può anche ricadere dall'alto come i colori, non solo
+  // comparire nella griglia iniziale — stessa logica a pesi della
+  // popolazione di partenza, così la "densità" di nero resta coerente
+  const blackWeight = state.blackCellWeight || 0;
+  const totalColorWeight = colors.length;
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
       if (grid[r][c] && board[r][c] === null) {
-        board[r][c] = { kind: 'color', color: colors[Math.floor(rng() * colors.length)], uid: nextUid++ };
+        if (blackWeight > 0 && rng() * (totalColorWeight + blackWeight) < blackWeight) {
+          board[r][c] = { kind: 'black', uid: nextUid++ };
+        } else {
+          board[r][c] = { kind: 'color', color: colors[Math.floor(rng() * colors.length)], uid: nextUid++ };
+        }
         filled = true;
       }
     }
@@ -1909,6 +1990,18 @@ function renderBoard() {
         label.anchor.set(0.5);
         label.position.set(x + CELL / 2, y + CELL / 2);
         container.addChild(label);
+      } else if (cell.kind === 'wall') {
+        const g = new PIXI.Graphics();
+        g.roundRect(GAP / 2 + 2, GAP / 2 + 2, CELL - GAP - 4, CELL - GAP - 4, 5);
+        g.fill(0x1a1d24);
+        g.stroke({ width: 2, color: 0x565b66 });
+        g.position.set(x, y);
+        container.addChild(g);
+        const label = new PIXI.Text({ text: '\u{1F512}', style: { fontSize: 17 } });
+        label.anchor.set(0.5);
+        label.alpha = 0.85;
+        label.position.set(x + CELL / 2, y + CELL / 2);
+        container.addChild(label);
       } else if (cell.kind === 'bombola') {
         // niente qui: disegnato in un secondo passaggio dopo tutti gli sfondi,
         // altrimenti le celle successive del loop coprono il riquadro grande
@@ -2041,6 +2134,20 @@ function renderStaticLayer(state, level) {
       // le lampadine NON si disegnano qui: vanno in un layer a parte,
       // sopra ai pezzi mobili (renderOverlayLayer), altrimenti un pezzo
       // che cade ci passerebbe sopra invece che dietro
+      if (state.board[r][c] && state.board[r][c].kind === 'wall') {
+        const x = c * CELL, y = r * CELL;
+        const g = new PIXI.Graphics();
+        g.roundRect(GAP / 2 + 2, GAP / 2 + 2, CELL - GAP - 4, CELL - GAP - 4, 5);
+        g.fill(0x1a1d24);
+        g.stroke({ width: 2, color: 0x565b66 });
+        g.position.set(x, y);
+        container.addChild(g);
+        const label = new PIXI.Text({ text: '\u{1F512}', style: { fontSize: 17 } });
+        label.anchor.set(0.5);
+        label.alpha = 0.85;
+        label.position.set(x + CELL / 2, y + CELL / 2);
+        container.addChild(label);
+      }
     }
   }
 
@@ -2214,13 +2321,26 @@ function createPieceDisplay(kind, color, bombType) {
     const size = CELL - GAP - 8;
     const g = new PIXI.Graphics();
     g.roundRect(-size / 2, -size / 2, size, size, 8);
-    const hex = bombType === 'colorBomb' ? 0x22d3ee : COLOR_HEX[color]; // stella: ciano, non più bianco (si confondeva)
-    g.fill(hex);
+    if (bombType === 'colorBomb') {
+      // stella: jolly, arcobaleno invece di un colore fisso — con un
+      // fallback a un viola/ciano piatto se il gradiente dovesse fallire
+      // per qualunque motivo (mai bloccare il rendering per questo)
+      try {
+        const gradient = new PIXI.FillGradient(-size / 2, 0, size / 2, 0);
+        const stops = [0xff5c5c, 0xffb454, 0xf5e663, 0x6be675, 0x63c7f5, 0xa78bf0];
+        stops.forEach((stopColor, i) => gradient.addColorStop(i / (stops.length - 1), stopColor));
+        g.fill(gradient);
+      } catch (err) {
+        g.fill(0x8b7cf0);
+      }
+    } else {
+      g.fill(COLOR_HEX[color]);
+    }
     g.stroke({ width: 2, color: 0xffffff });
     box.addChild(g);
     const label = new PIXI.Text({
       text: BOMB_ICON[bombType] || '?',
-      style: { fontSize: 16, fill: bombType === 'colorBomb' ? 0x0b2e33 : 0xffffff, fontWeight: '700' },
+      style: { fontSize: 16, fill: bombType === 'colorBomb' ? 0x1a1408 : 0xffffff, fontWeight: '700' },
     });
     label.anchor.set(0.5);
     box.addChild(label);
@@ -2899,7 +3019,7 @@ function updateInfoPanel() {
   if (level.goals.star.active) {
     const chip = document.createElement('div');
     chip.className = 'goal-chip' + (state.starDone ? ' done' : '');
-    chip.innerHTML = '<span class="goal-icon star">\u2605</span>' + (state.starDone ? '1/1' : '0/1');
+    chip.innerHTML = '<span class="goal-icon star">\u2B50</span>' + (state.starDone ? '1/1' : '0/1');
     othersEl.appendChild(chip);
   }
 
