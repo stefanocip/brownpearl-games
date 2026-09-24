@@ -226,7 +226,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 90 (fix visivi: goal stella giallo, bomba stella arcobaleno, riepilogo non salta piu)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 93 (rimossa: zona verde a gravita invertita)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -2709,11 +2709,30 @@ function performSwapAttempt(sr, sc, r, c) {
         if (bothAreBombs) {
           if (cellA.bombType === 'colorBomb' || cellB.bombType === 'colorBomb') {
             const otherColor = cellA.bombType === 'colorBomb' ? cellB.color : cellA.color;
+            const otherType = cellA.bombType === 'colorBomb' ? cellB.bombType : cellA.bombType;
             const targetColor = otherColor || mostCommonColor(game.state);
-            comboFlashCells = [];
-            for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
-              const cell = game.state.board[rr][cc];
-              if (cell && cell.kind === 'color' && cell.color === targetColor) comboFlashCells.push([rr, cc]);
+            // ogni cella del colore bersaglio diventa una bomba di otherType
+            // e POI esplode — il lampo deve mostrare l'intera scia (righe/
+            // colonne/aree), non solo le celle del colore originale,
+            // altrimenti sembra che sparisca "solo quel colore" quando in
+            // realtà si porta dietro molto di più.
+            if (otherType === 'colorBomb') {
+              // caso limite stella+stella: pulisce tutti i colori, nessuna
+              // trasformazione intermedia da mostrare
+              comboFlashCells = [];
+              for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
+                const cell = game.state.board[rr][cc];
+                if (cell && cell.kind === 'color') comboFlashCells.push([rr, cc]);
+              }
+            } else {
+              const flashSet = new Set();
+              for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
+                const cell = game.state.board[rr][cc];
+                if (cell && cell.kind === 'color' && cell.color === targetColor) {
+                  previewExplosionChain(game.state, rr, cc, otherType).forEach(([r2, c2]) => flashSet.add(r2 + ',' + c2));
+                }
+              }
+              comboFlashCells = [...flashSet].map((k) => k.split(',').map(Number));
             }
           } else {
             const baseCells = computeComboCells(game.state.grid, r, c, cellA.bombType, cellB.bombType);
