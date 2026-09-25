@@ -191,6 +191,7 @@
   }
   .goal-icon.bombola { background: var(--accent); color: #3a2f10; }
   .goal-icon.coverage { background: transparent; border: 1.5px solid #e0524f; color: #e0524f; }
+  .goal-icon.greenspread { background: #39ff6a; color: #0a3318; }
   .goal-icon.star { background: #fff0a8; color: #4a3f10; }
   .goal-icon.bulb { background: transparent; font-size: 0.9rem; }
   .goal-chip.moves { background: var(--accent); color: #1a1408; border-color: var(--accent); }
@@ -226,7 +227,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 94 (stella+colore ora fa esplodere anche le bombe di quel colore)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 96 (fix: la macchia verde ora si vede subito quando cresce, non al giro dopo)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -756,7 +757,25 @@ function decodeLevel(seed) {
     if (coverage.cells.length === 0) coverage.active = false;
   }
 
-  const goalFlags = [lightbulbs.active, bombole.active, coverage.active, star.active];
+  // Macchia verde che si diffonde: come la copertura (un match lì la
+  // toglie), ma se una mossa non ne tocca NESSUNA cresce da sola di una
+  // cella adiacente — mai dentro lampadine, muri, bombole o conveyor. Il
+  // seed iniziale resta piccolo, è il gioco a farla crescere se trascurata.
+  const wantsGreenSpread = rng() < 0.35;
+  const hasGreenSpread = wantsGreenSpread && activeGoalsCount < 2;
+  if (hasGreenSpread) activeGoalsCount++;
+  let greenSpread = { active: false, cells: [] };
+  if (hasGreenSpread) {
+    const targetCount = Math.max(2, Math.round(activeCellCount * (0.05 + rng() * 0.08)));
+    const nonCoreMatchable = new Set();
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (grid[r][c] && !coreMatchable.has(r + ',' + c)) nonCoreMatchable.add(r + ',' + c);
+    const excludeSet = new Set([...occupied, ...nonCoreMatchable]);
+    const cells = pickRandomCells(rng, grid, targetCount, excludeSet);
+    greenSpread = { active: cells.length > 0, cells };
+    cells.forEach(([r, c]) => occupied.add(r + ',' + c));
+  }
+
+  const goalFlags = [lightbulbs.active, bombole.active, coverage.active, star.active, greenSpread.active];
   const extraGoalsCount = goalFlags.filter(Boolean).length;
 
   // Le mosse partono DIRETTAMENTE dal target dei colori (quanti pezzi vanno
@@ -814,7 +833,7 @@ function decodeLevel(seed) {
   return {
     seed, shape: shapeName, grid, activeCellCount, colorCount, colors, colorTargets,
     totalColorTarget, moves: finalMoves, componentInfo,
-    goals: { lightbulbs, bombole, coverage, star },
+    goals: { lightbulbs, bombole, coverage, star, greenSpread },
     obstacles: { blackCellWeight: 0.5, conveyor, walls },
   };
 }
@@ -942,6 +961,7 @@ function buildInitialBoard(level, cellData) {
     movesRemaining: level.moves,
     grid: level.grid,
     blackCellWeight: level.obstacles.blackCellWeight, // così refill() lo trova senza dover ricevere "level" ovunque
+    greenSpreadSet: new Set(level.goals.greenSpread.cells.map(([r, c]) => r + ',' + c)),
   };
 }
 
@@ -1180,6 +1200,7 @@ function clearCellWithEffects(state, rr, cc, hitBombolasSet, protectedKeys) {
     state.colorRemaining[cell.color] = Math.max(0, state.colorRemaining[cell.color] - 1);
   }
   state.coverageSet.delete(ckey);
+  state.greenSpreadSet.delete(ckey);
   board[rr][cc] = null;
   return { cleared: true };
 }
@@ -1254,6 +1275,7 @@ function explodeBomb(state, r, c, targetColor, protectedKeys) {
       const [rr, cc] = ckey.split(',').map(Number);
       if (ckey === key) {
         state.coverageSet.delete(ckey); // la bomba stessa può stare su una cella coperta
+        state.greenSpreadSet.delete(ckey);
         board[rr][cc] = null;
         totalCleared++;
         return;
@@ -1352,9 +1374,11 @@ function triggerBombCombo(state, r, c, typeA, colorA, typeB, colorB, otherR, oth
   // specialmente la stella senza bersaglio esplicito.
   state.board[r][c] = null;
   state.coverageSet.delete(r + ',' + c);
+  state.greenSpreadSet.delete(r + ',' + c);
   if (otherR !== undefined && otherC !== undefined) {
     state.board[otherR][otherC] = null;
     state.coverageSet.delete(otherR + ',' + otherC);
+    state.greenSpreadSet.delete(otherR + ',' + otherC);
   }
 
   if (typeA === 'colorBomb' || typeB === 'colorBomb') {
@@ -1422,7 +1446,7 @@ function removeInitialMatches(state, colors) {
 // adiacenti, segna la copertura. Ritorna true se qualcosa è cambiato.
 function resolveMatches(state, matchedSet, rng, colors) {
   if (matchedSet.size === 0) return false;
-  const { board, grid, colorRemaining, coverageSet, bombolaInstances } = state;
+  const { board, grid, colorRemaining, coverageSet, bombolaInstances, greenSpreadSet } = state;
   const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
   const hitBombolasThisResolve = new Set(); // un match = massimo 1 colpo per bombola, anche se la tocca da più lati
 
@@ -1477,6 +1501,7 @@ function resolveMatches(state, matchedSet, rng, colors) {
       cell.bombType = bombInfo.bombType;
       cell.color = bombInfo.color;
       state.coverageSet.delete(key);
+      state.greenSpreadSet.delete(key);
     }
   });
 
@@ -1509,6 +1534,7 @@ function resolveMatches(state, matchedSet, rng, colors) {
       }
     }
     coverageSet.delete(key);
+    if (greenSpreadSet) greenSpreadSet.delete(key);
     board[r][c] = null;
 
     // effetto sugli adiacenti: lampadine si accendono, bombole perdono un colpo
@@ -1638,7 +1664,8 @@ function goalsComplete(state, level) {
   const blocksDone = Object.values(state.bombolaInstances).every((b) => b.cleared);
   const coverageDone = state.coverageSet.size === 0;
   const starDone = !level.goals.star.active || state.starDone;
-  return colorsDone && lightbulbsDone && blocksDone && coverageDone && starDone;
+  const greenSpreadDone = !state.greenSpreadSet || state.greenSpreadSet.size === 0;
+  return colorsDone && lightbulbsDone && blocksDone && coverageDone && starDone && greenSpreadDone;
 }
 
 // Un ciclo completo: risolvi match correnti, gravità, refill, ripeti finché
@@ -1960,6 +1987,7 @@ function renderBoard() {
       if (!level.grid[r][c]) continue;
       const x = c * CELL, y = r * CELL;
       container.addChild(cellBg(x, y));
+      if (state.greenSpreadSet && state.greenSpreadSet.has(r + ',' + c)) drawGreenSpreadTile(container, r, c);
       const belowDir = conveyorDirAt[r + ',' + c];
       if (belowDir) drawConveyorTile(container, r, c, belowDir);
 
@@ -2104,6 +2132,18 @@ function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 // Disegna tutto TRANNE i pezzi mobili e le aree cliccabili: sfondo celle,
 // lampadine, bombole, copertura, conveyor. Usato come sfondo fermo durante
 // le animazioni, così non devo ridisegnare da zero la logica dei goal.
+// Tinta verde fluo di sfondo per il goal "macchia che si diffonde" — stesso
+// stile della vecchia zona a gravità invertita (rimossa), ma qui è solo
+// visiva: un match lì la toglie, come il bordo rosso della copertura.
+function drawGreenSpreadTile(container, r, c) {
+  const x = c * CELL, y = r * CELL;
+  const g = new PIXI.Graphics();
+  g.rect(GAP / 2 - 1, GAP / 2 - 1, CELL - GAP + 2, CELL - GAP + 2);
+  g.fill({ color: 0x39ff6a, alpha: 0.32 });
+  g.position.set(x, y);
+  container.addChild(g);
+}
+
 // Disegna una cella del nastro trasportatore con la texture del pannello
 // da magazzino (freccia gialla su pannello metallico) — l'immagine punta a
 // destra di default, per gli altri versi la ruoto semplicemente. TilingSprite
@@ -2134,6 +2174,7 @@ function renderStaticLayer(state, level) {
     for (let c = 0; c < SIZE; c++) {
       if (!level.grid[r][c]) continue;
       container.addChild(cellBg(c * CELL, r * CELL));
+      if (state.greenSpreadSet && state.greenSpreadSet.has(r + ',' + c)) drawGreenSpreadTile(container, r, c);
       // le lampadine NON si disegnano qui: vanno in un layer a parte,
       // sopra ai pezzi mobili (renderOverlayLayer), altrimenti un pezzo
       // che cade ci passerebbe sopra invece che dietro
@@ -2672,6 +2713,11 @@ function onSwipe(r1, c1, r2, c2) {
 
 // Logica di swap condivisa da tap e swipe.
 function performSwapAttempt(sr, sc, r, c) {
+  // per la macchia verde: se alla fine della mossa (anche con conveyor e
+  // cascate) la dimensione è la stessa di ORA, vuol dire che questa mossa
+  // non ne ha tolta nessuna — checkDeadlockAndFinish la farà crescere
+  game.greenSpreadSizeBeforeMove = game.state.greenSpreadSet ? game.state.greenSpreadSet.size : undefined;
+
   const animationsOn = document.getElementById('animToggle').checked;
   if (!animationsOn) {
     // percorso istantaneo, senza animazione — quello affidabile di prima
@@ -2836,6 +2882,7 @@ function performSwapAttempt(sr, sc, r, c) {
 // dall'esplosione invece che da uno swap-preview.
 function performBombActivation(r, c) {
   const rng = game.gameplayRng, colors = game.level.colors;
+  game.greenSpreadSizeBeforeMove = game.state.greenSpreadSet ? game.state.greenSpreadSet.size : undefined;
   const animationsOn = document.getElementById('animToggle').checked;
 
   if (!animationsOn) {
@@ -2985,10 +3032,60 @@ function finalizeMove() {
 }
 
 function checkDeadlockAndFinish() {
+  const spread = maybeSpreadGreenGoal();
   if (!hasAnyPossibleMove(game.state)) {
     reshuffleColors(game.state, game.gameplayRng, game.level.colors);
     renderBoard();
+  } else if (spread) {
+    // la macchia è cresciuta ma non serviva rimescolare: senza un ridisegno
+    // qui, la cella nuova restava invisibile finché non partiva il PROSSIMO
+    // render (l'inizio della mossa successiva) — sembrava comparire "dopo
+    // aver switchato" quando in realtà era già cresciuta alla fine di questa.
+    renderBoard();
+    updateInfoPanel();
   }
+}
+
+// Macchia verde che si diffonde: se un'INTERA mossa (compresi eventuali
+// passaggi del conveyor) non ne ha tolta nemmeno una, cresce da sola di una
+// cella adiacente. checkDeadlockAndFinish è il punto comune a tutti i
+// percorsi (animati, istantanei, con o senza conveyor) dove una mossa è
+// davvero conclusa — il posto giusto per controllare. Ritorna true se è
+// davvero cresciuta, per sapere se serve un ridisegno.
+function maybeSpreadGreenGoal() {
+  const set = game.state.greenSpreadSet;
+  if (!set || set.size === 0) return false;
+  const before = game.greenSpreadSizeBeforeMove;
+  if (before === undefined || set.size !== before) return false; // qualcosa è stato tolto in questa mossa, niente crescita
+  const sizeBefore = set.size;
+  spreadGreenGoal(game.state, game.level);
+  return set.size > sizeBefore;
+}
+
+function spreadGreenGoal(state, level) {
+  const { board, grid, greenSpreadSet } = state;
+  const conveyorCells = new Set();
+  if (level.obstacles.conveyor.active) {
+    level.obstacles.conveyor.belts.forEach((belt) => belt.cells.forEach(([r, c]) => conveyorCells.add(r + ',' + c)));
+  }
+  // candidate: adiacenti (4 direzioni) a una cella verde esistente, attive,
+  // non già verdi, e mai lampadine/muri/bombole/conveyor
+  const candidates = new Set();
+  greenSpreadSet.forEach((key) => {
+    const [r, c] = key.split(',').map(Number);
+    [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dr, dc]) => {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nr >= SIZE || nc < 0 || nc >= SIZE || !grid[nr][nc]) return;
+      const nkey = nr + ',' + nc;
+      if (greenSpreadSet.has(nkey) || conveyorCells.has(nkey)) return;
+      const cell = board[nr][nc];
+      if (cell && (cell.kind === 'lightbulb' || cell.kind === 'wall' || cell.kind === 'bombola')) return;
+      candidates.add(nkey);
+    });
+  });
+  if (candidates.size === 0) return; // circondata solo da ostacoli fissi: non può crescere oltre
+  const arr = [...candidates];
+  greenSpreadSet.add(arr[Math.floor(Math.random() * arr.length)]);
 }
 
 function showMessage(text, success) {
@@ -3056,6 +3153,14 @@ function updateInfoPanel() {
     const chip = document.createElement('div');
     chip.className = 'goal-chip' + (state.coverageSet.size === 0 ? ' done' : '');
     chip.innerHTML = '<span class="goal-icon coverage"></span>' + state.coverageSet.size;
+    othersEl.appendChild(chip);
+  }
+
+  if (level.goals.greenSpread.active) {
+    const chip = document.createElement('div');
+    const size = state.greenSpreadSet ? state.greenSpreadSet.size : 0;
+    chip.className = 'goal-chip' + (size === 0 ? ' done' : '');
+    chip.innerHTML = '<span class="goal-icon greenspread"></span>' + size;
     othersEl.appendChild(chip);
   }
 }
