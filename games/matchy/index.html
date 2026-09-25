@@ -226,7 +226,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 93 (rimossa: zona verde a gravita invertita)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 94 (stella+colore ora fa esplodere anche le bombe di quel colore)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -1218,7 +1218,10 @@ function computeExplosionCells(state, r, c, bomb) {
     const targetColor = bomb.pendingTargetColor || mostCommonColor(state);
     for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
       const cell = state.board[rr][cc];
-      if (cell && cell.kind === 'color' && cell.color === targetColor) add(rr, cc);
+      // anche le bombe di quel colore (non solo le celle normali) — una
+      // bomba colpita così entra nella normale coda di reazione a catena
+      // di explodeBomb ed esplode a sua volta, non sparisce e basta
+      if (cell && (cell.kind === 'color' || cell.kind === 'bomb') && cell.color === targetColor) add(rr, cc);
     }
   }
   add(r, c);
@@ -2750,11 +2753,18 @@ function performSwapAttempt(sr, sc, r, c) {
         } else if (involvesOnlyColorBombSwap) {
           const otherPiece = cellA.kind === 'bomb' ? cellB : cellA;
           const targetColor = otherPiece.kind === 'color' ? otherPiece.color : mostCommonColor(game.state);
-          comboFlashCells = [];
+          const flashSet = new Set();
           for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
             const cell = game.state.board[rr][cc];
-            if (cell && cell.kind === 'color' && cell.color === targetColor) comboFlashCells.push([rr, cc]);
+            if (cell && (cell.kind === 'color' || cell.kind === 'bomb') && cell.color === targetColor) {
+              if (cell.kind === 'bomb') {
+                previewExplosionChain(game.state, rr, cc, cell.bombType).forEach(([r2, c2]) => flashSet.add(r2 + ',' + c2));
+              } else {
+                flashSet.add(rr + ',' + cc);
+              }
+            }
           }
+          comboFlashCells = [...flashSet].map((k) => k.split(',').map(Number));
         }
 
         const res = attemptSwap(game.state, game.level, game.gameplayRng, game.level.colors, sr, sc, r, c);
