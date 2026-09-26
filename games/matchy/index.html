@@ -227,7 +227,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 96 (fix: la macchia verde ora si vede subito quando cresce, non al giro dopo)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 97 (fix: rimescolamento forzato quando il tabellone e frammentato dagli ostacoli)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -1865,8 +1865,54 @@ function reshuffleColors(state, rng, colors) {
     return false;
   }
 
+  // Ultima spiaggia: se anche una tavolozza ridotta a 3 colori non basta,
+  // il problema NON è la combinazione di colori — è STRUTTURALE. Le celle
+  // colorate rimaste possono essere così frammentate da ostacoli fissi
+  // (lampadine, muri, bombole, conveyor) che NESSUNA colorazione formerà
+  // mai un match: rimescolare all'infinito non risolve un problema di
+  // forma. Forzo direttamente una mossa possibile da qualche parte,
+  // piuttosto che lasciare il giocatore bloccato con mosse ancora
+  // disponibili ma nessuna davvero giocabile.
+  function forceGuaranteedMove() {
+    const { board, grid } = state;
+    const isColorCell = (r, c) => r >= 0 && r < SIZE && c >= 0 && c < SIZE && grid[r][c] && board[r][c] && board[r][c].kind === 'color';
+    const tryDirection = (dr, dc) => {
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          const p0 = [r, c], p1 = [r + dr, c + dc], p2 = [r + 2 * dr, c + 2 * dc];
+          if (!isColorCell(...p0) || !isColorCell(...p1) || !isColorCell(...p2)) continue;
+          // provo un vicino libero su ENTRAMBI i lati della striscia, non
+          // solo in fondo — raddoppia le possibilità di trovare un incastro
+          const tryEnd = (fixed1, fixed2, target) => {
+            const neighbors = [[target[0] - 1, target[1]], [target[0] + 1, target[1]], [target[0], target[1] - 1], [target[0], target[1] + 1]];
+            for (const p3 of neighbors) {
+              if ((p3[0] === fixed1[0] && p3[1] === fixed1[1]) || (p3[0] === fixed2[0] && p3[1] === fixed2[1])) continue;
+              if (!isColorCell(p3[0], p3[1])) continue;
+              const colorX = colors[Math.floor(rng() * colors.length)];
+              let colorY = colors[Math.floor(rng() * colors.length)];
+              if (colorY === colorX) colorY = colors[(colors.indexOf(colorX) + 1) % colors.length];
+              board[fixed1[0]][fixed1[1]].color = colorX;
+              board[fixed2[0]][fixed2[1]].color = colorX;
+              board[target[0]][target[1]].color = colorY; // diverso da X: non è già un match
+              board[p3[0]][p3[1]].color = colorX; // scambiando target<->p3 si completa il tris
+              return true;
+            }
+            return false;
+          };
+          if (tryEnd(p0, p1, p2)) return true; // vicino oltre la fine della striscia
+          if (tryEnd(p1, p2, p0)) return true; // vicino oltre l'inizio della striscia
+        }
+      }
+      return false;
+    };
+    return tryDirection(0, 1) || tryDirection(1, 0);
+  }
+
   if (tryWithPalette(colors, 60)) return true;
-  return tryWithPalette(colors.slice(0, 3), 60); // paracadute: tavolozza ridotta, quasi sempre risolutiva
+  if (tryWithPalette(colors.slice(0, 3), 60)) return true; // paracadute: tavolozza ridotta, quasi sempre risolutiva
+  if (forceGuaranteedMove()) return true;
+  console.error('[match3] rimescolamento fallito: nessuna mossa possibile trovabile o forzabile, livello probabilmente bloccato per davvero');
+  return false;
 }
 
 
