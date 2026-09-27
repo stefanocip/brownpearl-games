@@ -227,7 +227,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 97 (fix: rimescolamento forzato quando il tabellone e frammentato dagli ostacoli)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 98 (fix: ricerca molto piu esaustiva per il rimescolamento forzato)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -1870,42 +1870,42 @@ function reshuffleColors(state, rng, colors) {
   // colorate rimaste possono essere così frammentate da ostacoli fissi
   // (lampadine, muri, bombole, conveyor) che NESSUNA colorazione formerà
   // mai un match: rimescolare all'infinito non risolve un problema di
-  // forma. Forzo direttamente una mossa possibile da qualche parte,
-  // piuttosto che lasciare il giocatore bloccato con mosse ancora
-  // disponibili ma nessuna davvero giocabile.
+  // forma. Cerco, per OGNI cella colore che abbia almeno un vicino colore
+  // scambiabile, se può diventare capo/centro/coda di un tris usando due
+  // ALTRE celle colore vicine di cui controllo liberamente il colore
+  // (siamo comunque dentro un rimescolamento) — molto più esaustivo di
+  // cercare solo strisce già quasi pronte: qui basta che TRE celle colore
+  // qualsiasi siano allineate, in qualunque posizione relativa.
   function forceGuaranteedMove() {
     const { board, grid } = state;
     const isColorCell = (r, c) => r >= 0 && r < SIZE && c >= 0 && c < SIZE && grid[r][c] && board[r][c] && board[r][c].kind === 'color';
-    const tryDirection = (dr, dc) => {
-      for (let r = 0; r < SIZE; r++) {
-        for (let c = 0; c < SIZE; c++) {
-          const p0 = [r, c], p1 = [r + dr, c + dc], p2 = [r + 2 * dr, c + 2 * dc];
-          if (!isColorCell(...p0) || !isColorCell(...p1) || !isColorCell(...p2)) continue;
-          // provo un vicino libero su ENTRAMBI i lati della striscia, non
-          // solo in fondo — raddoppia le possibilità di trovare un incastro
-          const tryEnd = (fixed1, fixed2, target) => {
-            const neighbors = [[target[0] - 1, target[1]], [target[0] + 1, target[1]], [target[0], target[1] - 1], [target[0], target[1] + 1]];
-            for (const p3 of neighbors) {
-              if ((p3[0] === fixed1[0] && p3[1] === fixed1[1]) || (p3[0] === fixed2[0] && p3[1] === fixed2[1])) continue;
-              if (!isColorCell(p3[0], p3[1])) continue;
-              const colorX = colors[Math.floor(rng() * colors.length)];
-              let colorY = colors[Math.floor(rng() * colors.length)];
-              if (colorY === colorX) colorY = colors[(colors.indexOf(colorX) + 1) % colors.length];
-              board[fixed1[0]][fixed1[1]].color = colorX;
-              board[fixed2[0]][fixed2[1]].color = colorX;
-              board[target[0]][target[1]].color = colorY; // diverso da X: non è già un match
-              board[p3[0]][p3[1]].color = colorX; // scambiando target<->p3 si completa il tris
-              return true;
-            }
-            return false;
-          };
-          if (tryEnd(p0, p1, p2)) return true; // vicino oltre la fine della striscia
-          if (tryEnd(p1, p2, p0)) return true; // vicino oltre l'inizio della striscia
+    // le 6 configurazioni in cui una cella "q" può far parte di un tris:
+    // in coda, al centro, o in testa alla linea, sia in riga che in colonna
+    const lineConfigs = [
+      [[0, -2], [0, -1]], [[0, -1], [0, 1]], [[0, 1], [0, 2]],
+      [[-2, 0], [-1, 0]], [[-1, 0], [1, 0]], [[1, 0], [2, 0]],
+    ];
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (!isColorCell(r, c)) continue;
+        const swapPartners = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]].filter(([pr, pc]) => isColorCell(pr, pc));
+        if (swapPartners.length === 0) continue; // q non ha nessun vicino con cui scambiare
+        for (const [[dr1, dc1], [dr2, dc2]] of lineConfigs) {
+          const other1 = [r + dr1, c + dc1], other2 = [r + dr2, c + dc2];
+          if (!isColorCell(...other1) || !isColorCell(...other2)) continue;
+          const p = swapPartners[0];
+          if ((p[0] === other1[0] && p[1] === other1[1]) || (p[0] === other2[0] && p[1] === other2[1])) continue; // p deve restare distinto dalla linea
+          const colorX = colors[Math.floor(rng() * colors.length)];
+          let colorY = colors[(colors.indexOf(colorX) + 1) % colors.length];
+          board[other1[0]][other1[1]].color = colorX;
+          board[other2[0]][other2[1]].color = colorX;
+          board[p[0]][p[1]].color = colorX; // dopo lo scambio p<->q, q prende questo colore
+          board[r][c].color = colorY; // q per ora diverso da X: non è già un match
+          return true;
         }
       }
-      return false;
-    };
-    return tryDirection(0, 1) || tryDirection(1, 0);
+    }
+    return false;
   }
 
   if (tryWithPalette(colors, 60)) return true;
