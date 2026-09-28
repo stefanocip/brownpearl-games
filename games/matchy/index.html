@@ -227,7 +227,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 100 (fix: le forme L erano T, ora sono vere L)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 101 (animazione del rimescolamento)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -3117,16 +3117,119 @@ function finalizeMove() {
   }
 }
 
+// Le celle colore attuali (posizione + colore), in ordine riga per riga —
+// serve a runShuffleAnimation per sapere da dove partono i pezzi.
+function snapshotColorCells(state) {
+  const out = [];
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    const cell = state.board[r][c];
+    if (state.grid[r][c] && cell && cell.kind === 'color') out.push({ r, c, color: cell.color });
+  }
+  return out;
+}
+
+// Rimescolamento animato: tutte le celle colore convergono sulla PRIMA cella
+// in alto (~0,65 s), breve pausa lì (dove cambiano colore), poi si
+// ridistribuiscono a cascata sulle loro posizioni (~0,6 s). `before` viene da
+// snapshotColorCells PRIMA del rimescolamento; finalState ha già i colori
+// nuovi (le posizioni delle celle colore non cambiano in un rimescolamento).
+function runShuffleAnimation(before, finalState, level, onComplete) {
+  const GATHER_MS = 650, HOLD_MS = 100, SPREAD_STAGGER_MS = 200, SPREAD_MOVE_MS = 400;
+  const TOTAL_MS = GATHER_MS + HOLD_MS + SPREAD_STAGGER_MS + SPREAD_MOVE_MS;
+  const PILE_SCALE = 0.7;
+  const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+  let finished = false;
+  const finish = () => { if (finished) return; finished = true; onComplete(); };
+
+  try {
+    renderStaticLayer(finalState, level); // sfondo, una volta sola
+    const movingLayer = new PIXI.Container();
+    app.stage.addChild(movingLayer);
+
+    // pezzi che non partecipano (nero, stella, bombe): fermi al loro posto
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+      const cell = finalState.board[r][c];
+      if (cell && (cell.kind === 'black' || cell.kind === 'star' || cell.kind === 'bomb')) {
+        const obj = createPieceDisplay(cell.kind, cell.color, cell.bombType);
+        obj.position.set(c * CELL + CELL / 2, r * CELL + CELL / 2);
+        movingLayer.addChild(obj);
+      }
+    }
+
+    // punto di raccolta: centro della prima cella colore (in alto a sinistra)
+    const gx = before[0].c * CELL + CELL / 2, gy = before[0].r * CELL + CELL / 2;
+    const n = before.length;
+    const items = before.map((b, i) => {
+      const after = finalState.board[b.r][b.c];
+      const newColor = after && after.kind === 'color' ? after.color : b.color;
+      const oldObj = createPieceDisplay('color', b.color);
+      const newObj = createPieceDisplay('color', newColor);
+      newObj.visible = false;
+      movingLayer.addChild(oldObj);
+      movingLayer.addChild(newObj);
+      // piccolo scarto fisso per pezzo: la pila sembra una pila, non un solo pezzo
+      const jx = (((i * 37) % 7) - 3) * 1.2, jy = (((i * 53) % 7) - 3) * 1.2;
+      return { b, oldObj, newObj, x0: b.c * CELL + CELL / 2, y0: b.r * CELL + CELL / 2, px: gx + jx, py: gy + jy, delay: n > 1 ? (i / (n - 1)) * SPREAD_STAGGER_MS : 0 };
+    });
+
+    renderOverlayLayer(finalState, level); // lampadine sopra ai pezzi mobili
+
+    const start = performance.now();
+    function frame(now) {
+      try {
+        const elapsed = now - start;
+        items.forEach((it) => {
+          if (elapsed < GATHER_MS) {
+            const e = easeInOutCubic(Math.min(1, elapsed / GATHER_MS));
+            it.oldObj.position.set(it.x0 + (it.px - it.x0) * e, it.y0 + (it.py - it.y0) * e);
+            it.oldObj.scale.set(1 - (1 - PILE_SCALE) * e);
+          } else {
+            // da qui in poi i pezzi mostrano il colore NUOVO
+            it.oldObj.visible = false;
+            it.newObj.visible = true;
+            const local = elapsed - GATHER_MS - HOLD_MS - it.delay;
+            const e = easeOutCubic(Math.max(0, Math.min(1, local / SPREAD_MOVE_MS)));
+            it.newObj.position.set(it.px + (it.x0 - it.px) * e, it.py + (it.y0 - it.py) * e);
+            it.newObj.scale.set(PILE_SCALE + (1 - PILE_SCALE) * e);
+          }
+        });
+        if (elapsed < TOTAL_MS) requestAnimationFrame(frame);
+        else finish();
+      } catch (err) {
+        console.error('[match3] errore nell\'animazione di rimescolamento:', err);
+        finish();
+      }
+    }
+    frame(start);
+  } catch (err) {
+    console.error('[match3] errore nell\'animazione di rimescolamento:', err);
+    finish();
+  }
+}
+
 function checkDeadlockAndFinish() {
   const spread = maybeSpreadGreenGoal();
   if (!hasAnyPossibleMove(game.state)) {
+    const animationsOn = document.getElementById('animToggle').checked;
+    const before = animationsOn ? snapshotColorCells(game.state) : null;
     const res = unstickBoard(game.state, game.gameplayRng, game.level.colors);
-    renderBoard();
-    updateInfoPanel();
-    if (res.exploded > 0) {
-      // l'esplosione può aver completato gli ultimi goal: controllo la vittoria
-      const { won } = checkGameEnd(game.state, game.level);
-      if (won) { game.finished = true; showMessage('Livello completato!', true); }
+    const done = () => {
+      game.animating = false;
+      renderBoard();
+      updateInfoPanel();
+      if (res.exploded > 0) {
+        // l'esplosione può aver completato gli ultimi goal: controllo la vittoria
+        const { won } = checkGameEnd(game.state, game.level);
+        if (won) { game.finished = true; showMessage('Livello completato!', true); }
+      }
+    };
+    // animo solo il rimescolamento semplice: con un'esplosione i pezzi
+    // cambiano posizione/numero, non è un "si ridistribuiscono"
+    if (animationsOn && res.ok && res.exploded === 0 && before && before.length > 1) {
+      game.animating = true; // input bloccato finché non finisce
+      runShuffleAnimation(before, game.state, game.level, done);
+    } else {
+      done();
     }
   } else if (spread) {
     // la macchia è cresciuta ma non serviva rimescolare: senza un ridisegno
