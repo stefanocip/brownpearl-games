@@ -227,7 +227,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 99 (sblocco: esplosione 3x3 casuale prima di arrendersi)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 100 (fix: le forme L erano T, ora sono vere L)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -325,7 +325,7 @@ const croceBracciaLarghe4 = () => {
   fillRect(g, 0, 7, 2, 5); fillRect(g, 2, 5, 0, 7);
   return g;
 };
-const lLarga0 = () => { const g = emptyGrid(); fillRect(g, 0, 7, 2, 5); fillRect(g, 4, 7, 0, 7); return g; };
+const lLarga0 = () => { const g = emptyGrid(); fillRect(g, 0, 7, 0, 3); fillRect(g, 4, 7, 0, 7); return g; }; // barra a SINISTRA (non al centro: quella era una T)
 const lLarga1 = () => ruota90(lLarga0());
 const lLarga2 = () => ruota90(lLarga1());
 const lLarga3 = () => ruota90(lLarga2());
