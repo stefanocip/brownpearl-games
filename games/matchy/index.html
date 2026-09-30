@@ -227,7 +227,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 101 (animazione del rimescolamento)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 103 (fix: la stella varia colonna, non solo in alto a sinistra)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -725,16 +725,25 @@ function decodeLevel(seed) {
       for (let rr = row + 1; rr < SIZE; rr++) if (grid[rr][col]) n++;
       return n;
     }
-    let topRow = null, topCol = null;
+    // prima trovo la riga più in alto che ha ALMENO una colonna valida,
+    // poi scelgo a caso tra TUTTE le colonne valide di quella riga — prima
+    // prendevo sempre la prima da sinistra, quindi la stella finiva quasi
+    // sempre in alto a sinistra invece di variare tra i seed
+    let topRow = null;
     outer:
     for (let r = 0; r < SIZE; r++) {
       for (let c = 0; c < SIZE; c++) {
         if (grid[r][c] && !occupied.has(r + ',' + c) && activeBelowCount(r, c) >= 2) {
-          topRow = r; topCol = c; break outer;
+          topRow = r; break outer;
         }
       }
     }
     if (topRow !== null) {
+      const candidates = [];
+      for (let c = 0; c < SIZE; c++) {
+        if (grid[topRow][c] && !occupied.has(topRow + ',' + c) && activeBelowCount(topRow, c) >= 2) candidates.push(c);
+      }
+      const topCol = candidates[Math.floor(rng() * candidates.length)];
       occupied.add(topRow + ',' + topCol);
       star = { active: true, startRow: topRow, startCol: topCol };
     }
@@ -3090,19 +3099,24 @@ function finalizeMove() {
     function cascadeStepLoop() {
       try {
         const b2 = snapshotMovable(game.state.board, game.level.grid);
-        const hadStep = resolveOneStep(game.state, game.gameplayRng, game.level.colors);
-        if (!hadStep) {
-          game.animating = false;
-          renderBoard();
-          updateInfoPanel();
-          const end2 = checkGameEnd(game.state, game.level);
-          if (end2.won) { game.finished = true; showMessage('Livello completato!', true); return; }
-          if (end2.lost) { game.finished = true; showMessage('Mosse finite — livello non completato', false); return; }
-          checkDeadlockAndFinish();
-          return;
-        }
-        const a2 = snapshotMovable(game.state.board, game.level.grid);
-        runSettleAnimation(b2, a2, game.level, game.state, 220, cascadeStepLoop);
+        const bombFlashCells3 = computeInMatchBombFlashCells(game.state); // mancava qui: una bomba presa in un match nato DOPO un passaggio del nastro esplodeva senza lampo
+        const proceed3 = () => {
+          const hadStep = resolveOneStep(game.state, game.gameplayRng, game.level.colors);
+          if (!hadStep) {
+            game.animating = false;
+            renderBoard();
+            updateInfoPanel();
+            const end2 = checkGameEnd(game.state, game.level);
+            if (end2.won) { game.finished = true; showMessage('Livello completato!', true); return; }
+            if (end2.lost) { game.finished = true; showMessage('Mosse finite — livello non completato', false); return; }
+            checkDeadlockAndFinish();
+            return;
+          }
+          const a2 = snapshotMovable(game.state.board, game.level.grid);
+          runSettleAnimation(b2, a2, game.level, game.state, 220, cascadeStepLoop);
+        };
+        if (bombFlashCells3) flashExplosion(bombFlashCells3, proceed3);
+        else proceed3();
       } catch (err) {
         emergencyRecover(err, 'conveyor.cascadeStepLoop');
       }
