@@ -2,10 +2,14 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Match-3 Seed Prototype</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.16.0/pixi.min.js"></script>
 <style>
+  html, body {
+    overscroll-behavior: none; /* niente "elastico" ai bordi ne' swipe-indietro del browser */
+    touch-action: pan-y; /* niente pinch-zoom; scorrimento verticale normale lasciato libero */
+  }
   :root {
     --bg: #14171c;
     --panel: #1c2028;
@@ -227,7 +231,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 103 (fix: la stella varia colonna, non solo in alto a sinistra)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 105 (niente zoom, niente swipe-indietro)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -252,6 +256,21 @@
   window.addEventListener('error', (e) => append('UNCAUGHT', [e.message + ' @ ' + e.filename + ':' + e.lineno, e.error]));
   window.addEventListener('unhandledrejection', (e) => append('PROMISE REJECTED', [e.reason]));
 })();
+
+// Blocco zoom e swipe-indietro: il meta viewport da solo non basta sempre
+// (specie Safari su iOS ignora user-scalable=no per il pinch e il doppio
+// tap). Gesture nativa di Safari per il pinch-zoom:
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+document.addEventListener('gesturechange', (e) => e.preventDefault());
+// Pinch-zoom con due dita (dove gesturestart non esiste, es. Chrome):
+document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+// Doppio tap che zooma:
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e) => {
+  const now = Date.now();
+  if (now - lastTouchEnd <= 300) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
 </script>
 
 <script>
@@ -719,7 +738,24 @@ function decodeLevel(seed) {
   if (hasStar) {
     // cella propria: deve avere almeno 2 celle attive sotto di sé nella stessa
     // colonna (altrimenti la stella non ha spazio per scendere fino al pavimento),
-    // libera da altri goal, e la più in alto possibile tra quelle valide
+    // libera da altri goal, e la più in alto possibile tra quelle valide.
+    // Lampadina e bombola sotto NON sono un problema: sono ostacoli
+    // TEMPORANEI, la stella si ferma e aspetta che si liberino durante il
+    // gioco, poi riprende a scendere (stesso comportamento di updateStar).
+    // Il MURO invece è permanente e indistruttibile: se c'è un muro in
+    // QUALUNQUE punto della colonna sotto la stella, anche non subito
+    // sotto, la stella non raggiungerà mai il fondo vero — bug segnalato:
+    // un muro (anche solo un po' più giù, non necessariamente a contatto)
+    // rende il goal impossibile per sempre.
+    const wallSet = new Set();
+    walls.positions.forEach(([r, c]) => wallSet.add(r + ',' + c));
+    function hasWallBelow(row, col) {
+      for (let rr = row + 1; rr < SIZE; rr++) {
+        if (!grid[rr][col]) break; // fondo vero raggiunto, nessun muro nel mezzo
+        if (wallSet.has(rr + ',' + col)) return true;
+      }
+      return false;
+    }
     function activeBelowCount(row, col) {
       let n = 0;
       for (let rr = row + 1; rr < SIZE; rr++) if (grid[rr][col]) n++;
@@ -733,7 +769,7 @@ function decodeLevel(seed) {
     outer:
     for (let r = 0; r < SIZE; r++) {
       for (let c = 0; c < SIZE; c++) {
-        if (grid[r][c] && !occupied.has(r + ',' + c) && activeBelowCount(r, c) >= 2) {
+        if (grid[r][c] && !occupied.has(r + ',' + c) && activeBelowCount(r, c) >= 2 && !hasWallBelow(r, c)) {
           topRow = r; break outer;
         }
       }
@@ -741,7 +777,7 @@ function decodeLevel(seed) {
     if (topRow !== null) {
       const candidates = [];
       for (let c = 0; c < SIZE; c++) {
-        if (grid[topRow][c] && !occupied.has(topRow + ',' + c) && activeBelowCount(topRow, c) >= 2) candidates.push(c);
+        if (grid[topRow][c] && !occupied.has(topRow + ',' + c) && activeBelowCount(topRow, c) >= 2 && !hasWallBelow(topRow, c)) candidates.push(c);
       }
       const topCol = candidates[Math.floor(rng() * candidates.length)];
       occupied.add(topRow + ',' + topCol);
