@@ -231,7 +231,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 105 (niente zoom, niente swipe-indietro)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 106 (fix: controllo mossa possibile piu preciso sulle bombe)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -1815,17 +1815,14 @@ function checkGameEnd(state, level) {
 
 // C'è almeno una bomba sul tabellone? Scambiarla è sempre valido, quindi la
 // sua sola presenza garantisce una mossa disponibile.
-function hasBomb(state) {
-  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-    if (state.board[r][c] && state.board[r][c].kind === 'bomb') return true;
-  }
-  return false;
-}
-
-// Prova ogni scambio adiacente possibile (solo tra celle 'color': le bombe
-// sono già coperte sopra) e verifica se ne crea almeno uno valido.
+// Prova ogni scambio adiacente possibile, applicando la STESSA regola di
+// validità di attemptSwap (prima questa funzione considerava "sempre
+// possibile una mossa" se esisteva QUALUNQUE bomba sul tabellone, anche una
+// che non aveva in realtà nessuno scambio valido vicino — troppo ottimista):
+// due bombe tra loro, o una stella con qualsiasi cosa, sono sempre valide;
+// una bomba singola (non stella) con un colore, o colore con colore,
+// devono invece formare un match vero.
 function hasAnyPossibleMove(state) {
-  if (hasBomb(state)) return true;
   const { board, grid } = state;
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
@@ -1835,12 +1832,20 @@ function hasAnyPossibleMove(state) {
         const r2 = r + dr, c2 = c + dc;
         if (r2 >= SIZE || c2 >= SIZE || !grid[r2][c2]) continue;
         const a = board[r][c], b = board[r2][c2];
-        if (!a || !b || a.kind !== 'color' || b.kind !== 'color') continue;
+        if (!a || !b) continue;
+        const aMovable = a.kind === 'color' || a.kind === 'bomb';
+        const bMovable = b.kind === 'color' || b.kind === 'bomb';
+        if (!aMovable || !bMovable) continue; // muri/lampadine/bombole: mai scambiabili
 
+        if (a.kind === 'bomb' && b.kind === 'bomb') return true; // due bombe: sempre valido, qualunque combo
+        const aStar = a.kind === 'bomb' && a.bombType === 'colorBomb';
+        const bStar = b.kind === 'bomb' && b.bombType === 'colorBomb';
+        if (aStar || bStar) return true; // stella con qualsiasi cosa: sempre valido
+
+        // bomba singola (non stella) + colore, o colore + colore: serve un match vero
         board[r][c] = b; board[r2][c2] = a;
         const matches = findMatches(state);
         board[r][c] = a; board[r2][c2] = b;
-
         if (matches.size > 0) return true;
       }
     }
