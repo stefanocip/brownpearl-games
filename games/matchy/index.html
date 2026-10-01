@@ -231,7 +231,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 106 (fix: controllo mossa possibile piu preciso sulle bombe)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 109 (fix: scambio con una cella nera non piu ignorato)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -1815,15 +1815,24 @@ function checkGameEnd(state, level) {
 
 // C'è almeno una bomba sul tabellone? Scambiarla è sempre valido, quindi la
 // sua sola presenza garantisce una mossa disponibile.
-// Prova ogni scambio adiacente possibile, applicando la STESSA regola di
-// validità di attemptSwap (prima questa funzione considerava "sempre
-// possibile una mossa" se esisteva QUALUNQUE bomba sul tabellone, anche una
-// che non aveva in realtà nessuno scambio valido vicino — troppo ottimista):
-// due bombe tra loro, o una stella con qualsiasi cosa, sono sempre valide;
-// una bomba singola (non stella) con un colore, o colore con colore,
-// devono invece formare un match vero.
+// Una bomba QUALSIASI sul tabellone rende sempre possibile una mossa: non
+// serve scambiarla con niente, un tocco diretto la attiva subito (vedi
+// onCellTap — "via di fuga" sempre disponibile, indipendentemente da
+// eventuali match adiacenti). Oltre a questo, provo ogni scambio adiacente
+// possibile applicando la stessa regola di validità di attemptSwap: due
+// bombe tra loro, o una stella con qualsiasi cosa che non sia una bomba
+// (colore O NERO — la stella non ha un colore "vero", quindi secondo
+// attemptSwap è sempre valida anche lì), sono sempre valide anche SENZA
+// toccarle direttamente. Una bomba singola (non stella), un colore o una
+// cella nera devono invece formare un match vero — il nero in sé non
+// matcha MAI, ma può comunque "liberare" un colore spostandolo in una
+// posizione che forma un tris altrove: va incluso tra le celle scambiabili,
+// non solo colore e bomba (bug segnalato: un caso così veniva perso).
 function hasAnyPossibleMove(state) {
   const { board, grid } = state;
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (board[r][c] && board[r][c].kind === 'bomb') return true; // tocco diretto: sempre una mossa valida
+  }
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
       if (!grid[r][c]) continue;
@@ -1833,16 +1842,17 @@ function hasAnyPossibleMove(state) {
         if (r2 >= SIZE || c2 >= SIZE || !grid[r2][c2]) continue;
         const a = board[r][c], b = board[r2][c2];
         if (!a || !b) continue;
-        const aMovable = a.kind === 'color' || a.kind === 'bomb';
-        const bMovable = b.kind === 'color' || b.kind === 'bomb';
+        const aMovable = a.kind === 'color' || a.kind === 'black' || a.kind === 'bomb';
+        const bMovable = b.kind === 'color' || b.kind === 'black' || b.kind === 'bomb';
         if (!aMovable || !bMovable) continue; // muri/lampadine/bombole: mai scambiabili
 
         if (a.kind === 'bomb' && b.kind === 'bomb') return true; // due bombe: sempre valido, qualunque combo
-        const aStar = a.kind === 'bomb' && a.bombType === 'colorBomb';
-        const bStar = b.kind === 'bomb' && b.bombType === 'colorBomb';
-        if (aStar || bStar) return true; // stella con qualsiasi cosa: sempre valido
+        const aStar = a.kind === 'bomb' && a.bombType === 'colorBomb' && b.kind !== 'bomb';
+        const bStar = b.kind === 'bomb' && b.bombType === 'colorBomb' && a.kind !== 'bomb';
+        if (aStar || bStar) return true; // stella con qualsiasi cosa che non sia bomba: sempre valido
 
-        // bomba singola (non stella) + colore, o colore + colore: serve un match vero
+        // bomba singola (non stella) + colore/nero, colore + colore, o
+        // nero + colore: serve un match vero
         board[r][c] = b; board[r2][c2] = a;
         const matches = findMatches(state);
         board[r][c] = a; board[r2][c2] = b;
@@ -3262,9 +3272,40 @@ function runShuffleAnimation(before, finalState, level, onComplete) {
   }
 }
 
+// Stampa il tabellone in console PRIMA di rimescolare, leggibile a colpo
+// d'occhio: una riga per cella attiva, colore/tipo e se partecipa già a un
+// match (non dovrebbe mai succedere — se succede, eccolo qui nero su
+// bianco invece di dover beccare lo screenshot al momento giusto).
+function logBoardBeforeReshuffle(state, level, seed) {
+  try {
+    const existingMatches = findMatches(state);
+    const lines = [];
+    for (let r = 0; r < SIZE; r++) {
+      let row = '';
+      for (let c = 0; c < SIZE; c++) {
+        if (!level.grid[r][c]) { row += '   . '; continue; }
+        const cell = state.board[r][c];
+        if (!cell) { row += '   _ '; continue; }
+        const inMatch = existingMatches.has(r + ',' + c) ? '*' : ' ';
+        let label = cell.kind === 'color' ? cell.color.slice(0, 3)
+          : cell.kind === 'bomb' ? 'B' + (cell.bombType || '?').slice(0, 2)
+          : cell.kind.slice(0, 3);
+        row += label.padEnd(4) + inMatch;
+      }
+      lines.push(r + ' ' + row);
+    }
+    console.error('[match3] sto per rimescolare — seed ' + seed + ', mosse rimaste ' + state.movesRemaining
+      + (existingMatches.size > 0 ? ' — ATTENZIONE: ' + existingMatches.size + ' celle risultano già in un match!' : ' — nessun match già pronto sul tabellone')
+      + '\n' + lines.join('\n'));
+  } catch (err) {
+    console.error('[match3] errore nel log diagnostico pre-rimescolamento:', err);
+  }
+}
+
 function checkDeadlockAndFinish() {
   const spread = maybeSpreadGreenGoal();
   if (!hasAnyPossibleMove(game.state)) {
+    logBoardBeforeReshuffle(game.state, game.level, game.level.seed);
     const animationsOn = document.getElementById('animToggle').checked;
     const before = animationsOn ? snapshotColorCells(game.state) : null;
     const res = unstickBoard(game.state, game.gameplayRng, game.level.colors);
