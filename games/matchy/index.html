@@ -231,7 +231,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 109 (fix: scambio con una cella nera non piu ignorato)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 114 (nuovo ostacolo: la super corda, X+croce che si diffonde)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -820,6 +820,41 @@ function decodeLevel(seed) {
     cells.forEach(([r, c]) => occupied.add(r + ',' + c));
   }
 
+  // Corde: il colore sotto conta per i match come qualsiasi altra cella, ma
+  // sono fisse — non scambiabili (come le lampadine), e la gravità non le
+  // tocca: se sparisce qualcosa sotto, NON cadono, restano legate al loro
+  // posto. Solo un match che le coinvolge scioglie la corda — da lì in poi
+  // diventano una cella normale (scambiabile, soggetta a gravità). Non è un
+  // goal, è solo un ostacolo come i muri: non conta nel tetto di 2 goal.
+  const wantsRopes = rng() < 0.3;
+  let ropes = { active: false, cells: [] };
+  if (wantsRopes) {
+    const targetCount = Math.max(2, Math.round(activeCellCount * (0.05 + rng() * 0.08)));
+    const nonCoreMatchable = new Set();
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (grid[r][c] && !coreMatchable.has(r + ',' + c)) nonCoreMatchable.add(r + ',' + c);
+    const excludeSet = new Set([...occupied, ...nonCoreMatchable]);
+    const cells = pickRandomCells(rng, grid, targetCount, excludeSet);
+    ropes = { active: cells.length > 0, cells };
+    cells.forEach(([r, c]) => occupied.add(r + ',' + c));
+  }
+
+  // Super corda: stessa cosa della corda normale (fissa, non scambiabile,
+  // il colore conta per i match, un match la scioglie lasciando la cella),
+  // ma se una mossa intera non ne scioglie nessuna cresce da sola di una
+  // cella adiacente — stessa regola della macchia verde. Seed iniziale
+  // piccolissimo apposta, cresce se trascurata. Nemmeno questa è un goal.
+  const wantsSuperRopes = rng() < 0.2;
+  let superRopes = { active: false, cells: [] };
+  if (wantsSuperRopes) {
+    const targetCount = Math.max(1, Math.round(activeCellCount * (0.02 + rng() * 0.03)));
+    const nonCoreMatchable = new Set();
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (grid[r][c] && !coreMatchable.has(r + ',' + c)) nonCoreMatchable.add(r + ',' + c);
+    const excludeSet = new Set([...occupied, ...nonCoreMatchable]);
+    const cells = pickRandomCells(rng, grid, targetCount, excludeSet);
+    superRopes = { active: cells.length > 0, cells };
+    cells.forEach(([r, c]) => occupied.add(r + ',' + c));
+  }
+
   const goalFlags = [lightbulbs.active, bombole.active, coverage.active, star.active, greenSpread.active];
   const extraGoalsCount = goalFlags.filter(Boolean).length;
 
@@ -879,7 +914,7 @@ function decodeLevel(seed) {
     seed, shape: shapeName, grid, activeCellCount, colorCount, colors, colorTargets,
     totalColorTarget, moves: finalMoves, componentInfo,
     goals: { lightbulbs, bombole, coverage, star, greenSpread },
-    obstacles: { blackCellWeight: 0.5, conveyor, walls },
+    obstacles: { blackCellWeight: 0.5, conveyor, walls, ropes, superRopes },
   };
 }
 
@@ -914,6 +949,8 @@ function populateGrid(level) {
 
   const weights = level.colors.map(() => 1);
   const totalColorWeight = weights.reduce((a, b) => a + b, 0);
+  const ropePositions = new Set((level.obstacles.ropes.cells || []).map(([r, c]) => r + ',' + c));
+  (level.obstacles.superRopes.cells || []).forEach(([r, c]) => ropePositions.add(r + ',' + c));
 
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
@@ -923,8 +960,11 @@ function populateGrid(level) {
 
       // niente nero nelle componenti isolate piccole (es. centro/angoli dei
       // "5 quadrati"): con poco spazio e pochi colori disponibili, il tris
-      // vicino a una lampadina diventa quasi impossibile da ottenere
-      const blackWeight = isInNarrowComponent(level.componentInfo, r, c) ? 0 : level.obstacles.blackCellWeight;
+      // vicino a una lampadina diventa quasi impossibile da ottenere. Niente
+      // nero nemmeno su una cella con corda: il nero non matcha mai, quindi
+      // la corda non si scioglierebbe più — bloccata per sempre (bug trovato
+      // con lo stress test: la corda finiva per caso su una cella nera).
+      const blackWeight = (isInNarrowComponent(level.componentInfo, r, c) || ropePositions.has(key)) ? 0 : level.obstacles.blackCellWeight;
       const totalWeight = totalColorWeight + blackWeight;
 
       const roll = rng() * totalWeight;
@@ -1007,6 +1047,8 @@ function buildInitialBoard(level, cellData) {
     grid: level.grid,
     blackCellWeight: level.obstacles.blackCellWeight, // così refill() lo trova senza dover ricevere "level" ovunque
     greenSpreadSet: new Set(level.goals.greenSpread.cells.map(([r, c]) => r + ',' + c)),
+    ropeSet: new Set(level.obstacles.ropes.cells.map(([r, c]) => r + ',' + c)),
+    superRopeSet: new Set(level.obstacles.superRopes.cells.map(([r, c]) => r + ',' + c)),
   };
 }
 
@@ -1016,6 +1058,21 @@ function isActive(grid, r, c) {
 
 function isMovable(cell) {
   return cell && (cell.kind === 'color' || cell.kind === 'black' || cell.kind === 'star' || cell.kind === 'bomb');
+}
+
+// Scambiabile = mobile per kind E non legata da una corda. Un unico punto
+// invece di ripetere "isMovable(cell) && !ropeSet.has(key)" in quattro
+// posti diversi (onCellTap, onSwipe, attemptSwap, hasAnyPossibleMove) —
+// prima ognuno faceva il controllo a modo suo ed era facile dimenticarne
+// uno (è successo con onSwipe: bug segnalato, lo swipe su una corda
+// mostrava comunque l'anteprima dello scambio).
+function isSwappable(state, r, c) {
+  const cell = state.board[r][c];
+  if (!isMovable(cell)) return false;
+  const key = r + ',' + c;
+  if (state.ropeSet && state.ropeSet.has(key)) return false;
+  if (state.superRopeSet && state.superRopeSet.has(key)) return false;
+  return true;
 }
 
 // Trova tutti i run (riga o colonna) di lunghezza >=3 dello stesso colore.
@@ -1241,6 +1298,18 @@ function clearCellWithEffects(state, rr, cc, hitBombolasSet, protectedKeys) {
   }
 
   const ckey = rr + ',' + cc;
+
+  if ((state.ropeSet && state.ropeSet.has(ckey)) || (state.superRopeSet && state.superRopeSet.has(ckey))) {
+    // investita da un'esplosione: stessa regola di un match normale, la
+    // corda (o la super corda) si scioglie ma la cella resta (non sparisce,
+    // non scala il target colore) — da qui in poi è una cella normale
+    if (state.ropeSet) state.ropeSet.delete(ckey);
+    if (state.superRopeSet) state.superRopeSet.delete(ckey);
+    state.coverageSet.delete(ckey);
+    if (state.greenSpreadSet) state.greenSpreadSet.delete(ckey);
+    return { cleared: false };
+  }
+
   if (cell.kind === 'color' && state.colorRemaining[cell.color] !== undefined) {
     state.colorRemaining[cell.color] = Math.max(0, state.colorRemaining[cell.color] - 1);
   }
@@ -1511,6 +1580,8 @@ function resolveMatches(state, matchedSet, rng, colors) {
     if (swapKeyInPattern) anchorCell = swapKeyInPattern.split(',').map(Number);
     const key = anchorCell[0] + ',' + anchorCell[1];
     if (!matchedSet.has(key)) return; // l'ancora dev'essere una cella che sta davvero per risolversi ora
+    if (state.ropeSet && state.ropeSet.has(key)) return; // legata da una corda: non può diventare una bomba, solo sciogliersi
+    if (state.superRopeSet && state.superRopeSet.has(key)) return; // idem per la super corda
     const existing = bombAnchors.get(key);
     if (!existing || BOMB_PRIORITY[p.bombType] > BOMB_PRIORITY[existing.bombType]) {
       bombAnchors.set(key, { bombType: p.bombType, color: p.color });
@@ -1561,15 +1632,56 @@ function resolveMatches(state, matchedSet, rng, colors) {
 
     if (cell.kind === 'bomb') {
       // bomba ESISTENTE presa in un match vero (es. "freccia viola + viola
-      // + viola") — esplode, non sparisce silenziosamente. Niente
-      // ricompensa qui: solo il combo bomba+bomba vero e proprio la dà,
-      // altrimenti ogni tap su una bomba a colonna/riga intera farebbe
-      // sempre ricadere una bomba nuova, sempre in fondo, troppo prevedibile.
-      // bombAnchors come "protette": una bomba appena creata nel primo
-      // passaggio non deve sparire risucchiata dalla reazione a catena di
-      // QUESTA esplosione, altrimenti si autodistrugge nello stesso istante
-      // in cui nasce.
+      // + viola", o un quadrato 2x2 che la contiene) — esplode, non
+      // sparisce silenziosamente. Niente ricompensa qui: solo il combo
+      // bomba+bomba vero e proprio la dà, altrimenti ogni tap su una bomba
+      // a colonna/riga intera farebbe sempre ricadere una bomba nuova,
+      // sempre in fondo, troppo prevedibile. bombAnchors come "protette":
+      // una bomba appena creata nel primo passaggio non deve sparire
+      // risucchiata dalla reazione a catena di QUESTA esplosione, altrimenti
+      // si autodistrugge nello stesso istante in cui nasce.
+      //
+      // L'effetto di ADIACENZA sulla propria posizione (lampadina si
+      // accende, bombola perde un colpo) va applicato QUI, non dentro
+      // explodeBomb: quando una bomba esplode da sola (tocco diretto, combo,
+      // scambio) non deve avere questo "colpo di striscio" gratuito — solo
+      // quello che rientra davvero nella sua area, per design. Ma quando è
+      // presa PASSIVAMENTE in un match normale (questo caso), per il
+      // giocatore è una cella come le altre del match: deve contribuire
+      // l'adiacenza come farebbe un colore qualunque lì — prima non
+      // succedeva mai, perché la funzione usciva con return subito dopo
+      // l'esplosione (bug segnalato: bombola adiacente alla bomba, non la
+      // propria area, non perdeva il colpo).
+      deltas.forEach(([dr, dc]) => {
+        const nr = r + dr, nc = c + dc;
+        const ncell = board[nr] && board[nr][nc];
+        if (!ncell) return;
+        if (ncell.kind === 'lightbulb' && !ncell.lit) {
+          ncell.lit = true;
+          state.lightbulbLitCount++;
+        } else if (ncell.kind === 'bombola') {
+          if (!hitBombolasThisResolve.has(ncell.instanceId)) {
+            hitBombolasThisResolve.add(ncell.instanceId);
+            const inst = bombolaInstances[ncell.instanceId];
+            if (inst.hitsRemaining > 0) inst.hitsRemaining--;
+          }
+        }
+      });
+
       explodeBomb(state, r, c, undefined, new Set(bombAnchors.keys()));
+      return;
+    }
+
+    if ((state.ropeSet && state.ropeSet.has(key)) || (state.superRopeSet && state.superRopeSet.has(key))) {
+      // legata da una corda (o super corda): il match scioglie SOLO il
+      // legame, la cella resta sul tabellone — non sparisce, non scala il
+      // target colore, nessun effetto di adiacenza (non è stata davvero
+      // "raccolta", solo liberata). Da qui in poi è una cella normale:
+      // scambiabile, soggetta a gravità come qualunque altro colore.
+      if (state.ropeSet) state.ropeSet.delete(key);
+      if (state.superRopeSet) state.superRopeSet.delete(key);
+      coverageSet.delete(key);
+      if (greenSpreadSet) greenSpreadSet.delete(key);
       return;
     }
 
@@ -1630,7 +1742,7 @@ function applyGravity(state) {
     // individua i segmenti verticali della colonna separati dagli ostacoli fissi
     let segStart = 0;
     for (let r = 0; r <= SIZE; r++) {
-      const blocked = r === SIZE || !grid[r][c] || (board[r][c] && !isMovable(board[r][c]));
+      const blocked = r === SIZE || !grid[r][c] || (board[r][c] && !isMovable(board[r][c])) || (state.ropeSet && state.ropeSet.has(r + ',' + c)) || (state.superRopeSet && state.superRopeSet.has(r + ',' + c));
       if (blocked) {
         compactSegment(board, c, segStart, r - 1, grid);
         segStart = r + 1;
@@ -1751,7 +1863,7 @@ function attemptSwap(state, level, rng, colors, r1, c1, r2, c2) {
   if (dr + dc !== 1) return { ok: false, reason: 'non adiacenti' };
 
   const a = board[r1][c1], b = board[r2][c2];
-  if (!isMovable(a) || !isMovable(b)) return { ok: false, reason: 'cella fissa non scambiabile' };
+  if (!isSwappable(state, r1, c1) || !isSwappable(state, r2, c2)) return { ok: false, reason: 'cella fissa non scambiabile' };
 
   const bothBombs = a.kind === 'bomb' && b.kind === 'bomb';
   // solo la stella (colorBomb) è sempre scambiabile a prescindere — non ha
@@ -1842,9 +1954,7 @@ function hasAnyPossibleMove(state) {
         if (r2 >= SIZE || c2 >= SIZE || !grid[r2][c2]) continue;
         const a = board[r][c], b = board[r2][c2];
         if (!a || !b) continue;
-        const aMovable = a.kind === 'color' || a.kind === 'black' || a.kind === 'bomb';
-        const bMovable = b.kind === 'color' || b.kind === 'black' || b.kind === 'bomb';
-        if (!aMovable || !bMovable) continue; // muri/lampadine/bombole: mai scambiabili
+        if (!isSwappable(state, r, c) || !isSwappable(state, r2, c2)) continue; // muri/lampadine/bombole/corde: mai scambiabili
 
         if (a.kind === 'bomb' && b.kind === 'bomb') return true; // due bombe: sempre valido, qualunque combo
         const aStar = a.kind === 'bomb' && a.bombType === 'colorBomb' && b.kind !== 'bomb';
@@ -2253,6 +2363,15 @@ function renderBoard() {
     container.addChild(g);
   });
 
+  if (state.ropeSet) state.ropeSet.forEach((key) => {
+    const [r, c] = key.split(',').map(Number);
+    drawRopeTile(container, r, c);
+  });
+  if (state.superRopeSet) state.superRopeSet.forEach((key) => {
+    const [r, c] = key.split(',').map(Number);
+    drawSuperRopeTile(container, r, c);
+  });
+
   app.stage.addChild(container);
 }
 
@@ -2278,6 +2397,35 @@ function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 // Disegna tutto TRANNE i pezzi mobili e le aree cliccabili: sfondo celle,
 // lampadine, bombole, copertura, conveyor. Usato come sfondo fermo durante
 // le animazioni, così non devo ridisegnare da zero la logica dei goal.
+// Corda a X fucsia sopra la cella: il colore sotto resta visibile (si
+// disegna normalmente, questa è solo una sovrimpressione), ma la cella è
+// fissa finché un match che la coinvolge non scioglie la corda.
+function drawRopeTile(container, r, c) {
+  const x = c * CELL, y = r * CELL;
+  const g = new PIXI.Graphics();
+  const pad = GAP / 2 + 5;
+  g.moveTo(pad, pad).lineTo(CELL - pad, CELL - pad);
+  g.moveTo(CELL - pad, pad).lineTo(pad, CELL - pad);
+  g.stroke({ width: 4, color: 0xff2fd6, alpha: 0.95 });
+  g.position.set(x, y);
+  container.addChild(g);
+}
+
+// Super corda: stessa X fucsia della corda normale, con in più una croce
+// dritta sovrapposta (orizzontale + verticale) — come la Union Jack.
+function drawSuperRopeTile(container, r, c) {
+  const x = c * CELL, y = r * CELL;
+  const g = new PIXI.Graphics();
+  const pad = GAP / 2 + 5;
+  g.moveTo(pad, pad).lineTo(CELL - pad, CELL - pad);
+  g.moveTo(CELL - pad, pad).lineTo(pad, CELL - pad);
+  g.moveTo(CELL / 2, pad).lineTo(CELL / 2, CELL - pad);
+  g.moveTo(pad, CELL / 2).lineTo(CELL - pad, CELL / 2);
+  g.stroke({ width: 4, color: 0xff2fd6, alpha: 0.95 });
+  g.position.set(x, y);
+  container.addChild(g);
+}
+
 // Tinta verde fluo di sfondo per il goal "macchia che si diffonde" — stesso
 // stile della vecchia zona a gravità invertita (rimossa), ma qui è solo
 // visiva: un match lì la toglie, come il bordo rosso della copertura.
@@ -2375,6 +2523,15 @@ function renderStaticLayer(state, level) {
     container.addChild(g);
   });
 
+  if (state.ropeSet) state.ropeSet.forEach((key) => {
+    const [r, c] = key.split(',').map(Number);
+    drawRopeTile(container, r, c);
+  });
+  if (state.superRopeSet) state.superRopeSet.forEach((key) => {
+    const [r, c] = key.split(',').map(Number);
+    drawSuperRopeTile(container, r, c);
+  });
+
   app.stage.addChild(container);
 }
 
@@ -2403,6 +2560,18 @@ function renderOverlayLayer(state, level) {
       container.addChild(label);
     }
   }
+  // corde: stesso motivo delle lampadine — vanno disegnate QUI, non nel
+  // layer statico, altrimenti durante un'animazione che non le coinvolge i
+  // pezzi in movimento ci passano sopra e la X sparisce finché l'animazione
+  // non finisce (bug segnalato: la X scompariva e ricompariva a ogni swipe)
+  if (state.ropeSet) state.ropeSet.forEach((key) => {
+    const [r, c] = key.split(',').map(Number);
+    drawRopeTile(container, r, c);
+  });
+  if (state.superRopeSet) state.superRopeSet.forEach((key) => {
+    const [r, c] = key.split(',').map(Number);
+    drawSuperRopeTile(container, r, c);
+  });
   app.stage.addChild(container);
   return container; // i pezzi mobili animati vengono aggiunti sopra questo, dal chiamante
 }
@@ -2827,7 +2996,7 @@ function onCellTap(r, c) {
     return;
   }
 
-  if (!isMovable(cell)) return; // lampadine/bombole fisse non si selezionano
+  if (!isSwappable(game.state, r, c)) return; // lampadine/bombole/corde: non si selezionano
 
   if (!game.selected) {
     game.selected = [r, c];
@@ -2850,9 +3019,7 @@ function onCellTap(r, c) {
 function onSwipe(r1, c1, r2, c2) {
   if (game.finished || game.animating) return;
   if (!isActive(game.level.grid, r2, c2)) return;
-  const cell1 = game.state.board[r1][c1];
-  const cell2 = game.state.board[r2][c2];
-  if (!isMovable(cell1) || !isMovable(cell2)) return; // anche la destinazione dev'essere scambiabile, non solo la partenza
+  if (!isSwappable(game.state, r1, c1) || !isSwappable(game.state, r2, c2)) return; // anche la destinazione dev'essere scambiabile, non solo la partenza
   game.selected = null;
   performSwapAttempt(r1, c1, r2, c2);
 }
@@ -2863,6 +3030,7 @@ function performSwapAttempt(sr, sc, r, c) {
   // cascate) la dimensione è la stessa di ORA, vuol dire che questa mossa
   // non ne ha tolta nessuna — checkDeadlockAndFinish la farà crescere
   game.greenSpreadSizeBeforeMove = game.state.greenSpreadSet ? game.state.greenSpreadSet.size : undefined;
+  game.superRopeSizeBeforeMove = game.state.superRopeSet ? game.state.superRopeSet.size : undefined;
 
   const animationsOn = document.getElementById('animToggle').checked;
   if (!animationsOn) {
@@ -3029,6 +3197,7 @@ function performSwapAttempt(sr, sc, r, c) {
 function performBombActivation(r, c) {
   const rng = game.gameplayRng, colors = game.level.colors;
   game.greenSpreadSizeBeforeMove = game.state.greenSpreadSet ? game.state.greenSpreadSet.size : undefined;
+  game.superRopeSizeBeforeMove = game.state.superRopeSet ? game.state.superRopeSet.size : undefined;
   const animationsOn = document.getElementById('animToggle').checked;
 
   if (!animationsOn) {
@@ -3303,7 +3472,9 @@ function logBoardBeforeReshuffle(state, level, seed) {
 }
 
 function checkDeadlockAndFinish() {
-  const spread = maybeSpreadGreenGoal();
+  const spreadGreen = maybeSpreadGreenGoal();
+  const spreadSuperRope = maybeSpreadSuperRope();
+  const spread = spreadGreen || spreadSuperRope;
   if (!hasAnyPossibleMove(game.state)) {
     logBoardBeforeReshuffle(game.state, game.level, game.level.seed);
     const animationsOn = document.getElementById('animToggle').checked;
@@ -3377,6 +3548,45 @@ function spreadGreenGoal(state, level) {
   if (candidates.size === 0) return; // circondata solo da ostacoli fissi: non può crescere oltre
   const arr = [...candidates];
   greenSpreadSet.add(arr[Math.floor(Math.random() * arr.length)]);
+}
+
+// Super corda che si diffonde: stessa identica logica della macchia verde
+// (se un'intera mossa non ne scioglie nemmeno una, cresce di una cella
+// adiacente), con l'aggiunta che non può mai spargersi su una cella già
+// legata da una corda normale o da un'altra super corda.
+function maybeSpreadSuperRope() {
+  const set = game.state.superRopeSet;
+  if (!set || set.size === 0) return false;
+  const before = game.superRopeSizeBeforeMove;
+  if (before === undefined || set.size !== before) return false; // qualcosa si è sciolta in questa mossa, niente crescita
+  const sizeBefore = set.size;
+  spreadSuperRope(game.state, game.level);
+  return set.size > sizeBefore;
+}
+
+function spreadSuperRope(state, level) {
+  const { board, grid, superRopeSet } = state;
+  const conveyorCells = new Set();
+  if (level.obstacles.conveyor.active) {
+    level.obstacles.conveyor.belts.forEach((belt) => belt.cells.forEach(([r, c]) => conveyorCells.add(r + ',' + c)));
+  }
+  const candidates = new Set();
+  superRopeSet.forEach((key) => {
+    const [r, c] = key.split(',').map(Number);
+    [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dr, dc]) => {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nr >= SIZE || nc < 0 || nc >= SIZE || !grid[nr][nc]) return;
+      const nkey = nr + ',' + nc;
+      if (superRopeSet.has(nkey) || conveyorCells.has(nkey)) return;
+      if (state.ropeSet && state.ropeSet.has(nkey)) return; // non si spande su una corda normale
+      const cell = board[nr][nc];
+      if (cell && (cell.kind === 'lightbulb' || cell.kind === 'wall' || cell.kind === 'bombola')) return;
+      candidates.add(nkey);
+    });
+  });
+  if (candidates.size === 0) return;
+  const arr = [...candidates];
+  superRopeSet.add(arr[Math.floor(Math.random() * arr.length)]);
 }
 
 function showMessage(text, success) {
