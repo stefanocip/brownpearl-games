@@ -231,7 +231,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 114 (nuovo ostacolo: la super corda, X+croce che si diffonde)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 115 (livelli impossibili: controllo di raggiungibilità di lampadine e bombole)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -545,8 +545,8 @@ function find2x2Candidates(grid, coreMatchable, occupied) {
 // ============================================================
 // 3. decodeLevel(seed) — genera tutti i parametri del livello
 // ============================================================
-function decodeLevel(seed) {
-  const rng = mulberry32(seed);
+function decodeLevelRaw(seed, attempt) {
+  const rng = mulberry32(attempt === 0 ? seed : ((seed ^ Math.imul(attempt, 0x9E3779B1)) >>> 0));
   const occupied = new Set();
 
   const shapeName = SHAPE_NAMES[Math.floor(rng() * SHAPE_NAMES.length)];
@@ -916,6 +916,55 @@ function decodeLevel(seed) {
     goals: { lightbulbs, bombole, coverage, star, greenSpread },
     obstacles: { blackCellWeight: 0.5, conveyor, walls, ropes, superRopes },
   };
+}
+
+
+// Un livello è "strutturalmente morto" se gli ostacoli fissi (lampadine,
+// bombole, muri) lasciano troppo poche celle libere, o se una lampadina /
+// bombola non ha accanto nessuna cella che possa mai far parte di un tris
+// (cioè una cella libera dentro un segmento libero di almeno 3 in riga o
+// colonna). Seed 1302564494: 13 celle libere su 36, lampadina in basso
+// circondata da bombole — impossibile da completare.
+function levelStructureProblem(level) {
+  const { grid } = level;
+  const blocked = new Set();
+  level.goals.lightbulbs.positions.forEach(([r, c]) => blocked.add(r + ',' + c));
+  level.goals.bombole.instances.forEach((b) => b.cells.forEach(([r, c]) => blocked.add(r + ',' + c)));
+  level.obstacles.walls.positions.forEach(([r, c]) => blocked.add(r + ',' + c));
+  const isFree = (r, c) => r >= 0 && c >= 0 && r < SIZE && c < SIZE && grid[r][c] && !blocked.has(r + ',' + c);
+  let freeCount = 0;
+  const matchable = new Set();
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (!isFree(r, c)) continue;
+      freeCount++;
+      for (let k = 0; k < 3; k++) { // riga: finestra di 3 che contiene (r,c)
+        if (isFree(r, c - k) && isFree(r, c - k + 1) && isFree(r, c - k + 2)) matchable.add(r + ',' + c);
+        if (isFree(r - k, c) && isFree(r - k + 1, c) && isFree(r - k + 2, c)) matchable.add(r + ',' + c);
+      }
+    }
+  }
+  if (freeCount < level.activeCellCount * 0.55) return 'poche celle libere';
+  const touches = (cells) => {
+    const own = new Set(cells.map(([r, c]) => r + ',' + c));
+    return cells.some(([r, c]) => [[-1, 0], [1, 0], [0, -1], [0, 1]].some(([dr, dc]) => {
+      const key = (r + dr) + ',' + (c + dc);
+      return !own.has(key) && matchable.has(key);
+    }));
+  };
+  for (const p of level.goals.lightbulbs.positions) if (!touches([p])) return 'lampadina irraggiungibile';
+  for (const b of level.goals.bombole.instances) if (!touches(b.cells)) return 'bombola irraggiungibile';
+  return null;
+}
+
+function decodeLevel(seed) {
+  let best = null;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const level = decodeLevelRaw(seed, attempt);
+    if (!levelStructureProblem(level)) return level;
+    if (!best) best = level;
+  }
+  return best; // non dovrebbe succedere: fallback al primo tentativo
 }
 
 // ============================================================
