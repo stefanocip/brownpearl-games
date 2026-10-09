@@ -231,7 +231,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 115 (livelli impossibili: controllo di raggiungibilità di lampadine e bombole)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 116 (super corda: non si diffonde sulla stella, le bombe sciolgono la corda sulla stella)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -1326,7 +1326,14 @@ function clearCellWithEffects(state, rr, cc, hitBombolasSet, protectedKeys) {
 
   if (protectedKeys && protectedKeys.has(rr + ',' + cc)) return { cleared: false }; // bomba appena creata in questo stesso giro: immune per ora
 
-  if (cell.kind === 'star') return { cleared: false };
+  if (cell.kind === 'star') {
+    // la stella non si distrugge, ma un'esplosione scioglie l'eventuale
+    // (super) corda che la tiene ferma
+    const skey = rr + ',' + cc;
+    if (state.ropeSet) state.ropeSet.delete(skey);
+    if (state.superRopeSet) state.superRopeSet.delete(skey);
+    return { cleared: false };
+  }
 
   if (cell.kind === 'wall') return { cleared: false }; // indistruttibile per sempre, niente lo tocca, nemmeno le bombe
 
@@ -3590,7 +3597,7 @@ function spreadGreenGoal(state, level) {
       const nkey = nr + ',' + nc;
       if (greenSpreadSet.has(nkey) || conveyorCells.has(nkey)) return;
       const cell = board[nr][nc];
-      if (cell && (cell.kind === 'lightbulb' || cell.kind === 'wall' || cell.kind === 'bombola')) return;
+      if (cell && (cell.kind === 'lightbulb' || cell.kind === 'wall' || cell.kind === 'bombola' || cell.kind === 'star')) return; // mai sulla stella
       candidates.add(nkey);
     });
   });
