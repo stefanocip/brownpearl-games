@@ -231,7 +231,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 116 (super corda: non si diffonde sulla stella, le bombe sciolgono la corda sulla stella)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 117 (lampadine: si accendono anche accanto alla cella che diventa bomba)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -1656,6 +1656,15 @@ function resolveMatches(state, matchedSet, rng, colors) {
     const [r, c] = key.split(',').map(Number);
     const cell = board[r][c];
     if (!cell) return;
+    // la cella d'ancora non sparisce (diventa bomba), ma fa comunque parte
+    // del match: le lampadine adiacenti si accendono come per le altre
+    deltas.forEach(([dr, dc]) => {
+      const ncell = board[r + dr] && board[r + dr][c + dc];
+      if (ncell && ncell.kind === 'lightbulb' && !ncell.lit) {
+        ncell.lit = true;
+        state.lightbulbLitCount++;
+      }
+    });
     if (cell.kind === 'bomb') {
       // la bomba che occupa proprio il punto dove dovrebbe nascere quella
       // nuova (capita con la croce, che ha un'unica cella possibile come
