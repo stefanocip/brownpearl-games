@@ -231,7 +231,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 117 (lampadine: si accendono anche accanto alla cella che diventa bomba)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 120 (bomba legata da corda = nessuna mossa: si rimescola)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -2008,7 +2008,9 @@ function checkGameEnd(state, level) {
 function hasAnyPossibleMove(state) {
   const { board, grid } = state;
   for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-    if (board[r][c] && board[r][c].kind === 'bomb') return true; // tocco diretto: sempre una mossa valida
+    // tocco diretto: sempre una mossa valida — ma solo se la bomba è libera:
+    // una bomba legata da una corda non si può né toccare né scambiare
+    if (board[r][c] && board[r][c].kind === 'bomb' && isSwappable(state, r, c)) return true;
   }
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
@@ -2431,10 +2433,12 @@ function renderBoard() {
   if (state.ropeSet) state.ropeSet.forEach((key) => {
     const [r, c] = key.split(',').map(Number);
     drawRopeTile(container, r, c);
+    drawRopedBombMarker(container, state, r, c);
   });
   if (state.superRopeSet) state.superRopeSet.forEach((key) => {
     const [r, c] = key.split(',').map(Number);
     drawSuperRopeTile(container, r, c);
+    drawRopedBombMarker(container, state, r, c);
   });
 
   app.stage.addChild(container);
@@ -2478,6 +2482,23 @@ function drawRopeTile(container, r, c) {
 
 // Super corda: stessa X fucsia della corda normale, con in più una croce
 // dritta sovrapposta (orizzontale + verticale) — come la Union Jack.
+// Una bomba legata da una corda (non toccabile finché non si scioglie) deve restare riconoscibile (una bomba
+// bianca su fondo bianco con la X sopra sembra una cella normale): un
+// contorno dorato sopra la corda la segnala.
+function drawRopedBombMarker(container, state, r, c) {
+  const cell = state.board[r] && state.board[r][c];
+  if (!cell || cell.kind !== 'bomb') return;
+  const g = new PIXI.Graphics();
+  g.roundRect(GAP / 2 + 2, GAP / 2 + 2, CELL - GAP - 4, CELL - GAP - 4, 8);
+  g.stroke({ width: 3, color: 0xffd966, alpha: 1 });
+  g.position.set(c * CELL, r * CELL);
+  container.addChild(g);
+  const label = new PIXI.Text({ text: BOMB_ICON[cell.bombType] || '?', style: { fontSize: 16, fill: 0xffffff, fontWeight: '700', stroke: { color: 0x000000, width: 3 } } });
+  label.anchor.set(0.5);
+  label.position.set(c * CELL + CELL / 2, r * CELL + CELL / 2);
+  container.addChild(label);
+}
+
 function drawSuperRopeTile(container, r, c) {
   const x = c * CELL, y = r * CELL;
   const g = new PIXI.Graphics();
@@ -2591,10 +2612,12 @@ function renderStaticLayer(state, level) {
   if (state.ropeSet) state.ropeSet.forEach((key) => {
     const [r, c] = key.split(',').map(Number);
     drawRopeTile(container, r, c);
+    drawRopedBombMarker(container, state, r, c);
   });
   if (state.superRopeSet) state.superRopeSet.forEach((key) => {
     const [r, c] = key.split(',').map(Number);
     drawSuperRopeTile(container, r, c);
+    drawRopedBombMarker(container, state, r, c);
   });
 
   app.stage.addChild(container);
@@ -2632,10 +2655,12 @@ function renderOverlayLayer(state, level) {
   if (state.ropeSet) state.ropeSet.forEach((key) => {
     const [r, c] = key.split(',').map(Number);
     drawRopeTile(container, r, c);
+    drawRopedBombMarker(container, state, r, c);
   });
   if (state.superRopeSet) state.superRopeSet.forEach((key) => {
     const [r, c] = key.split(',').map(Number);
     drawSuperRopeTile(container, r, c);
+    drawRopedBombMarker(container, state, r, c);
   });
   app.stage.addChild(container);
   return container; // i pezzi mobili animati vengono aggiunti sopra questo, dal chiamante
@@ -3054,9 +3079,18 @@ function runSwapPreview(r1, c1, r2, c2, board, level, duration, reverse, onCompl
 // c'è nulla di selezionato — la attiva subito, senza bisogno di scambiarla.
 function onCellTap(r, c) {
   if (game.finished || game.animating) return;
+  // una selezione rimasta su una cella che nel frattempo non è più
+  // scambiabile (corda/super corda cresciuta sopra, pezzo cambiato) è
+  // "stantia": va scartata, altrimenti blocca anche il tocco diretto sulle
+  // bombe (che funziona solo a cella non selezionata) e non si può più
+  // né deselezionare né attivare nulla.
+  if (game.selected && !isSwappable(game.state, game.selected[0], game.selected[1])) {
+    game.selected = null;
+    renderBoard();
+  }
   const cell = game.state.board[r][c];
 
-  if (cell && cell.kind === 'bomb' && !game.selected) {
+  if (cell && cell.kind === 'bomb' && !game.selected && isSwappable(game.state, r, c)) {
     performBombActivation(r, c);
     return;
   }
@@ -3350,6 +3384,7 @@ function emergencyRecover(err, context) {
 // possibile — altrimenti rimescola i colori (forma/goal/posizioni fisse
 // restano invariati) prima di restituire il controllo al giocatore.
 function finalizeMove() {
+  game.selected = null; // fine mossa: mai lasciare una selezione vecchia sul tabellone
   const { won, lost } = checkGameEnd(game.state, game.level);
   if (won) { game.finished = true; showMessage('Livello completato!', true); return; }
   if (lost) { game.finished = true; showMessage('Mosse finite — livello non completato', false); return; }
@@ -3520,11 +3555,12 @@ function logBoardBeforeReshuffle(state, level, seed) {
         if (!level.grid[r][c]) { row += '   . '; continue; }
         const cell = state.board[r][c];
         if (!cell) { row += '   _ '; continue; }
+        const ropeMark = (state.superRopeSet && state.superRopeSet.has(r + ',' + c)) ? '#' : (state.ropeSet && state.ropeSet.has(r + ',' + c)) ? '~' : '';
         const inMatch = existingMatches.has(r + ',' + c) ? '*' : ' ';
         let label = cell.kind === 'color' ? cell.color.slice(0, 3)
           : cell.kind === 'bomb' ? 'B' + (cell.bombType || '?').slice(0, 2)
           : cell.kind.slice(0, 3);
-        row += label.padEnd(4) + inMatch;
+        row += (label + ropeMark).padEnd(4) + inMatch;
       }
       lines.push(r + ' ' + row);
     }
