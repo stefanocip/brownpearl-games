@@ -41,6 +41,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--p1);outline-off
 .btn.small{padding:7px 12px;font-size:13px;border-radius:10px}
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .btn.on{box-shadow:inset 0 0 0 2px var(--ink);background:var(--cell)}
+textarea{width:100%;min-height:76px;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;padding:8px 10px;border-radius:12px;border:0;background:var(--cell);color:var(--ink);box-shadow:inset 0 0 0 2px var(--line);resize:vertical;word-break:break-all}
+label.l{font-weight:700;font-size:13px}
+.step{display:flex;flex-direction:column;gap:6px}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 [hidden]{display:none!important}
 
@@ -147,6 +150,31 @@ input[type=text]{flex:1 1 120px;min-width:0;font:700 18px var(--f-display);lette
         <button class="btn" id="btnJoin">Join</button>
       </div>
       <p class="note" id="menuNote">Create a game and send the code to your opponent. Both of you open this same page.</p>
+    </div>
+    <div class="panel">
+      <h2>Online without a server</h2>
+      <p class="note">Use this if the code above does not connect. You swap two short texts through any chat, then the two browsers talk directly.</p>
+      <div class="row">
+        <button class="btn" id="mHost">I'm hosting</button>
+        <button class="btn" id="mGuest">I'm joining</button>
+      </div>
+      <div class="step" id="mHostBox" hidden>
+        <label class="l" for="mOffer">1. Send this invite to your opponent</label>
+        <textarea id="mOffer" readonly spellcheck="false"></textarea>
+        <div class="row"><button class="btn small" id="mCopyOffer">Copy invite</button></div>
+        <label class="l" for="mReplyIn">2. Paste their reply here</label>
+        <textarea id="mReplyIn" spellcheck="false" placeholder="Reply from your opponent"></textarea>
+        <div class="row"><button class="btn primary small" id="mConnect">Connect</button></div>
+      </div>
+      <div class="step" id="mGuestBox" hidden>
+        <label class="l" for="mOfferIn">1. Paste the invite you received</label>
+        <textarea id="mOfferIn" spellcheck="false" placeholder="Invite from the host"></textarea>
+        <div class="row"><button class="btn primary small" id="mMakeReply">Create reply</button></div>
+        <label class="l" for="mAnswer">2. Send this reply back to the host</label>
+        <textarea id="mAnswer" readonly spellcheck="false"></textarea>
+        <div class="row"><button class="btn small" id="mCopyAnswer">Copy reply</button></div>
+      </div>
+      <p class="note" id="mNote"></p>
     </div>
   </section>
 
@@ -306,7 +334,7 @@ const S = {mode:null, seed:'', code:'', role:0, mv:[[],[]], oppSeen:false, oppHe
 const hasNet = typeof Peer !== 'undefined';
 if(!hasNet){
   $('btnCreate').disabled=true; $('btnJoin').disabled=true; $('joinCode').disabled=true;
-  $('menuNote').textContent='Online play needs an internet connection to load. Reload the page when you are online.';
+  $('menuNote').textContent='The free connection service could not be loaded. Use "Online without a server" below.';
 }
 
 function lsGet(k){ try{ return localStorage.getItem(k);}catch(e){return null;} }
@@ -330,7 +358,7 @@ function show(which){
   $('leave').hidden = which!=='game';
 }
 function resetState(){
-  S.mv=[[],[]]; S.oppSeen=false; S.oppHere=false; S.rots=[[0,0,0],[0,0,0]]; S.sim=null; S.hover=null; S.clr=new Map(); S.traySig=''; S.drag=null; S.notice='';
+  S.manual=false; S.mv=[[],[]]; S.oppSeen=false; S.oppHere=false; S.rots=[[0,0,0],[0,0,0]]; S.sim=null; S.hover=null; S.clr=new Map(); S.traySig=''; S.drag=null; S.notice='';
 }
 function startLocal(){
   leaveNet(); resetState(); S.mode='local'; S.seed='local-'+Math.random().toString(36).slice(2); show('game'); render();
@@ -363,18 +391,15 @@ function enterOnline(code, role, attempt){
     if(S.peer!==peer) return;
     if(err.type==='unavailable-id' && attempt<6){ S.notice='Reconnecting…'; render(); S.retry=setTimeout(()=>enterOnline(code,role,attempt+1),2500); return; }
     if(err.type==='peer-unavailable'){ S.notice='No game found with this code yet. Check it, or wait for the host. Trying again…'; render(); S.retry=setTimeout(dial,3000); return; }
-    S.notice='Connection problem ('+err.type+'). Go back to the menu and try again.'; render();
+    const svc = ['network','server-error','socket-error','socket-closed'].includes(err.type);
+    S.notice = svc ? 'The free connection service is not reachable ('+err.type+'). Go back to the menu and use "Online without a server".' : 'Connection problem ('+err.type+'). Go back to the menu and try again.'; render();
   });
   function attach(c){
     c.on('open',()=>{
       const old=S.conn; S.conn=c; if(old&&old!==c){ try{old.close();}catch(e){} }
       S.oppHere=true; S.oppSeen=true; S.notice=''; sendMoves(); render();
     });
-    c.on('data',d=>{
-      if(!d||!Array.isArray(d.mv)) return;
-      const m=cleanMoves(d.mv);
-      if(m.length>S.mv[1-S.role].length){ S.mv[1-S.role]=m; render(); }
-    });
+    c.on('data',handleRemote);
     c.on('close',()=>{
       if(S.conn!==c) return;
       S.conn=null; S.oppHere=false; render();
@@ -383,8 +408,93 @@ function enterOnline(code, role, attempt){
     c.on('error',()=>{});
   }
 }
+function handleRemote(d){
+  if(!d||!Array.isArray(d.mv)) return;
+  const m=cleanMoves(d.mv);
+  if(m.length>S.mv[1-S.role].length){ S.mv[1-S.role]=m; render(); }
+}
 function sendMoves(){ try{ if(S.conn && S.conn.open) S.conn.send({mv:S.mv[S.role]}); }catch(e){} }
 
+/* ---- online without any broker: the two browsers swap an offer and a reply by hand (WebRTC) ---- */
+const RTC_CFG={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+const M={pc:null,dc:null,code:'',role:0};
+function toB64(u8){ let s=''; for(let i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000)); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function fromB64(t){ t=t.replace(/-/g,'+').replace(/_/g,'/'); while(t.length%4) t+='='; const s=atob(t), u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u; }
+async function pack(obj){
+  let bytes=new TextEncoder().encode(JSON.stringify(obj)), tag='p';
+  if(window.CompressionStream){ try{ const cs=new CompressionStream('deflate-raw'); const w=cs.writable.getWriter(); w.write(bytes); w.close(); bytes=new Uint8Array(await new Response(cs.readable).arrayBuffer()); tag='z'; }catch(e){} }
+  return tag+toB64(bytes);
+}
+async function unpack(str){
+  str=String(str||'').replace(/\s+/g,''); if(str.length<10) throw new Error('empty');
+  const tag=str[0]; let bytes=fromB64(str.slice(1));
+  if(tag==='z'){ const ds=new DecompressionStream('deflate-raw'); const w=ds.writable.getWriter(); w.write(bytes); w.close(); bytes=new Uint8Array(await new Response(ds.readable).arrayBuffer()); }
+  else if(tag!=='p') throw new Error('bad');
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+function iceDone(pc){
+  return new Promise(res=>{
+    if(pc.iceGatheringState==='complete') return res();
+    const f=()=>{ if(pc.iceGatheringState==='complete'){ pc.removeEventListener('icegatheringstatechange',f); res(); } };
+    pc.addEventListener('icegatheringstatechange',f); setTimeout(res,4000);
+  });
+}
+function mNote(t,err){ $('mNote').textContent=t; $('mNote').className='note'+(err?' err':''); }
+function mReset(){ try{ if(M.dc) M.dc.close(); }catch(e){} try{ if(M.pc) M.pc.close(); }catch(e){} M.pc=null; M.dc=null; $('mOffer').value=''; $('mAnswer').value=''; $('mReplyIn').value=''; $('mOfferIn').value=''; mNote(''); }
+function mOpen(role){
+  if(typeof RTCPeerConnection==='undefined'){ mNote('This browser cannot make direct connections.',true); return; }
+  mReset(); M.role=role;
+  $('mHostBox').hidden = role!==0; $('mGuestBox').hidden = role!==1;
+  if(role===0) mHostStart();
+}
+async function mHostStart(){
+  try{
+    mNote('Preparing the invite…');
+    const pc=M.pc=new RTCPeerConnection(RTC_CFG); const dc=M.dc=pc.createDataChannel('game');
+    M.code=randCode(); hookChannel(pc,dc,M.code,0);
+    await pc.setLocalDescription(await pc.createOffer()); await iceDone(pc);
+    $('mOffer').value=await pack({t:'o',c:M.code,s:pc.localDescription.sdp});
+    mNote('Send the invite, then paste the reply you get back.');
+  }catch(e){ mNote('Could not create the invite ('+(e&&e.message||'error')+').',true); }
+}
+async function mHostConnect(){
+  try{
+    const a=await unpack($('mReplyIn').value);
+    if(a.t!=='a'||!M.pc) throw new Error('not a reply');
+    await M.pc.setRemoteDescription({type:'answer',sdp:a.s}); mNote('Connecting…');
+  }catch(e){ mNote('That reply is not valid. Copy the whole text again.',true); }
+}
+async function mGuestReply(){
+  try{
+    const o=await unpack($('mOfferIn').value);
+    if(o.t!=='o'||!o.c) throw new Error('not an invite');
+    mNote('Preparing the reply…');
+    try{ if(M.pc) M.pc.close(); }catch(e){}
+    const pc=M.pc=new RTCPeerConnection(RTC_CFG); M.code=String(o.c).toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,12);
+    pc.ondatachannel=ev=>{ M.dc=ev.channel; hookChannel(pc,ev.channel,M.code,1); };
+    await pc.setRemoteDescription({type:'offer',sdp:o.s});
+    await pc.setLocalDescription(await pc.createAnswer()); await iceDone(pc);
+    $('mAnswer').value=await pack({t:'a',s:pc.localDescription.sdp});
+    mNote('Send this reply to the host. The game starts by itself.');
+  }catch(e){ mNote('That invite is not valid. Copy the whole text again.',true); }
+}
+function hookChannel(pc,dc,code,role){
+  pc.onconnectionstatechange=()=>{ if(pc.connectionState==='failed'&&!S.conn) mNote('The browsers could not reach each other. Try again, or use the same Wi-Fi.',true); };
+  dc.onopen=()=>startManual(pc,dc,code,role);
+}
+async function copyFrom(id,btn){
+  const el=$(id); try{ await navigator.clipboard.writeText(el.value); btn.textContent='Copied'; }catch(e){ el.focus(); el.select(); btn.textContent='Select and copy'; }
+}
+function startManual(pc,dc,code,role){
+  leaveNet(); resetState();
+  S.mode='online'; S.manual=true; S.code=code; S.role=role; S.seed=code; S.mv[role]=loadMoves(code,role);
+  const ad={ get open(){ return dc.readyState==='open'; }, send(d){ dc.send(JSON.stringify(d)); }, close(){ try{dc.close();}catch(e){} try{pc.close();}catch(e){} } };
+  S.conn=ad; S.oppHere=true; S.oppSeen=true;
+  dc.onmessage=ev=>{ try{ handleRemote(JSON.parse(ev.data)); }catch(e){} };
+  dc.onclose=()=>{ if(S.conn!==ad) return; S.conn=null; S.oppHere=false; S.notice='Connection lost. Go back to the menu and connect again to start a new game.'; render(); };
+  M.pc=null; M.dc=null;
+  show('game'); prevMoves=0; render(); sendMoves();
+}
 function pname(p){
   if(S.mode==='cpu') return (p===S.me?'You':'Computer')+' · '+COLORS[p];
   if(S.mode==='online') return (p===S.role?'You':'Opponent')+' · '+COLORS[p];
@@ -598,6 +708,12 @@ $('btnJoin').onclick=()=>{
   $('menuNote').className='note'; prevMoves=0;
   enterOnline(code,1);
 };
+$('mHost').onclick=()=>mOpen(0);
+$('mGuest').onclick=()=>mOpen(1);
+$('mConnect').onclick=mHostConnect;
+$('mMakeReply').onclick=mGuestReply;
+$('mCopyOffer').onclick=e=>copyFrom('mOffer',e.currentTarget);
+$('mCopyAnswer').onclick=e=>copyFrom('mAnswer',e.currentTarget);
 $('joinCode').addEventListener('keydown',e=>{ if(e.key==='Enter') $('btnJoin').click(); });
 $('btnResume').onclick=()=>{ const l=refreshResume(); if(l){ prevMoves=0; enterOnline(String(l.code),l.role); } };
 window.addEventListener('resize',()=>{ S.traySig=''; if(S.sim) renderTray(S.sim); });
