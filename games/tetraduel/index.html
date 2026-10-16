@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tetra Duel</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400;600;700&display=swap">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+/* Layout: one column. Scoreboard chips, the 8x8 board as the hero, then the player's three-piece hand. */
+:root{
+  color-scheme:light dark;
+  --bg:#E6EBF0; --surface:#F4F7FA; --cell:#FBFCFD; --line:#C9D3DC; --ink:#14202B; --ink2:#566470;
+  --p0:#E2562B; --p1:#1F6FD6; --bad:#C62F3E;
+  --f-display:'Bricolage Grotesque','Trebuchet MS',system-ui,sans-serif;
+  --f-body:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#111820; --surface:#19222C; --cell:#202B36; --line:#2D3A47; --ink:#E8EEF3; --ink2:#93A3B1;
+    --p0:#FF7A4F; --p1:#5B9BF5; --bad:#FF6B7A;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:15px; line-height:1.4;
+  padding-block:calc(12px + env(safe-area-inset-top, 0px)) calc(28px + env(safe-area-inset-bottom, 0px));
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  -webkit-tap-highlight-color:transparent;
+}
+.app{max-width:460px;margin:0 auto;display:flex;flex-direction:column;gap:14px;min-width:0}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+h1{font-family:var(--f-display);font-weight:800;font-size:28px;letter-spacing:-.02em;margin:0;text-wrap:balance}
+h1 span{color:var(--p0)} h1 b{color:var(--p1);font-weight:800}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid var(--p1);outline-offset:2px}
+.btn{border:0;border-radius:12px;padding:12px 16px;font-weight:700;background:var(--surface);color:var(--ink);box-shadow:inset 0 0 0 2px var(--line)}
+.btn.primary{background:var(--ink);color:var(--bg);box-shadow:none}
+.btn.small{padding:7px 12px;font-size:13px;border-radius:10px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn.on{box-shadow:inset 0 0 0 2px var(--ink);background:var(--cell)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+[hidden]{display:none!important}
+
+/* menu */
+#menu{display:flex;flex-direction:column;gap:12px}
+.rules{margin:0;padding:0;list-style:none;display:grid;gap:8px;color:var(--ink2)}
+.rules li{display:grid;grid-template-columns:22px 1fr;gap:8px;align-items:start}
+.rules i{width:22px;height:22px;border-radius:7px;background:var(--surface);box-shadow:inset 0 0 0 2px var(--line);display:grid;place-items:center;font:700 12px var(--f-display);font-style:normal;color:var(--ink)}
+.panel{background:var(--surface);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.panel h2{font:700 13px var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);margin:0}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{min-width:0}
+input[type=text]{flex:1 1 120px;min-width:0;font:700 18px var(--f-display);letter-spacing:.14em;text-transform:uppercase;padding:10px 12px;border-radius:12px;border:0;background:var(--cell);color:var(--ink);box-shadow:inset 0 0 0 2px var(--line)}
+.note{color:var(--ink2);font-size:13px;margin:0}
+.note.err{color:var(--bad)}
+
+/* scoreboard */
+.score{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chip{background:var(--surface);border-radius:16px;padding:10px 12px 12px;border:2px solid transparent;display:flex;flex-direction:column;gap:2px;min-width:0;transition:border-color .2s}
+.chip.p0{--pc:var(--p0)} .chip.p1{--pc:var(--p1)}
+.chip.active{border-color:var(--pc)}
+.chip .who{display:flex;align-items:center;gap:6px;font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip .who::before{content:"";width:10px;height:10px;border-radius:3px;background:var(--pc);flex:none}
+.chip .pts{font:800 38px/1 var(--f-display);font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.chip .meta{font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.mini{display:flex;gap:8px;margin-top:8px;align-items:center;min-height:18px}
+
+/* status */
+#status{min-height:22px;margin:0;font-weight:600;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#status .code{font:800 17px var(--f-display);letter-spacing:.16em;background:var(--surface);padding:4px 10px;border-radius:10px;box-shadow:inset 0 0 0 2px var(--line);user-select:all}
+
+/* board */
+.field{position:relative}
+.board{display:grid;grid-template-columns:repeat(8,1fr);gap:2px;padding:2px;background:var(--line);border-radius:12px;touch-action:none;user-select:none;-webkit-user-select:none}
+.c{aspect-ratio:1;background:var(--cell);border-radius:5px}
+.o0,.o1{box-shadow:inset 0 -3px 0 rgba(0,0,0,.2),inset 0 2px 0 rgba(255,255,255,.28)}
+.o0{background:var(--p0)} .o1{background:var(--p1)}
+.c.ghost{background:color-mix(in srgb, var(--pc) 50%, var(--cell));box-shadow:inset 0 0 0 2px var(--pc)}
+.c.ghost.bad{background:color-mix(in srgb, var(--bad) 40%, var(--cell));box-shadow:inset 0 0 0 2px var(--bad)}
+.c.last{animation:drop .35s ease-out}
+.c.clr0{--cc:var(--p0)} .c.clr1{--cc:var(--p1)}
+.c.clr0,.c.clr1{animation:clear .75s ease-out}
+@keyframes drop{from{transform:scale(1.18);filter:brightness(1.3)}to{transform:none}}
+@keyframes clear{0%{background:var(--cc);transform:scale(1.12);filter:brightness(1.8)}60%{background:var(--cc);transform:scale(.8);opacity:.7}100%{background:var(--cell);transform:none;opacity:1}}
+.result{position:absolute;inset:0;display:grid;place-items:center;background:color-mix(in srgb, var(--bg) 72%, transparent);backdrop-filter:blur(3px);border-radius:12px;padding:16px}
+.result>div{background:var(--surface);border-radius:18px;padding:18px 20px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.18);display:flex;flex-direction:column;gap:6px;align-items:center;max-width:100%}
+.result h3{font:800 28px/1.1 var(--f-display);margin:0;letter-spacing:-.02em;text-wrap:balance}
+.result p{margin:0;color:var(--ink2);font-variant-numeric:tabular-nums}
+
+/* hand */
+.tray{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.card{position:relative;background:var(--surface);border-radius:16px;min-height:104px;display:grid;place-items:center;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;border:2px solid transparent}
+.card.p0{--pc:var(--p0)} .card.p1{--pc:var(--p1)}
+.card:not(.off):hover{border-color:var(--pc)}
+.card.dragging{opacity:.35}
+.card.off{opacity:.5;cursor:default}
+.rot{position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;border:0;background:var(--cell);box-shadow:inset 0 0 0 2px var(--line);font-size:16px;line-height:1;display:grid;place-items:center;padding:0}
+.rot:disabled{display:none}
+.pc{display:grid;gap:2px}
+.pc i{display:block;border-radius:4px}
+.float{position:fixed;left:0;top:0;z-index:50;pointer-events:none;opacity:.92;filter:drop-shadow(0 6px 10px rgba(0,0,0,.3))}
+.hint{margin:0;color:var(--ink2);font-size:13px;text-align:center}
+@media (prefers-reduced-motion: reduce){.c.last,.c.clr0,.c.clr1{animation:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Tetra <span>Du</span><b>el</b></h1>
+    <button class="btn small" id="leave" hidden>Menu</button>
+  </header>
+
+  <section id="menu">
+    <ul class="rules">
+      <li><i>1</i><span>Each player holds 3 tetrominoes. Drag one onto the 8×8 board, then your opponent plays and you draw a new piece.</span></li>
+      <li><i>2</i><span>Fill a row or a column and it disappears. One line scores 10, two at once 30, three 60. Every placed block is worth 1.</span></li>
+      <li><i>3</i><span>The game goes on as long as pieces can be placed. If you have no piece that fits, your turn is skipped. When nobody can move, the higher score wins.</span></li>
+    </ul>
+    <div class="panel">
+      <h2>Same device</h2>
+      <button class="btn primary" id="btnLocal">Play 1v1 on this screen</button>
+    </div>
+    <div class="panel">
+      <h2>Against the computer</h2>
+      <div class="seg" role="radiogroup" aria-label="Who moves first">
+        <button class="btn on" id="segFirst" role="radio" aria-checked="true">I play first</button>
+        <button class="btn" id="segSecond" role="radio" aria-checked="false">I play second</button>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="btnEasy">Easy</button>
+        <button class="btn primary" id="btnNormal">Normal</button>
+        <button class="btn primary" id="btnHard">Hard</button>
+      </div>
+      <p class="note" id="cpuNote">You play Orange and move first.</p>
+    </div>
+    <div class="panel">
+      <h2>Online</h2>
+      <div class="row">
+        <button class="btn primary" id="btnCreate">Create game</button>
+        <button class="btn" id="btnResume" hidden>Resume game</button>
+      </div>
+      <div class="row">
+        <input type="text" id="joinCode" maxlength="5" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Game code">
+        <button class="btn" id="btnJoin">Join</button>
+      </div>
+      <p class="note" id="menuNote">Create a game and send the code to your opponent. Both of you open this same page.</p>
+    </div>
+  </section>
+
+  <section id="game" hidden style="display:flex;flex-direction:column;gap:14px">
+    <div class="score">
+      <div class="chip p0" id="chip0"><div class="who" id="who0"></div><div class="pts" id="pts0">0</div><div class="meta" id="meta0"></div><div class="mini" id="mini0"></div></div>
+      <div class="chip p1" id="chip1"><div class="who" id="who1"></div><div class="pts" id="pts1">0</div><div class="meta" id="meta1"></div><div class="mini" id="mini1"></div></div>
+    </div>
+    <p id="status"></p>
+    <div class="field" id="field">
+      <div class="board" id="board" aria-label="Game board"></div>
+      <div class="result" id="result" hidden></div>
+    </div>
+    <div class="tray" id="tray"></div>
+    <p class="hint" id="hint"></p>
+  </section>
+</div>
+
+<script>
+/* ============ game logic (pure) ============ */
+const N = 8;
+var REPLY_W=0.9;
+const BASE = [
+  [[0,0],[0,1],[0,2],[0,3]], // I
+  [[0,0],[0,1],[1,0],[1,1]], // O
+  [[0,0],[0,1],[0,2],[1,1]], // T
+  [[0,1],[0,2],[1,0],[1,1]], // S
+  [[0,0],[0,1],[1,1],[1,2]], // Z
+  [[0,0],[1,0],[1,1],[1,2]], // J
+  [[0,2],[1,0],[1,1],[1,2]]  // L
+];
+function norm(cells){
+  const mr = Math.min(...cells.map(x=>x[0])), mc = Math.min(...cells.map(x=>x[1]));
+  const cs = cells.map(([r,c])=>[r-mr, c-mc]);
+  return {cells:cs, w:Math.max(...cs.map(x=>x[1]))+1, h:Math.max(...cs.map(x=>x[0]))+1};
+}
+const SHAPES = BASE.map(cells=>{
+  const out=[]; let cur=cells;
+  for(let k=0;k<4;k++){ out.push(norm(cur)); cur = cur.map(([r,c])=>[c,-r]); }
+  return out;
+});
+function hashStr(s){ let h=2166136261; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; }
+function mulberry(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function makeStream(seed){
+  const rnd = mulberry(hashStr(seed)); let bag=[];
+  return function(){
+    if(!bag.length){ bag=[0,1,2,3,4,5,6]; for(let i=6;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [bag[i],bag[j]]=[bag[j],bag[i]]; } }
+    return bag.pop();
+  };
+}
+function fits(board, sh, r, c){
+  if(r<0||c<0||r+sh.h>N||c+sh.w>N) return false;
+  for(const [dr,dc] of sh.cells) if(board[(r+dr)*N+c+dc]!==-1) return false;
+  return true;
+}
+function canPlaceAnywhere(board, id){
+  for(let rot=0;rot<4;rot++){ const sh=SHAPES[id][rot];
+    for(let r=0;r<=N-sh.h;r++) for(let c=0;c<=N-sh.w;c++) if(fits(board,sh,r,c)) return true; }
+  return false;
+}
+/* Put a piece on the board (mutates it), then clear every full row and column at once. */
+function placeOn(board, sh, r, c, turn){
+  const idx=[];
+  for(const [dr,dc] of sh.cells){ const i=(r+dr)*N+c+dc; board[i]=turn; idx.push(i); }
+  const fr=[], fc=[];
+  for(let rr=0;rr<N;rr++){ let f=true; for(let cc=0;cc<N;cc++) if(board[rr*N+cc]<0){f=false;break;} if(f) fr.push(rr); }
+  for(let cc=0;cc<N;cc++){ let f=true; for(let rr=0;rr<N;rr++) if(board[rr*N+cc]<0){f=false;break;} if(f) fc.push(cc); }
+  const kill=new Set();
+  fr.forEach(rr=>{ for(let cc=0;cc<N;cc++) kill.add(rr*N+cc); });
+  fc.forEach(cc=>{ for(let rr=0;rr<N;rr++) kill.add(rr*N+cc); });
+  const cleared=[...kill].map(i=>[i,board[i]]);
+  kill.forEach(i=>{ board[i]=-1; });
+  return {n:fr.length+fc.length, kill, idx, cleared};
+}
+function gainFor(n){ return 4 + 10*n*(n+1)/2; }
+/* best points the other player could score at once from this board with these pieces */
+function bestReply(b, hand){
+  const rc=new Array(N).fill(0), cc=new Array(N).fill(0);
+  for(let i=0;i<N*N;i++) if(b[i]>=0){ rc[Math.floor(i/N)]++; cc[i%N]++; }
+  let best=0;
+  for(const id of hand) for(let rot=0;rot<4;rot++){
+    const sh=SHAPES[id][rot];
+    for(let r=0;r<=N-sh.h;r++) for(let c=0;c<=N-sh.w;c++){
+      if(!fits(b,sh,r,c)) continue;
+      const ar={}, ac={};
+      for(const [dr,dc] of sh.cells){ ar[r+dr]=(ar[r+dr]||0)+1; ac[c+dc]=(ac[c+dc]||0)+1; }
+      let n=0;
+      for(const k in ar) if(rc[k]+ar[k]===N) n++;
+      for(const k in ac) if(cc[k]+ac[k]===N) n++;
+      const g=gainFor(n); if(g>best) best=g;
+    }
+  }
+  return best;
+}
+/* Computer player. easy: mostly random. normal: greedy for points. hard: also keeps the board open and its other pieces placeable. */
+function cpuChoose(sim, level){
+  const p=sim.turn, hand=sim.hands[p], opts=[];
+  for(let slot=0;slot<3;slot++) for(let rot=0;rot<4;rot++){
+    const sh=SHAPES[hand[slot]][rot];
+    for(let r=0;r<=N-sh.h;r++) for(let c=0;c<=N-sh.w;c++){
+      if(!fits(sim.board,sh,r,c)) continue;
+      const b=sim.board.slice(); const pl=placeOn(b,sh,r,c,p);
+      let sc=gainFor(pl.n)*10;
+      if(level!=='easy'){
+        let filled=0; for(const v of b) if(v>=0) filled++;
+        sc-=filled;
+        if(level==='hard'){
+          /* the board is shared: do not leave the opponent a line to finish */
+          sc-=bestReply(b, sim.hands[1-p])*10*REPLY_W;
+          hand.forEach((id,s)=>{ if(s!==slot && !canPlaceAnywhere(b,id)) sc-=60; });
+        }
+      }
+      opts.push({code:slot*1000+rot*100+r*10+c, sc:sc+Math.random()*0.5});
+    }
+  }
+  if(!opts.length) return null;
+  if(level==='easy' && Math.random()<0.55) return opts[Math.floor(Math.random()*opts.length)].code;
+  let best=opts[0]; for(const o of opts) if(o.sc>best.sc) best=o;
+  return best.code;
+}
+/* A move is one integer: slot*1000 + rotation*100 + row*10 + col. Hands come from a seeded stream per player,
+   so both devices replay the same game from just the two move lists. */
+function simulate(seed, mv){
+  const board=new Array(N*N).fill(-1);
+  const scores=[0,0], lines=[0,0];
+  const st=[makeStream(seed+'|0'), makeStream(seed+'|1')];
+  const hands=[[st[0](),st[0](),st[0]()],[st[1](),st[1](),st[1]()]];
+  const used=[0,0]; let turn=0, over=false, last=null, skipped=null;
+  const can=p=>hands[p].some(id=>canPlaceAnywhere(board,id));
+  for(let guard=0; guard<20000; guard++){
+    /* a player with no piece that fits skips the turn; the game ends when nobody can move */
+    if(!can(turn)){
+      if(!can(1-turn)){ over=true; break; }
+      skipped=turn; turn=1-turn; continue;
+    }
+    const code=mv[turn][used[turn]];
+    if(code===undefined) break;
+    const slot=Math.floor(code/1000), rot=Math.floor(code/100)%10, r=Math.floor(code/10)%10, c=code%10;
+    if(slot>2||rot>3) break;
+    const sh=SHAPES[hands[turn][slot]][rot];
+    if(!fits(board,sh,r,c)) break;
+    const pl=placeOn(board,sh,r,c,turn); const n=pl.n, kill=pl.kill, idx=pl.idx, cleared=pl.cleared;
+    const gain = gainFor(n);
+    scores[turn]+=gain; lines[turn]+=n;
+    last={player:turn, cells:idx.filter(i=>!kill.has(i)), cleared, n, gain};
+    hands[turn][slot]=st[turn](); used[turn]++; turn=1-turn; skipped=null;
+  }
+  return {board,scores,lines,hands,turn,over,last,skipped,used};
+}
+//@@UI
+/* ============ UI ============ */
+const $ = id => document.getElementById(id);
+const COLORS = ['Orange','Blue'];
+const S = {mode:null, seed:'', code:'', role:0, mv:[[],[]], oppSeen:false, oppHere:false, peer:null, conn:null, retry:null,
+           rots:[[0,0,0],[0,0,0]], sim:null, hover:null, cpuTimer:null, level:'normal', me:0, clr:new Map(), traySig:'', drag:null, notice:''};
+
+const hasNet = typeof Peer !== 'undefined';
+if(!hasNet){
+  $('btnCreate').disabled=true; $('btnJoin').disabled=true; $('joinCode').disabled=true;
+  $('menuNote').textContent='Online play needs an internet connection to load. Reload the page when you are online.';
+}
+
+function lsGet(k){ try{ return localStorage.getItem(k);}catch(e){return null;} }
+function lsSet(k,v){ try{ localStorage.setItem(k,v);}catch(e){} }
+function lsDel(k){ try{ localStorage.removeItem(k);}catch(e){} }
+function cleanMoves(a){ return Array.isArray(a)?a.filter(n=>Number.isInteger(n)&&n>=0&&n<3000).slice(0,10000):[]; }
+function loadMoves(code,role){ try{ return cleanMoves(JSON.parse(lsGet('td:'+code+':'+role)||'[]')); }catch(e){return [];} }
+function saveMoves(){ if(S.mode==='online') lsSet('td:'+S.code+':'+S.role, JSON.stringify(S.mv[S.role])); }
+function refreshResume(){
+  let last=null; try{ last=JSON.parse(lsGet('td:last')||'null'); }catch(e){}
+  const ok = hasNet && last && last.code && (last.role===0||last.role===1);
+  $('btnResume').hidden=!ok;
+  if(ok) $('btnResume').textContent='Resume game '+String(last.code).toUpperCase();
+  return last;
+}
+function randCode(){ const a='abcdefghjkmnpqrstuvwxyz23456789'; let s=''; for(let i=0;i<5;i++) s+=a[Math.floor(Math.random()*a.length)]; return s; }
+
+function show(which){
+  $('menu').hidden = which!=='menu';
+  $('game').hidden = which!=='game';
+  $('leave').hidden = which!=='game';
+}
+function resetState(){
+  S.mv=[[],[]]; S.oppSeen=false; S.oppHere=false; S.rots=[[0,0,0],[0,0,0]]; S.sim=null; S.hover=null; S.clr=new Map(); S.traySig=''; S.drag=null; S.notice='';
+}
+function startLocal(){
+  leaveNet(); resetState(); S.mode='local'; S.seed='local-'+Math.random().toString(36).slice(2); show('game'); render();
+}
+function startCpu(level){
+  leaveNet(); resetState(); S.mode='cpu'; S.level=level; S.me=cpuSecond?1:0; S.seed='cpu-'+Math.random().toString(36).slice(2); show('game'); render();
+}
+function mine(){ return S.mode==='online' ? S.role : (S.mode==='cpu' ? S.me : S.sim.turn); }
+
+/* ---- online: peer-to-peer through PeerJS (free public broker, no server of your own) ---- */
+function leaveNet(){
+  clearTimeout(S.retry); clearTimeout(S.cpuTimer); S.cpuTimer=null;
+  const c=S.conn, p=S.peer; S.conn=null; S.peer=null;
+  try{ if(c) c.close(); }catch(e){}
+  try{ if(p) p.destroy(); }catch(e){}
+}
+function enterOnline(code, role, attempt){
+  attempt = attempt||0;
+  leaveNet(); resetState();
+  S.mode='online'; S.code=code; S.role=role; S.seed=code; S.mv[role]=loadMoves(code,role);
+  lsSet('td:last', JSON.stringify({code,role}));
+  show('game'); render();
+  const id='tetraduel-'+code;
+  const peer = role===0 ? new Peer(id) : new Peer();
+  S.peer=peer;
+  const dial=()=>{ if(S.peer!==peer||peer.destroyed) return; attach(peer.connect(id,{reliable:true})); };
+  peer.on('open',()=>{ if(role===1) dial(); });
+  peer.on('connection',c=>{ if(role===0) attach(c); else c.close(); });
+  peer.on('error',err=>{
+    if(S.peer!==peer) return;
+    if(err.type==='unavailable-id' && attempt<6){ S.notice='Reconnecting…'; render(); S.retry=setTimeout(()=>enterOnline(code,role,attempt+1),2500); return; }
+    if(err.type==='peer-unavailable'){ S.notice='No game found with this code yet. Check it, or wait for the host. Trying again…'; render(); S.retry=setTimeout(dial,3000); return; }
+    S.notice='Connection problem ('+err.type+'). Go back to the menu and try again.'; render();
+  });
+  function attach(c){
+    c.on('open',()=>{
+      const old=S.conn; S.conn=c; if(old&&old!==c){ try{old.close();}catch(e){} }
+      S.oppHere=true; S.oppSeen=true; S.notice=''; sendMoves(); render();
+    });
+    c.on('data',d=>{
+      if(!d||!Array.isArray(d.mv)) return;
+      const m=cleanMoves(d.mv);
+      if(m.length>S.mv[1-S.role].length){ S.mv[1-S.role]=m; render(); }
+    });
+    c.on('close',()=>{
+      if(S.conn!==c) return;
+      S.conn=null; S.oppHere=false; render();
+      if(role===1 && S.peer===peer) S.retry=setTimeout(dial,3000);
+    });
+    c.on('error',()=>{});
+  }
+}
+function sendMoves(){ try{ if(S.conn && S.conn.open) S.conn.send({mv:S.mv[S.role]}); }catch(e){} }
+
+function pname(p){
+  if(S.mode==='cpu') return (p===S.me?'You':'Computer')+' · '+COLORS[p];
+  if(S.mode==='online') return (p===S.role?'You':'Opponent')+' · '+COLORS[p];
+  return 'Player '+(p+1)+' · '+COLORS[p];
+}
+function canPlay(){
+  const sim=S.sim; if(!sim||sim.over) return false;
+  if(S.mode==='local') return true;
+  if(S.mode==='cpu') return sim.turn===S.me;
+  return sim.turn===S.role && S.oppSeen;
+}
+function controller(){ return mine(); }
+
+function pieceEl(id, rot, s, owner){
+  const sh=SHAPES[id][rot]; const el=document.createElement('div'); el.className='pc';
+  const g=Math.max(1,Math.round(s*0.1)); el.style.gap=g+'px';
+  el.style.gridTemplateColumns='repeat('+sh.w+','+s+'px)'; el.style.gridTemplateRows='repeat('+sh.h+','+s+'px)';
+  const on=new Set(sh.cells.map(([r,c])=>r*sh.w+c));
+  for(let i=0;i<sh.w*sh.h;i++){ const d=document.createElement('i'); if(on.has(i)) d.className='o'+owner; el.appendChild(d); }
+  return el;
+}
+
+/* ---- build static board ---- */
+const boardEl=$('board'), cells=[];
+for(let i=0;i<N*N;i++){ const d=document.createElement('div'); d.className='c'; boardEl.appendChild(d); cells.push(d); }
+
+function paintBoard(){
+  const sim=S.sim; if(!sim) return;
+  const lastSet = sim.last ? new Set(sim.last.cells) : null;
+  const mover = canPlay() ? controller() : sim.turn;
+  boardEl.style.setProperty('--pc', 'var(--p'+mover+')');
+  for(let i=0;i<N*N;i++){
+    let cl='c'; const o=sim.board[i];
+    if(o>=0) cl+=' o'+o;
+    if(o>=0 && lastSet && lastSet.has(i)) cl+=' last';
+    if(o<0 && S.clr.has(i)) cl+=' clr'+S.clr.get(i);
+    if(S.hover && S.hover.set.has(i)) cl+=' ghost'+(S.hover.ok?'':' bad');
+    if(cells[i].className!==cl) cells[i].className=cl;
+  }
+}
+
+let prevMoves=0;
+function render(){
+  if(!S.mode) return;
+  const sim=S.sim=simulate(S.seed,S.mv);
+  const total=sim.used[0]+sim.used[1];
+  if(total>prevMoves && sim.last && sim.last.cleared.length){
+    S.clr=new Map(sim.last.cleared);
+    setTimeout(()=>{ S.clr=new Map(); paintBoard(); },800);
+  }
+  prevMoves=total;
+  for(let p=0;p<2;p++){
+    $('who'+p).textContent=pname(p);
+    $('pts'+p).textContent=sim.scores[p];
+    $('meta'+p).textContent=sim.lines[p]+(sim.lines[p]===1?' line':' lines')+' · '+sim.used[p]+(sim.used[p]===1?' piece':' pieces');
+    $('chip'+p).classList.toggle('active', !sim.over && sim.turn===p);
+    const mini=$('mini'+p); mini.textContent='';
+    sim.hands[p].forEach(id=>mini.appendChild(pieceEl(id,0,6,p)));
+  }
+  paintBoard();
+  renderStatus(sim);
+  renderResult(sim);
+  renderTray(sim);
+  saveMoves();
+  if(sim.over && S.mode==='online') lsDel('td:last');
+  if(S.mode==='cpu' && !sim.over && sim.turn===1-S.me && !S.cpuTimer){
+    S.cpuTimer=setTimeout(()=>{
+      S.cpuTimer=null;
+      const cur=S.sim; if(S.mode!=='cpu'||!cur||cur.over||cur.turn!==1-S.me) return;
+      const code=cpuChoose(cur,S.level);
+      if(code!==null){ S.mv[1-S.me].push(code); render(); }
+    }, 650+Math.random()*500);
+  }
+}
+
+function renderStatus(sim){
+  const st=$('status'); st.textContent='';
+  const add=t=>{ const s=document.createElement('span'); s.textContent=t; st.appendChild(s); return s; };
+  if(S.notice){ add(S.notice); return; }
+  if(sim.over){ add('Nobody can place another piece. Game over.'); return; }
+  if(S.mode==='online' && !S.oppSeen){
+    if(S.role===1){ add('Connecting to game '+S.code.toUpperCase()+'…'); return; }
+    add('Waiting for your opponent. Share this code:');
+    const c=document.createElement('span'); c.className='code'; c.textContent=S.code.toUpperCase(); st.appendChild(c);
+    const b=document.createElement('button'); b.className='btn small'; b.textContent='Copy';
+    b.onclick=async()=>{ try{ await navigator.clipboard.writeText(S.code.toUpperCase()); b.textContent='Copied'; }catch(e){ b.textContent='Select the code'; } };
+    st.appendChild(b); return;
+  }
+  if(sim.skipped!==null){
+    const who = S.mode==='online' ? (sim.skipped===S.role?'You have':'Your opponent has') : S.mode==='cpu' ? (sim.skipped===S.me?'You have':'The computer has') : COLORS[sim.skipped]+' has';
+    add(who+' no piece that fits, so the turn was skipped.');
+  }
+  if(S.mode==='online' && !S.oppHere){ add('Opponent disconnected. The game continues when they return.'); return; }
+  if(S.mode==='online') add(sim.turn===S.role ? 'Your turn.' : "Opponent's turn…");
+  else if(S.mode==='cpu') add(sim.turn===S.me ? 'Your turn.' : 'The computer is thinking…');
+  else add(COLORS[sim.turn]+"'s turn.");
+}
+
+function renderResult(sim){
+  const r=$('result');
+  if(!sim.over){ r.hidden=true; return; }
+  r.hidden=false; r.textContent='';
+  const box=document.createElement('div');
+  const h=document.createElement('h3'), p=document.createElement('p');
+  const [a,b]=sim.scores;
+  if(a===b) h.textContent='Draw';
+  else {
+    const w=a>b?0:1;
+    h.textContent = S.mode==='online' ? (w===S.role?'You win!':'Opponent wins') : S.mode==='cpu' ? (w===S.me?'You win!':'The computer wins') : COLORS[w]+' wins!';
+    h.style.color='var(--p'+w+')';
+  }
+  p.textContent=COLORS[0]+' '+a+'  ·  '+COLORS[1]+' '+b;
+  box.appendChild(h); box.appendChild(p);
+  const btn=document.createElement('button'); btn.className='btn primary'; btn.style.marginTop='8px';
+  if(S.mode==='local'){ btn.textContent='Play again'; btn.onclick=()=>{ prevMoves=0; startLocal(); }; }
+  else if(S.mode==='cpu'){ btn.textContent='Play again'; btn.onclick=()=>{ prevMoves=0; startCpu(S.level); }; }
+  else { btn.textContent='Back to menu'; btn.onclick=goMenu; }
+  box.appendChild(btn); r.appendChild(box);
+}
+
+function renderTray(sim){
+  const tray=$('tray'); const play=canPlay();
+  const p=mine();
+  const sig=[S.mode,p,play,sim.over,sim.hands[p].join(''),S.rots[p].join('')].join('|');
+  $('hint').textContent = sim.over ? '' : (play ? 'Drag a piece onto the board. Use ↻ to rotate it.' : '');
+  if(sig===S.traySig || S.drag) return;
+  S.traySig=sig; tray.textContent='';
+  const cs=Math.min(26, Math.floor((tray.clientWidth||340)/3/4.6));
+  for(let slot=0;slot<3;slot++){
+    const id=sim.hands[p][slot], rot=S.rots[p][slot];
+    const card=document.createElement('div'); card.className='card p'+p+(play?'':' off');
+    card.appendChild(pieceEl(id,rot,cs,p));
+    const rb=document.createElement('button'); rb.className='rot'; rb.textContent='↻'; rb.setAttribute('aria-label','Rotate piece'); rb.disabled=!play;
+    rb.addEventListener('pointerdown',e=>e.stopPropagation());
+    rb.addEventListener('click',e=>{ e.stopPropagation(); S.rots[p][slot]=(S.rots[p][slot]+1)%4; render(); });
+    card.appendChild(rb);
+    if(play) card.addEventListener('pointerdown',e=>startDrag(e,card,slot,p));
+    tray.appendChild(card);
+  }
+}
+
+/* ---- drag & drop ---- */
+function startDrag(e,card,slot,p){
+  if(!canPlay()||e.button>0) return;
+  e.preventDefault();
+  const id=S.sim.hands[p][slot], rot=S.rots[p][slot];
+  const rect=boardEl.getBoundingClientRect(), cs=rect.width/N;
+  const fl=pieceEl(id,rot,cs-2,p); fl.classList.add('float'); document.body.appendChild(fl);
+  S.drag={slot,p,id,rot,pid:e.pointerId,type:e.pointerType,fl,card};
+  card.classList.add('dragging');
+  try{ card.setPointerCapture(e.pointerId); }catch(_){}
+  const mv=ev=>{ if(S.drag&&ev.pointerId===S.drag.pid) updateDrag(ev); };
+  const up=ev=>{ if(!S.drag||ev.pointerId!==S.drag.pid) return; cleanup(); finishDrag(true); };
+  const cancel=ev=>{ if(!S.drag||ev.pointerId!==S.drag.pid) return; cleanup(); finishDrag(false); };
+  function cleanup(){ card.removeEventListener('pointermove',mv); card.removeEventListener('pointerup',up); card.removeEventListener('pointercancel',cancel); }
+  card.addEventListener('pointermove',mv); card.addEventListener('pointerup',up); card.addEventListener('pointercancel',cancel);
+  updateDrag(e);
+}
+function updateDrag(e){
+  const d=S.drag; if(!d) return;
+  const rect=boardEl.getBoundingClientRect(), cs=rect.width/N;
+  const lift = d.type==='touch' ? cs*1.7 : 0;
+  const sh=SHAPES[d.id][d.rot];
+  const fx=e.clientX - (sh.w*cs)/2, fy=e.clientY - lift - (sh.h*cs)/2;
+  d.fl.style.transform='translate('+fx+'px,'+fy+'px)';
+  const cx=(e.clientX-rect.left)/cs, cy=(e.clientY-lift-rect.top)/cs;
+  if(cx<-1.5||cx>N+1.5||cy<-1.5||cy>N+1.5){ d.at=null; S.hover=null; paintBoard(); return; }
+  const c=Math.max(0,Math.min(N-sh.w, Math.round(cx-sh.w/2)));
+  const r=Math.max(0,Math.min(N-sh.h, Math.round(cy-sh.h/2)));
+  const ok=fits(S.sim.board,sh,r,c);
+  d.at={r,c,ok};
+  S.hover={ok,set:new Set(sh.cells.map(([dr,dc])=>(r+dr)*N+c+dc))};
+  paintBoard();
+}
+function finishDrag(drop){
+  const d=S.drag; if(!d) return;
+  d.fl.remove(); d.card.classList.remove('dragging');
+  S.drag=null; S.hover=null;
+  if(drop && d.at && d.at.ok && canPlay()){
+    const code=d.slot*1000 + d.rot*100 + d.at.r*10 + d.at.c;
+    const idx = S.mode==='online' ? S.role : d.p;
+    S.mv[idx].push(code); S.rots[d.p][d.slot]=0;
+    if(S.mode==='online'){ saveMoves(); sendMoves(); }
+  }
+  S.traySig=''; render();
+}
+
+/* ---- navigation ---- */
+function goMenu(){
+  if(S.drag) finishDrag(false);
+  leaveNet(); S.mode=null; S.sim=null; prevMoves=0; show('menu'); refreshResume();
+}
+$('leave').onclick=goMenu;
+$('btnLocal').onclick=()=>{ prevMoves=0; startLocal(); };
+let cpuSecond=false;
+function setOrder(second){
+  cpuSecond=second;
+  $('segFirst').classList.toggle('on',!second); $('segSecond').classList.toggle('on',second);
+  $('segFirst').setAttribute('aria-checked',String(!second)); $('segSecond').setAttribute('aria-checked',String(second));
+  $('cpuNote').textContent = second ? 'You play Blue and the computer moves first.' : 'You play Orange and move first.';
+}
+$('segFirst').onclick=()=>setOrder(false);
+$('segSecond').onclick=()=>setOrder(true);
+$('btnEasy').onclick=()=>{ prevMoves=0; startCpu('easy'); };
+$('btnNormal').onclick=()=>{ prevMoves=0; startCpu('normal'); };
+$('btnHard').onclick=()=>{ prevMoves=0; startCpu('hard'); };
+$('btnCreate').onclick=()=>{ prevMoves=0; enterOnline(randCode(),0); };
+$('btnJoin').onclick=()=>{
+  const code=$('joinCode').value.trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+  if(code.length<4){ $('menuNote').textContent='Enter the code your opponent sent you.'; $('menuNote').className='note err'; return; }
+  $('menuNote').className='note'; prevMoves=0;
+  enterOnline(code,1);
+};
+$('joinCode').addEventListener('keydown',e=>{ if(e.key==='Enter') $('btnJoin').click(); });
+$('btnResume').onclick=()=>{ const l=refreshResume(); if(l){ prevMoves=0; enterOnline(String(l.code),l.role); } };
+window.addEventListener('resize',()=>{ S.traySig=''; if(S.sim) renderTray(S.sim); });
+show('menu'); refreshResume();
+</script>
+</body>
+</html>
