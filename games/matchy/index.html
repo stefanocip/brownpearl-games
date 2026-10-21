@@ -231,7 +231,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 120 (bomba legata da corda = nessuna mossa: si rimescola)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 121 (la cella che diventa bomba scala il target colore)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -1674,10 +1674,16 @@ function resolveMatches(state, matchedSet, rng, colors) {
       board[r][c] = { kind: 'bomb', bombType: bombInfo.bombType, color: bombInfo.color, uid: nextUid++ };
     } else {
       // era un colore normale: diventa la bomba nuova invece di sparire,
-      // stesso uid, niente scalo del target (non è stata "raccolta").
+      // stesso uid, scala il target come le altre celle del match.
       // La copertura invece SPARISCE comunque: il giocatore ha fatto un
       // match proprio lì, anche se il risultato è una bomba e non il
       // vuoto — prima restava per sempre (bordo rosso bloccato).
+      // il pezzo conta comunque nel target colore: faceva parte del match
+      // (prima restava fuori, un match da 5 scalava solo 4). Una bomba non
+      // è 'color', quindi quando esploderà non verrà contata una seconda volta.
+      if (cell.kind === 'color' && colorRemaining[cell.color] !== undefined) {
+        colorRemaining[cell.color] = Math.max(0, colorRemaining[cell.color] - 1);
+      }
       cell.kind = 'bomb';
       cell.bombType = bombInfo.bombType;
       cell.color = bombInfo.color;
