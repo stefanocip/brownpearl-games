@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Tetra Duel</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400;600;700&display=swap">
 <style>
-/* Layout: one column. Scoreboard chips, the board as the hero, then the player's three-piece hand. */
+/* Layout: one column that fits the screen height while playing. Scoreboard chips, the board as the hero (sized to the space left), then the player's three-piece hand. */
 :root{
   color-scheme:light dark;
   --bg:#E6EBF0; --surface:#F4F7FA; --cell:#FBFCFD; --line:#C9D3DC; --ink:#14202B; --ink2:#566470;
@@ -21,7 +21,8 @@
   }
 }
 *{box-sizing:border-box}
-html,body{margin:0}
+html,body{margin:0;touch-action:manipulation;-webkit-text-size-adjust:100%}
+button{touch-action:manipulation}
 body{
   background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:15px; line-height:1.4;
   padding-block:calc(12px + env(safe-area-inset-top, 0px)) calc(28px + env(safe-area-inset-bottom, 0px));
@@ -73,8 +74,14 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--p1);outline-off
 #status .sub{font-size:13px;line-height:1.35;color:var(--ink2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
 /* board */
-.field{position:relative}
-.board{display:grid;grid-template-columns:repeat(var(--n,10),1fr);gap:2px;padding:2px;background:var(--line);border-radius:12px;touch-action:none;user-select:none;-webkit-user-select:none}
+.field{position:relative;flex:1 1 0;min-height:200px;container-type:size;display:flex;justify-content:center;align-items:center}
+#game{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
+body.playing{padding-block:calc(10px + env(safe-area-inset-top, 0px)) calc(10px + env(safe-area-inset-bottom, 0px))}
+body.playing .app{height:calc(100vh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));height:calc(100dvh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));min-height:440px;gap:10px}
+.brand{display:flex;align-items:baseline;gap:8px;min-width:0}
+.ver{font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums}
+@media (max-height:760px){ .mini,.hint{display:none} .chip .pts{font-size:30px} h1{font-size:24px} }
+.board{width:min(100cqw,100cqh);height:min(100cqw,100cqh);flex:none;display:grid;grid-template-columns:repeat(var(--n,10),1fr);gap:2px;padding:2px;background:var(--line);border-radius:12px;touch-action:none;user-select:none;-webkit-user-select:none}
 .c{aspect-ratio:1;background:var(--cell);border-radius:5px}
 .o0,.o1,.o2{box-shadow:inset 0 -3px 0 rgba(0,0,0,.2),inset 0 2px 0 rgba(255,255,255,.28)}
 .o0{background:var(--p0)} .o1{background:var(--p1)} .o2{background:var(--rock)}
@@ -92,7 +99,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--p1);outline-off
 
 /* hand */
 .tray{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.card{position:relative;background:var(--surface);border-radius:16px;min-height:104px;display:grid;place-items:center;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;border:2px solid transparent}
+.card{position:relative;background:var(--surface);border-radius:16px;height:var(--card-h,104px);display:grid;place-items:center;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;border:2px solid transparent}
 .card.p0{--pc:var(--p0)} .card.p1{--pc:var(--p1)}
 .card:not(.off):hover{border-color:var(--pc)}
 .card.dragging{opacity:.35}
@@ -109,7 +116,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--p1);outline-off
 <body>
 <div class="app">
   <header>
-    <h1>Tetra <span>Du</span><b>el</b></h1>
+    <div class="brand"><h1>Tetra <span>Du</span><b>el</b></h1><span class="ver" id="ver"></span></div>
     <button class="btn small" id="leave" hidden>Menu</button>
   </header>
 
@@ -152,7 +159,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--p1);outline-off
     </div>
   </section>
 
-  <section id="game" hidden style="display:flex;flex-direction:column;gap:14px">
+  <section id="game" hidden>
     <div class="score">
       <div class="chip p0" id="chip0"><div class="who" id="who0"></div><div class="pts" id="pts0">0</div><div class="meta" id="meta0"></div><div class="mini" id="mini0"></div></div>
       <div class="chip p1" id="chip1"><div class="who" id="who1"></div><div class="pts" id="pts1">0</div><div class="meta" id="meta1"></div><div class="mini" id="mini1"></div></div>
@@ -325,12 +332,14 @@ function simulate(seed, mv){
 }
 //@@UI
 /* ============ UI ============ */
+const VERSION = '2.3';
 const $ = id => document.getElementById(id);
 const COLORS = ['Orange','Blue'];
 const S = {mode:null, seed:'', mv:[[],[]], rots:[[0,0,0],[0,0,0]], sim:null, hover:null, cpuTimer:null, level:'normal', me:0, clr:new Map(), traySig:'', drag:null};
 const CFG = {board:'10p', goal:Infinity, cpuSecond:false};
 
 function show(which){
+  document.body.classList.toggle('playing', which==='game');
   $('menu').hidden = which!=='menu';
   $('game').hidden = which!=='game';
   $('leave').hidden = which!=='game';
@@ -475,9 +484,11 @@ function renderTray(sim){
   const p=mine();
   const sig=[S.mode,p,play,sim.over,sim.hands[p].join(''),S.rots[p].join('')].join('|');
   $('hint').textContent = sim.over ? '' : (play ? 'Drag a piece onto the board. Tap a piece to rotate it.' : '');
+  const cardH=Math.round(Math.max(80,Math.min(112,window.innerHeight*0.15)));
+  tray.style.setProperty('--card-h',cardH+'px');
   if(sig===S.traySig || S.drag) return;
   S.traySig=sig; tray.textContent='';
-  const cs=Math.min(26, Math.floor((tray.clientWidth||340)/3/4.6));
+  const cs=Math.max(10,Math.min(26, Math.floor((cardH-16)/4.5), Math.floor((tray.clientWidth||340)/3/4.6)));
   for(let slot=0;slot<3;slot++){
     const id=sim.hands[p][slot], rot=S.rots[p][slot];
     const card=document.createElement('div'); card.className='card p'+p+(play?'':' off');
@@ -563,6 +574,9 @@ $('btnEasy').onclick=()=>startGame('cpu','easy');
 $('btnNormal').onclick=()=>startGame('cpu','normal');
 $('btnHard').onclick=()=>startGame('cpu','hard');
 window.addEventListener('resize',()=>{ S.traySig=''; if(S.sim) renderTray(S.sim); });
+/* no pinch or double-tap zoom: taps are game input */
+['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>e.preventDefault()));
+$('ver').textContent='v'+VERSION;
 show('menu');
 </script>
 </body>
