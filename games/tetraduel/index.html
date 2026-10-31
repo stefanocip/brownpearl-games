@@ -5,20 +5,19 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Tetra Duel</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400;600;700&display=swap">
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
-/* Layout: one column. Scoreboard chips, the 8x8 board as the hero, then the player's three-piece hand. */
+/* Layout: one column. Scoreboard chips, the board as the hero, then the player's three-piece hand. */
 :root{
   color-scheme:light dark;
   --bg:#E6EBF0; --surface:#F4F7FA; --cell:#FBFCFD; --line:#C9D3DC; --ink:#14202B; --ink2:#566470;
-  --p0:#E2562B; --p1:#1F6FD6; --bad:#C62F3E;
+  --p0:#E2562B; --p1:#1F6FD6; --bad:#C62F3E; --rock:#8C99A5;
   --f-display:'Bricolage Grotesque','Trebuchet MS',system-ui,sans-serif;
   --f-body:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;
 }
 @media (prefers-color-scheme: dark){
   :root{
     --bg:#111820; --surface:#19222C; --cell:#202B36; --line:#2D3A47; --ink:#E8EEF3; --ink2:#93A3B1;
-    --p0:#FF7A4F; --p1:#5B9BF5; --bad:#FF6B7A;
+    --p0:#FF7A4F; --p1:#5B9BF5; --bad:#FF6B7A; --rock:#5E6C79;
   }
 }
 *{box-sizing:border-box}
@@ -39,11 +38,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--p1);outline-off
 .btn{border:0;border-radius:12px;padding:12px 16px;font-weight:700;background:var(--surface);color:var(--ink);box-shadow:inset 0 0 0 2px var(--line)}
 .btn.primary{background:var(--ink);color:var(--bg);box-shadow:none}
 .btn.small{padding:7px 12px;font-size:13px;border-radius:10px}
-.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg{display:grid;grid-template-columns:repeat(var(--cols,2),1fr);gap:8px}
+.seg .btn{padding:10px 6px;font-size:14px;line-height:1.2}
+.pts .goal{font:600 14px var(--f-body);color:var(--ink2);letter-spacing:0;margin-left:4px}
 .btn.on{box-shadow:inset 0 0 0 2px var(--ink);background:var(--cell)}
-textarea{width:100%;min-height:76px;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;padding:8px 10px;border-radius:12px;border:0;background:var(--cell);color:var(--ink);box-shadow:inset 0 0 0 2px var(--line);resize:vertical;word-break:break-all}
-label.l{font-weight:700;font-size:13px}
-.step{display:flex;flex-direction:column;gap:6px}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 [hidden]{display:none!important}
 
@@ -56,9 +54,7 @@ label.l{font-weight:700;font-size:13px}
 .panel h2{font:700 13px var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);margin:0}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .row>*{min-width:0}
-input[type=text]{flex:1 1 120px;min-width:0;font:700 18px var(--f-display);letter-spacing:.14em;text-transform:uppercase;padding:10px 12px;border-radius:12px;border:0;background:var(--cell);color:var(--ink);box-shadow:inset 0 0 0 2px var(--line)}
 .note{color:var(--ink2);font-size:13px;margin:0}
-.note.err{color:var(--bad)}
 
 /* scoreboard */
 .score{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -72,20 +68,21 @@ input[type=text]{flex:1 1 120px;min-width:0;font:700 18px var(--f-display);lette
 .mini{display:flex;gap:8px;margin-top:8px;align-items:center;min-height:18px}
 
 /* status */
-#status{min-height:22px;margin:0;font-weight:600;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-#status .code{font:800 17px var(--f-display);letter-spacing:.16em;background:var(--surface);padding:4px 10px;border-radius:10px;box-shadow:inset 0 0 0 2px var(--line);user-select:all}
+#status{margin:0;height:3.9em;overflow:hidden;display:flex;flex-direction:column;gap:2px}
+#status .turn{font-weight:700;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#status .sub{font-size:13px;line-height:1.35;color:var(--ink2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
 /* board */
 .field{position:relative}
-.board{display:grid;grid-template-columns:repeat(8,1fr);gap:2px;padding:2px;background:var(--line);border-radius:12px;touch-action:none;user-select:none;-webkit-user-select:none}
+.board{display:grid;grid-template-columns:repeat(var(--n,10),1fr);gap:2px;padding:2px;background:var(--line);border-radius:12px;touch-action:none;user-select:none;-webkit-user-select:none}
 .c{aspect-ratio:1;background:var(--cell);border-radius:5px}
-.o0,.o1{box-shadow:inset 0 -3px 0 rgba(0,0,0,.2),inset 0 2px 0 rgba(255,255,255,.28)}
-.o0{background:var(--p0)} .o1{background:var(--p1)}
+.o0,.o1,.o2{box-shadow:inset 0 -3px 0 rgba(0,0,0,.2),inset 0 2px 0 rgba(255,255,255,.28)}
+.o0{background:var(--p0)} .o1{background:var(--p1)} .o2{background:var(--rock)}
 .c.ghost{background:color-mix(in srgb, var(--pc) 50%, var(--cell));box-shadow:inset 0 0 0 2px var(--pc)}
 .c.ghost.bad{background:color-mix(in srgb, var(--bad) 40%, var(--cell));box-shadow:inset 0 0 0 2px var(--bad)}
 .c.last{animation:drop .35s ease-out}
-.c.clr0{--cc:var(--p0)} .c.clr1{--cc:var(--p1)}
-.c.clr0,.c.clr1{animation:clear .75s ease-out}
+.c.clr0{--cc:var(--p0)} .c.clr1{--cc:var(--p1)} .c.clr2{--cc:var(--rock)}
+.c.clr0,.c.clr1,.c.clr2{animation:clear .75s ease-out}
 @keyframes drop{from{transform:scale(1.18);filter:brightness(1.3)}to{transform:none}}
 @keyframes clear{0%{background:var(--cc);transform:scale(1.12);filter:brightness(1.8)}60%{background:var(--cc);transform:scale(.8);opacity:.7}100%{background:var(--cell);transform:none;opacity:1}}
 .result{position:absolute;inset:0;display:grid;place-items:center;background:color-mix(in srgb, var(--bg) 72%, transparent);backdrop-filter:blur(3px);border-radius:12px;padding:16px}
@@ -106,7 +103,7 @@ input[type=text]{flex:1 1 120px;min-width:0;font:700 18px var(--f-display);lette
 .pc i{display:block;border-radius:4px}
 .float{position:fixed;left:0;top:0;z-index:50;pointer-events:none;opacity:.92;filter:drop-shadow(0 6px 10px rgba(0,0,0,.3))}
 .hint{margin:0;color:var(--ink2);font-size:13px;text-align:center}
-@media (prefers-reduced-motion: reduce){.c.last,.c.clr0,.c.clr1{animation:none}}
+@media (prefers-reduced-motion: reduce){.c.last,.c.clr0,.c.clr1,.c.clr2{animation:none}}
 </style>
 </head>
 <body>
@@ -118,10 +115,24 @@ input[type=text]{flex:1 1 120px;min-width:0;font:700 18px var(--f-display);lette
 
   <section id="menu">
     <ul class="rules">
-      <li><i>1</i><span>Each player holds 3 tetrominoes. Drag one onto the 8×8 board, then your opponent plays and you draw a new piece.</span></li>
-      <li><i>2</i><span>Fill a row or a column and it disappears. One line scores 10, two at once 30, three 60. Every placed block is worth 1.</span></li>
-      <li><i>3</i><span>The game goes on as long as pieces can be placed. If you have no piece that fits, your turn is skipped. When nobody can move, the higher score wins.</span></li>
+      <li><i>1</i><span>Each player holds 3 tetrominoes. Drag one onto the board, then your opponent plays and you draw a new piece.</span></li>
+      <li><i>2</i><span>Fill a row or a column and it disappears. One line scores 10, two at once 30, three 60, and whoever completes a line plays again. Every placed block is worth 1.</span></li>
+      <li><i>3</i><span>The first player to reach the goal wins. With no goal, the game goes on until nobody can place a piece, and the higher score wins. If you have no piece that fits, your turn is skipped.</span></li>
     </ul>
+    <div class="panel">
+      <h2>Board</h2>
+      <div class="seg" style="--cols:3" role="radiogroup" aria-label="Board">
+        <button class="btn" id="bd8" role="radio" aria-checked="false">8×8</button>
+        <button class="btn" id="bd10" role="radio" aria-checked="false">10×10</button>
+        <button class="btn on" id="bd10p" role="radio" aria-checked="true">10×10 + blocks</button>
+      </div>
+      <h2>Goal</h2>
+      <div class="seg" style="--cols:3" role="radiogroup" aria-label="Goal">
+        <button class="btn" id="g500" role="radio" aria-checked="false">500 points</button>
+        <button class="btn" id="g1000" role="radio" aria-checked="false">1000 points</button>
+        <button class="btn on" id="gend" role="radio" aria-checked="true">Endless</button>
+      </div>
+    </div>
     <div class="panel">
       <h2>Same device</h2>
       <button class="btn primary" id="btnLocal">Play 1v1 on this screen</button>
@@ -138,43 +149,6 @@ input[type=text]{flex:1 1 120px;min-width:0;font:700 18px var(--f-display);lette
         <button class="btn primary" id="btnHard">Hard</button>
       </div>
       <p class="note" id="cpuNote">You play Orange and move first.</p>
-    </div>
-    <div class="panel">
-      <h2>Online</h2>
-      <div class="row">
-        <button class="btn primary" id="btnCreate">Create game</button>
-        <button class="btn" id="btnResume" hidden>Resume game</button>
-      </div>
-      <div class="row">
-        <input type="text" id="joinCode" maxlength="5" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Game code">
-        <button class="btn" id="btnJoin">Join</button>
-      </div>
-      <p class="note" id="menuNote">Create a game and send the code to your opponent. Both of you open this same page.</p>
-    </div>
-    <div class="panel">
-      <h2>Online without a server</h2>
-      <p class="note">Use this if the code above does not connect. You swap two short texts through any chat, then the two browsers talk directly.</p>
-      <div class="row">
-        <button class="btn" id="mHost">I'm hosting</button>
-        <button class="btn" id="mGuest">I'm joining</button>
-      </div>
-      <div class="step" id="mHostBox" hidden>
-        <label class="l" for="mOffer">1. Send this invite to your opponent</label>
-        <textarea id="mOffer" readonly spellcheck="false"></textarea>
-        <div class="row"><button class="btn small" id="mCopyOffer">Copy invite</button></div>
-        <label class="l" for="mReplyIn">2. Paste their reply here</label>
-        <textarea id="mReplyIn" spellcheck="false" placeholder="Reply from your opponent"></textarea>
-        <div class="row"><button class="btn primary small" id="mConnect">Connect</button></div>
-      </div>
-      <div class="step" id="mGuestBox" hidden>
-        <label class="l" for="mOfferIn">1. Paste the invite you received</label>
-        <textarea id="mOfferIn" spellcheck="false" placeholder="Invite from the host"></textarea>
-        <div class="row"><button class="btn primary small" id="mMakeReply">Create reply</button></div>
-        <label class="l" for="mAnswer">2. Send this reply back to the host</label>
-        <textarea id="mAnswer" readonly spellcheck="false"></textarea>
-        <div class="row"><button class="btn small" id="mCopyAnswer">Copy reply</button></div>
-      </div>
-      <p class="note" id="mNote"></p>
     </div>
   </section>
 
@@ -195,7 +169,9 @@ input[type=text]{flex:1 1 120px;min-width:0;font:700 18px var(--f-display);lette
 
 <script>
 /* ============ game logic (pure) ============ */
-const N = 8;
+let N = 10;          // board side, set when a game starts
+let TARGET = Infinity; // points that win the game
+let PRESET = true;   // start with grey blocks on the board
 var REPLY_W=0.9;
 const BASE = [
   [[0,0],[0,1],[0,2],[0,3]], // I
@@ -224,6 +200,27 @@ function makeStream(seed){
     if(!bag.length){ bag=[0,1,2,3,4,5,6]; for(let i=6;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [bag[i],bag[j]]=[bag[j],bag[i]]; } }
     return bag.pop();
   };
+}
+/* The board starts with a few neutral blocks (value 2). Same seed, same layout on every device. */
+function presetBoard(seed){
+  const board=new Array(N*N).fill(-1), pick=makeStream(seed+'|pre'), rnd=mulberry(hashStr(seed+'|pos'));
+  for(let k=0, placed=0; k<200 && placed<5; k++){
+    const sh=SHAPES[pick()][Math.floor(rnd()*4)];
+    const r=Math.floor(rnd()*(N-sh.h+1)), c=Math.floor(rnd()*(N-sh.w+1));
+    /* keep pieces apart so the start looks scattered */
+    let ok=true;
+    for(const [dr,dc] of sh.cells){
+      for(let y=r+dr-1;y<=r+dr+1&&ok;y++) for(let x=c+dc-1;x<=c+dc+1;x++){
+        if(y<0||x<0||y>=N||x>=N) continue;
+        if(board[y*N+x]!==-1){ ok=false; break; }
+      }
+      if(!ok) break;
+    }
+    if(!ok) continue;
+    for(const [dr,dc] of sh.cells) board[(r+dr)*N+c+dc]=2;
+    placed++;
+  }
+  return board;
 }
 function fits(board, sh, r, c){
   if(r<0||c<0||r+sh.h>N||c+sh.w>N) return false;
@@ -283,7 +280,7 @@ function cpuChoose(sim, level){
         sc-=filled;
         if(level==='hard'){
           /* the board is shared: do not leave the opponent a line to finish */
-          sc-=bestReply(b, sim.hands[1-p])*10*REPLY_W;
+          if(pl.n===0) sc-=bestReply(b, sim.hands[1-p])*10*REPLY_W; /* a line means I move again */
           hand.forEach((id,s)=>{ if(s!==slot && !canPlaceAnywhere(b,id)) sc-=60; });
         }
       }
@@ -296,13 +293,13 @@ function cpuChoose(sim, level){
   return best.code;
 }
 /* A move is one integer: slot*1000 + rotation*100 + row*10 + col. Hands come from a seeded stream per player,
-   so both devices replay the same game from just the two move lists. */
+   so the whole game can be replayed from the two move lists. */
 function simulate(seed, mv){
-  const board=new Array(N*N).fill(-1);
+  const board=PRESET ? presetBoard(seed) : new Array(N*N).fill(-1);
   const scores=[0,0], lines=[0,0];
   const st=[makeStream(seed+'|0'), makeStream(seed+'|1')];
   const hands=[[st[0](),st[0](),st[0]()],[st[1](),st[1](),st[1]()]];
-  const used=[0,0]; let turn=0, over=false, last=null, skipped=null;
+  const used=[0,0]; let turn=0, over=false, last=null, skipped=null, winner=null;
   const can=p=>hands[p].some(id=>canPlaceAnywhere(board,id));
   for(let guard=0; guard<20000; guard++){
     /* a player with no piece that fits skips the turn; the game ends when nobody can move */
@@ -320,37 +317,18 @@ function simulate(seed, mv){
     const gain = gainFor(n);
     scores[turn]+=gain; lines[turn]+=n;
     last={player:turn, cells:idx.filter(i=>!kill.has(i)), cleared, n, gain};
-    hands[turn][slot]=st[turn](); used[turn]++; turn=1-turn; skipped=null;
+    hands[turn][slot]=st[turn](); used[turn]++; skipped=null;
+    if(scores[turn]>=TARGET){ over=true; winner=turn; break; }
+    if(n===0) turn=1-turn; /* completing a line keeps the turn */
   }
-  return {board,scores,lines,hands,turn,over,last,skipped,used};
+  return {board,scores,lines,hands,turn,over,last,skipped,used,winner};
 }
 //@@UI
 /* ============ UI ============ */
 const $ = id => document.getElementById(id);
 const COLORS = ['Orange','Blue'];
-const S = {mode:null, seed:'', code:'', role:0, mv:[[],[]], oppSeen:false, oppHere:false, peer:null, conn:null, retry:null,
-           rots:[[0,0,0],[0,0,0]], sim:null, hover:null, cpuTimer:null, level:'normal', me:0, clr:new Map(), traySig:'', drag:null, notice:''};
-
-const hasNet = typeof Peer !== 'undefined';
-if(!hasNet){
-  $('btnCreate').disabled=true; $('btnJoin').disabled=true; $('joinCode').disabled=true;
-  $('menuNote').textContent='The free connection service could not be loaded. Use "Online without a server" below.';
-}
-
-function lsGet(k){ try{ return localStorage.getItem(k);}catch(e){return null;} }
-function lsSet(k,v){ try{ localStorage.setItem(k,v);}catch(e){} }
-function lsDel(k){ try{ localStorage.removeItem(k);}catch(e){} }
-function cleanMoves(a){ return Array.isArray(a)?a.filter(n=>Number.isInteger(n)&&n>=0&&n<3000).slice(0,10000):[]; }
-function loadMoves(code,role){ try{ return cleanMoves(JSON.parse(lsGet('td:'+code+':'+role)||'[]')); }catch(e){return [];} }
-function saveMoves(){ if(S.mode==='online') lsSet('td:'+S.code+':'+S.role, JSON.stringify(S.mv[S.role])); }
-function refreshResume(){
-  let last=null; try{ last=JSON.parse(lsGet('td:last')||'null'); }catch(e){}
-  const ok = hasNet && last && last.code && (last.role===0||last.role===1);
-  $('btnResume').hidden=!ok;
-  if(ok) $('btnResume').textContent='Resume game '+String(last.code).toUpperCase();
-  return last;
-}
-function randCode(){ const a='abcdefghjkmnpqrstuvwxyz23456789'; let s=''; for(let i=0;i<5;i++) s+=a[Math.floor(Math.random()*a.length)]; return s; }
+const S = {mode:null, seed:'', mv:[[],[]], rots:[[0,0,0],[0,0,0]], sim:null, hover:null, cpuTimer:null, level:'normal', me:0, clr:new Map(), traySig:'', drag:null};
+const CFG = {board:'10p', goal:Infinity, cpuSecond:false};
 
 function show(which){
   $('menu').hidden = which!=='menu';
@@ -358,153 +336,27 @@ function show(which){
   $('leave').hidden = which!=='game';
 }
 function resetState(){
-  S.manual=false; S.mv=[[],[]]; S.oppSeen=false; S.oppHere=false; S.rots=[[0,0,0],[0,0,0]]; S.sim=null; S.hover=null; S.clr=new Map(); S.traySig=''; S.drag=null; S.notice='';
+  clearTimeout(S.cpuTimer); S.cpuTimer=null;
+  S.mv=[[],[]]; S.rots=[[0,0,0],[0,0,0]]; S.sim=null; S.hover=null; S.clr=new Map(); S.traySig=''; S.drag=null; prevMoves=0;
 }
-function startLocal(){
-  leaveNet(); resetState(); S.mode='local'; S.seed='local-'+Math.random().toString(36).slice(2); show('game'); render();
-}
-function startCpu(level){
-  leaveNet(); resetState(); S.mode='cpu'; S.level=level; S.me=cpuSecond?1:0; S.seed='cpu-'+Math.random().toString(36).slice(2); show('game'); render();
-}
-function mine(){ return S.mode==='online' ? S.role : (S.mode==='cpu' ? S.me : S.sim.turn); }
-
-/* ---- online: peer-to-peer through PeerJS (free public broker, no server of your own) ---- */
-function leaveNet(){
-  clearTimeout(S.retry); clearTimeout(S.cpuTimer); S.cpuTimer=null;
-  const c=S.conn, p=S.peer; S.conn=null; S.peer=null;
-  try{ if(c) c.close(); }catch(e){}
-  try{ if(p) p.destroy(); }catch(e){}
-}
-function enterOnline(code, role, attempt){
-  attempt = attempt||0;
-  leaveNet(); resetState();
-  S.mode='online'; S.code=code; S.role=role; S.seed=code; S.mv[role]=loadMoves(code,role);
-  lsSet('td:last', JSON.stringify({code,role}));
+function startGame(mode, level){
+  resetState();
+  N = CFG.board==='8' ? 8 : 10; PRESET = CFG.board==='10p'; TARGET = CFG.goal;
+  buildBoard();
+  S.mode=mode; S.level=level||'normal'; S.me = mode==='cpu' && CFG.cpuSecond ? 1 : 0;
+  S.seed=mode+'-'+Math.random().toString(36).slice(2);
   show('game'); render();
-  const id='tetraduel-'+code;
-  const peer = role===0 ? new Peer(id) : new Peer();
-  S.peer=peer;
-  const dial=()=>{ if(S.peer!==peer||peer.destroyed) return; attach(peer.connect(id,{reliable:true})); };
-  peer.on('open',()=>{ if(role===1) dial(); });
-  peer.on('connection',c=>{ if(role===0) attach(c); else c.close(); });
-  peer.on('error',err=>{
-    if(S.peer!==peer) return;
-    if(err.type==='unavailable-id' && attempt<6){ S.notice='Reconnecting…'; render(); S.retry=setTimeout(()=>enterOnline(code,role,attempt+1),2500); return; }
-    if(err.type==='peer-unavailable'){ S.notice='No game found with this code yet. Check it, or wait for the host. Trying again…'; render(); S.retry=setTimeout(dial,3000); return; }
-    const svc = ['network','server-error','socket-error','socket-closed'].includes(err.type);
-    S.notice = svc ? 'The free connection service is not reachable ('+err.type+'). Go back to the menu and use "Online without a server".' : 'Connection problem ('+err.type+'). Go back to the menu and try again.'; render();
-  });
-  function attach(c){
-    c.on('open',()=>{
-      const old=S.conn; S.conn=c; if(old&&old!==c){ try{old.close();}catch(e){} }
-      S.oppHere=true; S.oppSeen=true; S.notice=''; sendMoves(); render();
-    });
-    c.on('data',handleRemote);
-    c.on('close',()=>{
-      if(S.conn!==c) return;
-      S.conn=null; S.oppHere=false; render();
-      if(role===1 && S.peer===peer) S.retry=setTimeout(dial,3000);
-    });
-    c.on('error',()=>{});
-  }
 }
-function handleRemote(d){
-  if(!d||!Array.isArray(d.mv)) return;
-  const m=cleanMoves(d.mv);
-  if(m.length>S.mv[1-S.role].length){ S.mv[1-S.role]=m; render(); }
-}
-function sendMoves(){ try{ if(S.conn && S.conn.open) S.conn.send({mv:S.mv[S.role]}); }catch(e){} }
+function mine(){ return S.mode==='cpu' ? S.me : S.sim.turn; }
 
-/* ---- online without any broker: the two browsers swap an offer and a reply by hand (WebRTC) ---- */
-const RTC_CFG={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
-const M={pc:null,dc:null,code:'',role:0};
-function toB64(u8){ let s=''; for(let i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000)); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
-function fromB64(t){ t=t.replace(/-/g,'+').replace(/_/g,'/'); while(t.length%4) t+='='; const s=atob(t), u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u; }
-async function pack(obj){
-  let bytes=new TextEncoder().encode(JSON.stringify(obj)), tag='p';
-  if(window.CompressionStream){ try{ const cs=new CompressionStream('deflate-raw'); const w=cs.writable.getWriter(); w.write(bytes); w.close(); bytes=new Uint8Array(await new Response(cs.readable).arrayBuffer()); tag='z'; }catch(e){} }
-  return tag+toB64(bytes);
-}
-async function unpack(str){
-  str=String(str||'').replace(/\s+/g,''); if(str.length<10) throw new Error('empty');
-  const tag=str[0]; let bytes=fromB64(str.slice(1));
-  if(tag==='z'){ const ds=new DecompressionStream('deflate-raw'); const w=ds.writable.getWriter(); w.write(bytes); w.close(); bytes=new Uint8Array(await new Response(ds.readable).arrayBuffer()); }
-  else if(tag!=='p') throw new Error('bad');
-  return JSON.parse(new TextDecoder().decode(bytes));
-}
-function iceDone(pc){
-  return new Promise(res=>{
-    if(pc.iceGatheringState==='complete') return res();
-    const f=()=>{ if(pc.iceGatheringState==='complete'){ pc.removeEventListener('icegatheringstatechange',f); res(); } };
-    pc.addEventListener('icegatheringstatechange',f); setTimeout(res,4000);
-  });
-}
-function mNote(t,err){ $('mNote').textContent=t; $('mNote').className='note'+(err?' err':''); }
-function mReset(){ try{ if(M.dc) M.dc.close(); }catch(e){} try{ if(M.pc) M.pc.close(); }catch(e){} M.pc=null; M.dc=null; $('mOffer').value=''; $('mAnswer').value=''; $('mReplyIn').value=''; $('mOfferIn').value=''; mNote(''); }
-function mOpen(role){
-  if(typeof RTCPeerConnection==='undefined'){ mNote('This browser cannot make direct connections.',true); return; }
-  mReset(); M.role=role;
-  $('mHostBox').hidden = role!==0; $('mGuestBox').hidden = role!==1;
-  if(role===0) mHostStart();
-}
-async function mHostStart(){
-  try{
-    mNote('Preparing the invite…');
-    const pc=M.pc=new RTCPeerConnection(RTC_CFG); const dc=M.dc=pc.createDataChannel('game');
-    M.code=randCode(); hookChannel(pc,dc,M.code,0);
-    await pc.setLocalDescription(await pc.createOffer()); await iceDone(pc);
-    $('mOffer').value=await pack({t:'o',c:M.code,s:pc.localDescription.sdp});
-    mNote('Send the invite, then paste the reply you get back.');
-  }catch(e){ mNote('Could not create the invite ('+(e&&e.message||'error')+').',true); }
-}
-async function mHostConnect(){
-  try{
-    const a=await unpack($('mReplyIn').value);
-    if(a.t!=='a'||!M.pc) throw new Error('not a reply');
-    await M.pc.setRemoteDescription({type:'answer',sdp:a.s}); mNote('Connecting…');
-  }catch(e){ mNote('That reply is not valid. Copy the whole text again.',true); }
-}
-async function mGuestReply(){
-  try{
-    const o=await unpack($('mOfferIn').value);
-    if(o.t!=='o'||!o.c) throw new Error('not an invite');
-    mNote('Preparing the reply…');
-    try{ if(M.pc) M.pc.close(); }catch(e){}
-    const pc=M.pc=new RTCPeerConnection(RTC_CFG); M.code=String(o.c).toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,12);
-    pc.ondatachannel=ev=>{ M.dc=ev.channel; hookChannel(pc,ev.channel,M.code,1); };
-    await pc.setRemoteDescription({type:'offer',sdp:o.s});
-    await pc.setLocalDescription(await pc.createAnswer()); await iceDone(pc);
-    $('mAnswer').value=await pack({t:'a',s:pc.localDescription.sdp});
-    mNote('Send this reply to the host. The game starts by itself.');
-  }catch(e){ mNote('That invite is not valid. Copy the whole text again.',true); }
-}
-function hookChannel(pc,dc,code,role){
-  pc.onconnectionstatechange=()=>{ if(pc.connectionState==='failed'&&!S.conn) mNote('The browsers could not reach each other. Try again, or use the same Wi-Fi.',true); };
-  dc.onopen=()=>startManual(pc,dc,code,role);
-}
-async function copyFrom(id,btn){
-  const el=$(id); try{ await navigator.clipboard.writeText(el.value); btn.textContent='Copied'; }catch(e){ el.focus(); el.select(); btn.textContent='Select and copy'; }
-}
-function startManual(pc,dc,code,role){
-  leaveNet(); resetState();
-  S.mode='online'; S.manual=true; S.code=code; S.role=role; S.seed=code; S.mv[role]=loadMoves(code,role);
-  const ad={ get open(){ return dc.readyState==='open'; }, send(d){ dc.send(JSON.stringify(d)); }, close(){ try{dc.close();}catch(e){} try{pc.close();}catch(e){} } };
-  S.conn=ad; S.oppHere=true; S.oppSeen=true;
-  dc.onmessage=ev=>{ try{ handleRemote(JSON.parse(ev.data)); }catch(e){} };
-  dc.onclose=()=>{ if(S.conn!==ad) return; S.conn=null; S.oppHere=false; S.notice='Connection lost. Go back to the menu and connect again to start a new game.'; render(); };
-  M.pc=null; M.dc=null;
-  show('game'); prevMoves=0; render(); sendMoves();
-}
 function pname(p){
   if(S.mode==='cpu') return (p===S.me?'You':'Computer')+' · '+COLORS[p];
-  if(S.mode==='online') return (p===S.role?'You':'Opponent')+' · '+COLORS[p];
   return 'Player '+(p+1)+' · '+COLORS[p];
 }
 function canPlay(){
   const sim=S.sim; if(!sim||sim.over) return false;
   if(S.mode==='local') return true;
-  if(S.mode==='cpu') return sim.turn===S.me;
-  return sim.turn===S.role && S.oppSeen;
+  return sim.turn===S.me;
 }
 function controller(){ return mine(); }
 
@@ -517,9 +369,12 @@ function pieceEl(id, rot, s, owner){
   return el;
 }
 
-/* ---- build static board ---- */
-const boardEl=$('board'), cells=[];
-for(let i=0;i<N*N;i++){ const d=document.createElement('div'); d.className='c'; boardEl.appendChild(d); cells.push(d); }
+/* ---- board ---- */
+const boardEl=$('board'); let cells=[];
+function buildBoard(){
+  boardEl.textContent=''; cells=[]; boardEl.style.setProperty('--n',N);
+  for(let i=0;i<N*N;i++){ const d=document.createElement('div'); d.className='c'; boardEl.appendChild(d); cells.push(d); }
+}
 
 function paintBoard(){
   const sim=S.sim; if(!sim) return;
@@ -548,7 +403,8 @@ function render(){
   prevMoves=total;
   for(let p=0;p<2;p++){
     $('who'+p).textContent=pname(p);
-    $('pts'+p).textContent=sim.scores[p];
+    const pe=$('pts'+p); pe.textContent=sim.scores[p];
+    if(TARGET<Infinity){ const g=document.createElement('span'); g.className='goal'; g.textContent='/ '+TARGET; pe.appendChild(g); }
     $('meta'+p).textContent=sim.lines[p]+(sim.lines[p]===1?' line':' lines')+' · '+sim.used[p]+(sim.used[p]===1?' piece':' pieces');
     $('chip'+p).classList.toggle('active', !sim.over && sim.turn===p);
     const mini=$('mini'+p); mini.textContent='';
@@ -558,8 +414,6 @@ function render(){
   renderStatus(sim);
   renderResult(sim);
   renderTray(sim);
-  saveMoves();
-  if(sim.over && S.mode==='online') lsDel('td:last');
   if(S.mode==='cpu' && !sim.over && sim.turn===1-S.me && !S.cpuTimer){
     S.cpuTimer=setTimeout(()=>{
       S.cpuTimer=null;
@@ -572,25 +426,27 @@ function render(){
 
 function renderStatus(sim){
   const st=$('status'); st.textContent='';
-  const add=t=>{ const s=document.createElement('span'); s.textContent=t; st.appendChild(s); return s; };
-  if(S.notice){ add(S.notice); return; }
-  if(sim.over){ add('Nobody can place another piece. Game over.'); return; }
-  if(S.mode==='online' && !S.oppSeen){
-    if(S.role===1){ add('Connecting to game '+S.code.toUpperCase()+'…'); return; }
-    add('Waiting for your opponent. Share this code:');
-    const c=document.createElement('span'); c.className='code'; c.textContent=S.code.toUpperCase(); st.appendChild(c);
-    const b=document.createElement('button'); b.className='btn small'; b.textContent='Copy';
-    b.onclick=async()=>{ try{ await navigator.clipboard.writeText(S.code.toUpperCase()); b.textContent='Copied'; }catch(e){ b.textContent='Select the code'; } };
-    st.appendChild(b); return;
+  const turn=document.createElement('div'); turn.className='turn';
+  const sub=document.createElement('div'); sub.className='sub';
+  st.appendChild(turn); st.appendChild(sub);
+  if(sim.over){
+    turn.textContent='Game over.';
+    sub.textContent = sim.winner!==null ? 'The goal was reached.' : 'Nobody can place another piece.';
+    return;
   }
+  const notes=[];
   if(sim.skipped!==null){
-    const who = S.mode==='online' ? (sim.skipped===S.role?'You have':'Your opponent has') : S.mode==='cpu' ? (sim.skipped===S.me?'You have':'The computer has') : COLORS[sim.skipped]+' has';
-    add(who+' no piece that fits, so the turn was skipped.');
+    const who = S.mode==='cpu' ? (sim.skipped===S.me?'You have':'The computer has') : COLORS[sim.skipped]+' has';
+    notes.push(who+' no piece that fits, so the turn was skipped.');
   }
-  if(S.mode==='online' && !S.oppHere){ add('Opponent disconnected. The game continues when they return.'); return; }
-  if(S.mode==='online') add(sim.turn===S.role ? 'Your turn.' : "Opponent's turn…");
-  else if(S.mode==='cpu') add(sim.turn===S.me ? 'Your turn.' : 'The computer is thinking…');
-  else add(COLORS[sim.turn]+"'s turn.");
+  if(sim.last && sim.last.n>0 && sim.skipped===null){
+    const lp=sim.last.player;
+    notes.push(S.mode==='cpu' ? (lp===S.me?'You completed a line and play again.':'The computer completed a line and plays again.')
+      : COLORS[lp]+' completed a line and plays again.');
+  }
+  sub.textContent=notes.join(' ');
+  if(S.mode==='cpu') turn.textContent = sim.turn===S.me ? 'Your turn.' : 'The computer is thinking…';
+  else turn.textContent = COLORS[sim.turn]+"'s turn.";
 }
 
 function renderResult(sim){
@@ -600,26 +456,25 @@ function renderResult(sim){
   const box=document.createElement('div');
   const h=document.createElement('h3'), p=document.createElement('p');
   const [a,b]=sim.scores;
-  if(a===b) h.textContent='Draw';
+  if(sim.winner===null && a===b) h.textContent='Draw';
   else {
-    const w=a>b?0:1;
-    h.textContent = S.mode==='online' ? (w===S.role?'You win!':'Opponent wins') : S.mode==='cpu' ? (w===S.me?'You win!':'The computer wins') : COLORS[w]+' wins!';
+    const w = sim.winner!==null ? sim.winner : (a>b?0:1);
+    h.textContent = S.mode==='cpu' ? (w===S.me?'You win!':'The computer wins') : COLORS[w]+' wins!';
     h.style.color='var(--p'+w+')';
   }
   p.textContent=COLORS[0]+' '+a+'  ·  '+COLORS[1]+' '+b;
   box.appendChild(h); box.appendChild(p);
   const btn=document.createElement('button'); btn.className='btn primary'; btn.style.marginTop='8px';
-  if(S.mode==='local'){ btn.textContent='Play again'; btn.onclick=()=>{ prevMoves=0; startLocal(); }; }
-  else if(S.mode==='cpu'){ btn.textContent='Play again'; btn.onclick=()=>{ prevMoves=0; startCpu(S.level); }; }
-  else { btn.textContent='Back to menu'; btn.onclick=goMenu; }
-  box.appendChild(btn); r.appendChild(box);
+  btn.textContent='Play again'; btn.onclick=()=>startGame(S.mode,S.level);
+  const back=document.createElement('button'); back.className='btn'; back.style.marginTop='6px'; back.textContent='Back to menu'; back.onclick=goMenu;
+  box.appendChild(btn); box.appendChild(back); r.appendChild(box);
 }
 
 function renderTray(sim){
   const tray=$('tray'); const play=canPlay();
   const p=mine();
   const sig=[S.mode,p,play,sim.over,sim.hands[p].join(''),S.rots[p].join('')].join('|');
-  $('hint').textContent = sim.over ? '' : (play ? 'Drag a piece onto the board. Use ↻ to rotate it.' : '');
+  $('hint').textContent = sim.over ? '' : (play ? 'Drag a piece onto the board. Tap a piece to rotate it.' : '');
   if(sig===S.traySig || S.drag) return;
   S.traySig=sig; tray.textContent='';
   const cs=Math.min(26, Math.floor((tray.clientWidth||340)/3/4.6));
@@ -643,11 +498,15 @@ function startDrag(e,card,slot,p){
   const id=S.sim.hands[p][slot], rot=S.rots[p][slot];
   const rect=boardEl.getBoundingClientRect(), cs=rect.width/N;
   const fl=pieceEl(id,rot,cs-2,p); fl.classList.add('float'); document.body.appendChild(fl);
-  S.drag={slot,p,id,rot,pid:e.pointerId,type:e.pointerType,fl,card};
+  S.drag={slot,p,id,rot,pid:e.pointerId,type:e.pointerType,fl,card,sx:e.clientX,sy:e.clientY,moved:false};
   card.classList.add('dragging');
   try{ card.setPointerCapture(e.pointerId); }catch(_){}
   const mv=ev=>{ if(S.drag&&ev.pointerId===S.drag.pid) updateDrag(ev); };
-  const up=ev=>{ if(!S.drag||ev.pointerId!==S.drag.pid) return; cleanup(); finishDrag(true); };
+  const up=ev=>{
+    if(!S.drag||ev.pointerId!==S.drag.pid) return;
+    const tap=!S.drag.moved; cleanup(); finishDrag(!tap);
+    if(tap){ S.rots[p][slot]=(S.rots[p][slot]+1)%4; S.traySig=''; render(); } /* a tap on the piece rotates it */
+  };
   const cancel=ev=>{ if(!S.drag||ev.pointerId!==S.drag.pid) return; cleanup(); finishDrag(false); };
   function cleanup(){ card.removeEventListener('pointermove',mv); card.removeEventListener('pointerup',up); card.removeEventListener('pointercancel',cancel); }
   card.addEventListener('pointermove',mv); card.addEventListener('pointerup',up); card.addEventListener('pointercancel',cancel);
@@ -655,6 +514,7 @@ function startDrag(e,card,slot,p){
 }
 function updateDrag(e){
   const d=S.drag; if(!d) return;
+  if(!d.moved && Math.hypot(e.clientX-d.sx,e.clientY-d.sy)>8) d.moved=true;
   const rect=boardEl.getBoundingClientRect(), cs=rect.width/N;
   const lift = d.type==='touch' ? cs*1.7 : 0;
   const sh=SHAPES[d.id][d.rot];
@@ -675,9 +535,7 @@ function finishDrag(drop){
   S.drag=null; S.hover=null;
   if(drop && d.at && d.at.ok && canPlay()){
     const code=d.slot*1000 + d.rot*100 + d.at.r*10 + d.at.c;
-    const idx = S.mode==='online' ? S.role : d.p;
-    S.mv[idx].push(code); S.rots[d.p][d.slot]=0;
-    if(S.mode==='online'){ saveMoves(); sendMoves(); }
+    S.mv[d.p].push(code); S.rots[d.p][d.slot]=0;
   }
   S.traySig=''; render();
 }
@@ -685,39 +543,27 @@ function finishDrag(drop){
 /* ---- navigation ---- */
 function goMenu(){
   if(S.drag) finishDrag(false);
-  leaveNet(); S.mode=null; S.sim=null; prevMoves=0; show('menu'); refreshResume();
+  clearTimeout(S.cpuTimer); S.cpuTimer=null; S.mode=null; S.sim=null; prevMoves=0; show('menu');
 }
 $('leave').onclick=goMenu;
-$('btnLocal').onclick=()=>{ prevMoves=0; startLocal(); };
-let cpuSecond=false;
+function pick(ids,on){ ids.forEach(id=>{ const b=$(id); b.classList.toggle('on',id===on); b.setAttribute('aria-checked',String(id===on)); }); }
+const BOARDS={bd8:'8',bd10:'10',bd10p:'10p'}, GOALS={g500:500,g1000:1000,gend:Infinity};
+Object.keys(BOARDS).forEach(id=>{ $(id).onclick=()=>{ CFG.board=BOARDS[id]; pick(Object.keys(BOARDS),id); }; });
+Object.keys(GOALS).forEach(id=>{ $(id).onclick=()=>{ CFG.goal=GOALS[id]; pick(Object.keys(GOALS),id); }; });
+$('btnLocal').onclick=()=>startGame('local');
 function setOrder(second){
-  cpuSecond=second;
+  CFG.cpuSecond=second;
   $('segFirst').classList.toggle('on',!second); $('segSecond').classList.toggle('on',second);
   $('segFirst').setAttribute('aria-checked',String(!second)); $('segSecond').setAttribute('aria-checked',String(second));
   $('cpuNote').textContent = second ? 'You play Blue and the computer moves first.' : 'You play Orange and move first.';
 }
 $('segFirst').onclick=()=>setOrder(false);
 $('segSecond').onclick=()=>setOrder(true);
-$('btnEasy').onclick=()=>{ prevMoves=0; startCpu('easy'); };
-$('btnNormal').onclick=()=>{ prevMoves=0; startCpu('normal'); };
-$('btnHard').onclick=()=>{ prevMoves=0; startCpu('hard'); };
-$('btnCreate').onclick=()=>{ prevMoves=0; enterOnline(randCode(),0); };
-$('btnJoin').onclick=()=>{
-  const code=$('joinCode').value.trim().toLowerCase().replace(/[^a-z0-9]/g,'');
-  if(code.length<4){ $('menuNote').textContent='Enter the code your opponent sent you.'; $('menuNote').className='note err'; return; }
-  $('menuNote').className='note'; prevMoves=0;
-  enterOnline(code,1);
-};
-$('mHost').onclick=()=>mOpen(0);
-$('mGuest').onclick=()=>mOpen(1);
-$('mConnect').onclick=mHostConnect;
-$('mMakeReply').onclick=mGuestReply;
-$('mCopyOffer').onclick=e=>copyFrom('mOffer',e.currentTarget);
-$('mCopyAnswer').onclick=e=>copyFrom('mAnswer',e.currentTarget);
-$('joinCode').addEventListener('keydown',e=>{ if(e.key==='Enter') $('btnJoin').click(); });
-$('btnResume').onclick=()=>{ const l=refreshResume(); if(l){ prevMoves=0; enterOnline(String(l.code),l.role); } };
+$('btnEasy').onclick=()=>startGame('cpu','easy');
+$('btnNormal').onclick=()=>startGame('cpu','normal');
+$('btnHard').onclick=()=>startGame('cpu','hard');
 window.addEventListener('resize',()=>{ S.traySig=''; if(S.sim) renderTray(S.sim); });
-show('menu'); refreshResume();
+show('menu');
 </script>
 </body>
 </html>
