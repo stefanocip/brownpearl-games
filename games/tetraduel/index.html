@@ -105,6 +105,7 @@ body.playing .app{height:calc(100vh - 12px - env(safe-area-inset-top, 0px) - env
 .card:not(.off):hover{border-color:var(--pc)}
 .card.dragging{opacity:.35}
 .card.off{opacity:.5;cursor:default}
+.card.empty{background:transparent;border:2px dashed var(--line);cursor:default}
 .rot{position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;border:0;background:var(--cell);box-shadow:inset 0 0 0 2px var(--line);font-size:16px;line-height:1;display:grid;place-items:center;padding:0}
 .rot:disabled{display:none}
 .pc{display:grid;gap:2px}
@@ -124,7 +125,7 @@ body.playing .app{height:calc(100vh - 12px - env(safe-area-inset-top, 0px) - env
   <section id="menu">
     <ul class="rules">
       <li><i>1</i><span>Each player holds 3 tetrominoes. Drag one onto the board, then your opponent plays and you draw a new piece.</span></li>
-      <li><i>2</i><span>Fill a row or a column and it disappears. One line scores 10, two at once 30, three 60, and whoever completes a line plays again. Every placed block is worth 1.</span></li>
+      <li><i>2</i><span>Fill a row or a column and it disappears. One line scores 10, two at once 30, three 60, and every placed block is worth 1. In the 1-piece turn, whoever completes a line plays again. In the 3-piece turn you place your three pieces in any order, a line gives no extra turn, then your opponent plays.</span></li>
       <li><i>3</i><span>The first player to reach the goal wins. With no goal, the game goes on until nobody can place a piece, and the higher score wins. If you have no piece that fits, your turn is skipped.</span></li>
     </ul>
     <div class="panel">
@@ -133,6 +134,11 @@ body.playing .app{height:calc(100vh - 12px - env(safe-area-inset-top, 0px) - env
         <button class="btn" id="bd8" role="radio" aria-checked="false">8×8</button>
         <button class="btn" id="bd10" role="radio" aria-checked="false">10×10</button>
         <button class="btn on" id="bd10p" role="radio" aria-checked="true">10×10 + blocks</button>
+      </div>
+      <h2>Turn</h2>
+      <div class="seg" role="radiogroup" aria-label="Turn">
+        <button class="btn on" id="t1" role="radio" aria-checked="true">1 piece, line = play again</button>
+        <button class="btn" id="t3" role="radio" aria-checked="false">3 pieces per turn</button>
       </div>
       <h2>Goal</h2>
       <div class="seg" role="radiogroup" aria-label="Goal">
@@ -179,6 +185,7 @@ body.playing .app{height:calc(100vh - 12px - env(safe-area-inset-top, 0px) - env
 let N = 10;          // board side, set when a game starts
 let TARGET = Infinity; // points that win the game
 let PRESET = true;   // start with grey blocks on the board
+let TURN3 = false;   // true: each turn you place all 3 pieces, and a line gives no extra turn
 var REPLY_W=0.9;
 const BASE = [
   [[0,0],[0,1],[0,2],[0,3]], // I
@@ -260,6 +267,7 @@ function bestReply(b, hand){
   for(let i=0;i<N*N;i++) if(b[i]>=0){ rc[Math.floor(i/N)]++; cc[i%N]++; }
   let best=0;
   for(const id of hand) for(let rot=0;rot<4;rot++){
+    if(id===null) continue;
     const sh=SHAPES[id][rot];
     for(let r=0;r<=N-sh.h;r++) for(let c=0;c<=N-sh.w;c++){
       if(!fits(b,sh,r,c)) continue;
@@ -276,7 +284,9 @@ function bestReply(b, hand){
 /* Computer player. easy: mostly random. normal: greedy for points. hard: also keeps the board open and its other pieces placeable. */
 function cpuChoose(sim, level){
   const p=sim.turn, hand=sim.hands[p], opts=[];
+  const remain=hand.filter(x=>x!==null).length;
   for(let slot=0;slot<3;slot++) for(let rot=0;rot<4;rot++){
+    if(hand[slot]===null) continue;
     const sh=SHAPES[hand[slot]][rot];
     for(let r=0;r<=N-sh.h;r++) for(let c=0;c<=N-sh.w;c++){
       if(!fits(sim.board,sh,r,c)) continue;
@@ -287,8 +297,9 @@ function cpuChoose(sim, level){
         sc-=filled;
         if(level==='hard'){
           /* the board is shared: do not leave the opponent a line to finish */
-          if(pl.n===0) sc-=bestReply(b, sim.hands[1-p])*10*REPLY_W; /* a line means I move again */
-          hand.forEach((id,s)=>{ if(s!==slot && !canPlaceAnywhere(b,id)) sc-=60; });
+          /* after a line in 1-piece mode I move again, so there is no reply to fear; in 3-piece mode the reply comes only after my last piece */
+          if(TURN3 ? remain===1 : pl.n===0) sc-=bestReply(b, sim.hands[1-p])*10*REPLY_W;
+          hand.forEach((id,s)=>{ if(s!==slot && id!==null && !canPlaceAnywhere(b,id)) sc-=60; });
         }
       }
       opts.push({code:slot*1000+rot*100+r*10+c, sc:sc+Math.random()*0.5});
@@ -307,7 +318,7 @@ function simulate(seed, mv){
   const st=[makeStream(seed+'|0'), makeStream(seed+'|1')];
   const hands=[[st[0](),st[0](),st[0]()],[st[1](),st[1](),st[1]()]];
   const used=[0,0]; let turn=0, over=false, last=null, skipped=null, winner=null;
-  const can=p=>hands[p].some(id=>canPlaceAnywhere(board,id));
+  const can=p=>hands[p].some(id=>id!==null && canPlaceAnywhere(board,id));
   for(let guard=0; guard<20000; guard++){
     /* a player with no piece that fits skips the turn; the game ends when nobody can move */
     if(!can(turn)){
@@ -318,25 +329,38 @@ function simulate(seed, mv){
     if(code===undefined) break;
     const slot=Math.floor(code/1000), rot=Math.floor(code/100)%10, r=Math.floor(code/10)%10, c=code%10;
     if(slot>2||rot>3) break;
+    if(hands[turn][slot]===null) break;
     const sh=SHAPES[hands[turn][slot]][rot];
     if(!fits(board,sh,r,c)) break;
     const pl=placeOn(board,sh,r,c,turn); const n=pl.n, kill=pl.kill, idx=pl.idx, cleared=pl.cleared;
     const gain = gainFor(n);
     scores[turn]+=gain; lines[turn]+=n;
     last={player:turn, cells:idx.filter(i=>!kill.has(i)), cleared, n, gain};
-    hands[turn][slot]=st[turn](); used[turn]++; skipped=null;
+    used[turn]++; skipped=null;
     if(scores[turn]>=TARGET){ over=true; winner=turn; break; }
-    if(n===0) turn=1-turn; /* completing a line keeps the turn */
+    if(!TURN3){
+      hands[turn][slot]=st[turn]();
+      if(n===0) turn=1-turn; /* completing a line keeps the turn */
+    } else {
+      /* 3-piece turns: the hand is used up piece by piece, then the turn passes with 3 fresh pieces */
+      hands[turn][slot]=null;
+      const left=hands[turn].filter(id=>id!==null);
+      const forced=left.length>0 && !left.some(id=>canPlaceAnywhere(board,id));
+      if(left.length===0 || forced){
+        hands[turn]=[st[turn](),st[turn](),st[turn]()]; turn=1-turn;
+        last.forced=forced;
+      }
+    }
   }
   return {board,scores,lines,hands,turn,over,last,skipped,used,winner};
 }
 //@@UI
 /* ============ UI ============ */
-const VERSION = '2.6';
+const VERSION = '2.7';
 const $ = id => document.getElementById(id);
 const COLORS = ['Orange','Blue'];
 const S = {mode:null, seed:'', mv:[[],[]], rots:[[0,0,0],[0,0,0]], sim:null, hover:null, cpuTimer:null, level:'normal', me:0, clr:new Map(), traySig:'', drag:null};
-const CFG = {board:'10p', goal:Infinity, cpuSecond:false};
+const CFG = {board:'10p', goal:Infinity, cpuSecond:false, turn3:false};
 
 function show(which){
   document.body.classList.toggle('playing', which==='game');
@@ -350,7 +374,7 @@ function resetState(){
 }
 function startGame(mode, level){
   resetState();
-  N = CFG.board==='8' ? 8 : 10; PRESET = CFG.board==='10p'; TARGET = CFG.goal;
+  N = CFG.board==='8' ? 8 : 10; PRESET = CFG.board==='10p'; TARGET = CFG.goal; TURN3 = CFG.turn3;
   buildBoard();
   S.mode=mode; S.level=level||'normal'; S.me = mode==='cpu' && CFG.cpuSecond ? 1 : 0;
   S.seed=mode+'-'+Math.random().toString(36).slice(2);
@@ -403,7 +427,9 @@ function paintBoard(){
 let prevMoves=0;
 function render(){
   if(!S.mode) return;
+  const prevSim=S.sim;
   const sim=S.sim=simulate(S.seed,S.mv);
+  if(prevSim) for(let q=0;q<2;q++) for(let k=0;k<3;k++) if(prevSim.hands[q][k]!==sim.hands[q][k]) S.rots[q][k]=0;
   const total=sim.used[0]+sim.used[1];
   if(total>prevMoves && sim.last && sim.last.cleared.length){
     S.clr=new Map(sim.last.cleared);
@@ -417,7 +443,7 @@ function render(){
     $('meta'+p).textContent=sim.lines[p]+(sim.lines[p]===1?' line':' lines')+' · '+sim.used[p]+(sim.used[p]===1?' piece':' pieces');
     $('chip'+p).classList.toggle('active', !sim.over && sim.turn===p);
     const mini=$('mini'+p); mini.textContent='';
-    sim.hands[p].forEach(id=>mini.appendChild(pieceEl(id,0,6,p)));
+    sim.hands[p].forEach(id=>{ if(id!==null) mini.appendChild(pieceEl(id,0,6,p)); });
   }
   paintBoard();
   renderStatus(sim);
@@ -448,7 +474,11 @@ function renderStatus(sim){
     const who = S.mode==='cpu' ? (sim.skipped===S.me?'You have':'The computer has') : COLORS[sim.skipped]+' has';
     notes.push(who+' no piece that fits, so the turn was skipped.');
   }
-  if(sim.last && sim.last.n>0 && sim.skipped===null){
+  if(sim.last && sim.last.forced){
+    const lp=sim.last.player;
+    notes.push((S.mode==='cpu' ? (lp===S.me?'Your':'The computer’s') : COLORS[lp]+'’s')+' remaining pieces do not fit, so the turn ended.');
+  }
+  if(!TURN3 && sim.last && sim.last.n>0 && sim.skipped===null){
     const lp=sim.last.player;
     notes.push(S.mode==='cpu' ? (lp===S.me?'You completed a line and play again.':'The computer completed a line and plays again.')
       : COLORS[lp]+' completed a line and plays again.');
@@ -456,6 +486,7 @@ function renderStatus(sim){
   sub.textContent=notes.join(' ');
   if(S.mode==='cpu') turn.textContent = sim.turn===S.me ? 'Your turn.' : 'The computer is thinking…';
   else turn.textContent = COLORS[sim.turn]+"'s turn.";
+  if(TURN3){ const left=sim.hands[sim.turn].filter(x=>x!==null).length; turn.textContent += ' '+left+(left===1?' piece':' pieces')+' left.'; }
 }
 
 function renderResult(sim){
@@ -482,7 +513,7 @@ function renderResult(sim){
 function renderTray(sim){
   const tray=$('tray'); const play=canPlay();
   const p=mine();
-  const sig=[S.mode,p,play,sim.over,sim.hands[p].join(''),S.rots[p].join('')].join('|');
+  const sig=[S.mode,p,play,sim.over,sim.hands[p].join(','),S.rots[p].join('')].join('|');
   $('hint').textContent = sim.over ? '' : (play ? 'Drag a piece onto the board. Tap a piece to rotate it.' : '');
   const cardH=Math.round(Math.max(70,Math.min(104,window.innerHeight*0.13)));
   tray.style.setProperty('--card-h',cardH+'px');
@@ -491,6 +522,7 @@ function renderTray(sim){
   const cs=Math.max(10,Math.min(26, Math.floor((cardH-16)/4.5), Math.floor((tray.clientWidth||340)/3/4.6)));
   for(let slot=0;slot<3;slot++){
     const id=sim.hands[p][slot], rot=S.rots[p][slot];
+    if(id===null){ const e=document.createElement('div'); e.className='card empty'; tray.appendChild(e); continue; }
     const card=document.createElement('div'); card.className='card p'+p+(play?'':' off');
     card.appendChild(pieceEl(id,rot,cs,p));
     const rb=document.createElement('button'); rb.className='rot'; rb.textContent='↻'; rb.setAttribute('aria-label','Rotate piece'); rb.disabled=!play;
@@ -561,6 +593,8 @@ function pick(ids,on){ ids.forEach(id=>{ const b=$(id); b.classList.toggle('on',
 const BOARDS={bd8:'8',bd10:'10',bd10p:'10p'}, GOALS={g100:100,gend:Infinity};
 Object.keys(BOARDS).forEach(id=>{ $(id).onclick=()=>{ CFG.board=BOARDS[id]; pick(Object.keys(BOARDS),id); }; });
 Object.keys(GOALS).forEach(id=>{ $(id).onclick=()=>{ CFG.goal=GOALS[id]; pick(Object.keys(GOALS),id); }; });
+const TURNS={t1:false,t3:true};
+Object.keys(TURNS).forEach(id=>{ $(id).onclick=()=>{ CFG.turn3=TURNS[id]; pick(Object.keys(TURNS),id); }; });
 $('btnLocal').onclick=()=>startGame('local');
 function setOrder(second){
   CFG.cpuSecond=second;
