@@ -231,7 +231,7 @@
 <div class="seed-note">
   Stesso seed &rarr; stessa forma, stessi goal e stesse mosse, sempre. I colori invece sono sempre mescolati a caso ad ogni caricamento. "Livello successivo" incrementa il seed di uno step fisso (104729) restando riproducibile.
 </div>
-<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 122 (bomba legata che esplode: la corda si scioglie)</div>
+<div class="seed-note" style="opacity:0.5; margin-top:4px;">build 123 (la stella che tocca terra vola via)</div>
 
 <div id="debugPanel" style="width:100%; max-width:500px; margin-top:16px;">
   <div style="font-size:0.7rem; color:var(--ink-dim); margin-bottom:4px;">Log / errori (si riempie da solo)</div>
@@ -1888,6 +1888,7 @@ function updateStar(state) {
   if (trueFloor) {
     state.starDone = true;
     board[r][c] = null; // raggiunto il pavimento vero: la stella sparisce, la cella torna libera
+    state.starFlight = [r, c]; // la UI la fa volare via da qui (solo estetica)
   }
 }
 
@@ -2453,6 +2454,7 @@ function renderBoard() {
   });
 
   app.stage.addChild(container);
+  launchStarFlight(state);
 }
 
 // ============================================================
@@ -2733,6 +2735,39 @@ function computeInMatchBombFlashCells(state) {
   });
   if (!anyBomb) return null;
   return [...cellsSet].map((k) => k.split(',').map(Number));
+}
+
+// La stella che tocca il pavimento vola via: sale, ruota, ingrandisce e
+// svanisce (~0.9s). Fuoco e dimentica: non blocca il gioco né l'input. Il
+// disegno vive sullo stage ma renderBoard lo svuota a ogni rendering, quindi
+// a ogni frame lo rimetto sopra se serve.
+function launchStarFlight(state) {
+  if (!state || !state.starFlight) return;
+  const [r, c] = state.starFlight;
+  state.starFlight = null;
+  try {
+    const sprite = createPieceDisplay('star');
+    const x0 = c * CELL + CELL / 2, y0 = r * CELL + CELL / 2;
+    sprite.position.set(x0, y0);
+    app.stage.addChild(sprite);
+    const DURATION = 900, start = performance.now(), gameAtStart = game.state;
+    const frame = (now) => {
+      try {
+        const t = Math.min(1, (now - start) / DURATION);
+        if (game.state !== gameAtStart || t >= 1) { if (sprite.parent) sprite.parent.removeChild(sprite); sprite.destroy({ children: true }); return; }
+        if (!sprite.parent) app.stage.addChild(sprite);
+        const e = t * t; // accelera verso l'alto
+        sprite.position.set(x0 + Math.sin(t * 5) * CELL * 0.25, y0 - e * CELL * 4.5);
+        sprite.rotation = t * Math.PI * 3;
+        sprite.scale.set(1 + t * 0.7);
+        sprite.alpha = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
+        requestAnimationFrame(frame);
+      } catch (err) { try { if (sprite.parent) sprite.parent.removeChild(sprite); } catch (e2) { /* ignora */ } }
+    };
+    requestAnimationFrame(frame);
+  } catch (err) {
+    console.error('[match3] animazione stella non riuscita (solo estetica):', err);
+  }
 }
 
 function flashExplosion(cells, onDone) {
